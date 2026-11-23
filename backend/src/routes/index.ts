@@ -55,7 +55,7 @@ export async function registerRoutes(
   });
 
   // Unauthenticated: liveness + (dev-only) local storage.
-  healthRoutes(app);
+  healthRoutes(app, { storage: deps.storage });
   registerDevStorageRoutes(app, deps.storage);
 
   // Failed-auth throttle, shared by every authenticated route. Auth failures
