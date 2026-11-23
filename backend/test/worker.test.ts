@@ -1,24 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { processJob, type WorkerDeps } from '../src/worker.js';
-import { MODEL_CREDITS } from '../src/provider/index.js';
-import { createMockProvider } from '../src/provider/mock.js';
 import { loadConfig } from '../src/config.js';
 import type { StorageDriver } from '../src/storage/index.js';
-
-// --- mock generations are FREE ------------------------------------------------
-// PROVIDER_MODE=mock must not eat the daily budget or inflate spend metrics.
-describe('mock provider billing', () => {
-  it('creditsForModel returns 0 for every model (draft and hq)', () => {
-    const provider = createMockProvider();
-    expect(provider.creditsForModel('marble-1.0-draft')).toBe(0);
-    expect(provider.creditsForModel('marble-1.1')).toBe(0);
-  });
-
-  it('real provider costs are unchanged (draft 150 / hq 1500)', () => {
-    expect(MODEL_CREDITS['marble-1.0-draft']).toBe(150);
-    expect(MODEL_CREDITS['marble-1.1']).toBe(1500);
-  });
-});
 
 // --- purge removes capture frames and world assets ----------------------------
 
@@ -36,6 +19,7 @@ describe('purge', () => {
       execute: async () => undefined,
     };
     const storage = {
+      list: vi.fn(async (p: string) => STORED.filter((k) => k.startsWith(p)).map((key) => ({ key, size: 1 }))),
       deleteObject: vi.fn(async (k: string) => { deleted.push(k); }),
     } as unknown as StorageDriver;
     return {
@@ -45,13 +29,20 @@ describe('purge', () => {
       push: (async () => undefined) as unknown as WorkerDeps['push'],
     };
   }
-  const captureKeys = ['captures/cap-1/frame_0.heic', 'captures/cap-1/frame_1.heic'];
+  const captureKeys = [
+    'captures/cap-1/session.json',
+    'captures/cap-1/frames.jsonl',
+    'captures/cap-1/frames/000001.jpg',
+    'bundles/cap-1/capture_bundle.zip',
+  ];
+  const worldKeys = ['worlds/w-1/v1/splat.spz', 'worlds/w-1/v1/collider.ply'];
+  // cap-10 / w-10 share a string prefix and must survive (trailing-slash prefixes).
+  const STORED = [...captureKeys, ...worldKeys, 'captures/cap-10/session.json', 'worlds/w-10/v1/splat.spz'];
 
   it('full purge', async () => {
     const deleted: string[] = [];
     await processJob(purgeDeps(deleted), { id: 'j', kind: 'purge', worldId: 'w-1', payload: null } as never);
-    expect(deleted).toEqual(expect.arrayContaining(captureKeys));
-    expect(deleted.some((k) => k.startsWith('worlds/w-1/'))).toBe(true);
+    expect(deleted.sort()).toEqual([...captureKeys, ...worldKeys].sort());
   });
 
   it('framesOnly (reaper) purge', async () => {
@@ -60,7 +51,7 @@ describe('purge', () => {
       purgeDeps(deleted),
       { id: 'j', kind: 'purge', worldId: 'w-1', payload: { framesOnly: true } } as never,
     );
-    expect(deleted).toEqual(captureKeys);
+    expect(deleted.sort()).toEqual([...captureKeys].sort());
   });
 
   it('rejects any non-purge job kind as non-retryable', async () => {

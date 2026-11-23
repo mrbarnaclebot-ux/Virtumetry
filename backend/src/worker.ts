@@ -42,16 +42,12 @@ export class LeaseLostError extends Error {
   }
 }
 
-// --- Storage key layout ------------------------------------------------------
-const assetKeyFor = (worldId: string, name: string) => `worlds/${worldId}/${name}`;
-// Asset objects a world may own (used by purge).
-const WORLD_ASSET_NAMES = [
-  'splat_100k.spz',
-  'splat_500k.spz',
-  'splat_full.spz',
-  'thumbnail.jpg',
-  'collider.glb',
-];
+/** Delete every object under `prefix` (idempotent, best-effort per key). */
+async function purgePrefix(storage: StorageDriver, prefix: string): Promise<void> {
+  const p = prefix.endsWith('/') ? prefix : `${prefix}/`;
+  const objs = await storage.list(p); // a list failure fails the job (retry), never a silent skip
+  for (const o of objs) await storage.deleteObject(o.key).catch(() => undefined);
+}
 
 export interface WorkerClock {
   now(): number;
@@ -82,8 +78,8 @@ export interface WorkerDeps {
 
 
 /**
- * purge — delete storage objects under the world + its captures' frame
- * prefixes. The DB row is KEPT (soft-deleted) so history/analytics survive.
+ * purge — delete every storage object under worlds/{wid}/, and each
+ * capture's captures/{cid}/ and bundles/{cid}/ prefixes (via list). The DB row is KEPT (soft-deleted) so history/analytics survive.
  * A `{ framesOnly: true }` payload (reaper) skips the world-asset keys — a
  * reaped uploading world never produced any, and its row is NOT soft-deleted.
  */
@@ -95,18 +91,12 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
     job.payload !== null &&
     (job.payload as { framesOnly?: boolean }).framesOnly === true;
 
-  if (!framesOnly) {
-    for (const name of WORLD_ASSET_NAMES) {
-      await storage.deleteObject(assetKeyFor(worldId, name)).catch(() => undefined);
-    }
-  }
+  if (!framesOnly) await purgePrefix(storage, `worlds/${worldId}/`);
 
   const caps = await db.select().from(captures).where(eq(captures.worldId, worldId));
   for (const cap of caps) {
-    const prefix = cap.r2FramesPrefix ?? `captures/${cap.id}`;
-    for (let i = 0; i < cap.frameCount; i++) {
-      await storage.deleteObject(`${prefix}/frame_${i}.heic`).catch(() => undefined);
-    }
+    await purgePrefix(storage, cap.r2FramesPrefix ?? `captures/${cap.id}`);
+    await purgePrefix(storage, `bundles/${cap.id}/`);
   }
 
   // Purge the per-frame ARKit poses too (spec §13 data minimization / §10 R3).

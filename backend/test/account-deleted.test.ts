@@ -150,6 +150,11 @@ function purgeStorage(sink: PurgeSink): StorageDriver {
     presignDownload: vi.fn(),
     putObject: vi.fn(),
     getObject: vi.fn(),
+    list: vi.fn(async (prefix: string) =>
+      ['captures/cap-1/frames/000001.jpg', 'captures/cap-1/frames/000002.jpg', 'bundles/cap-1/capture_bundle.zip', 'worlds/w-1/v1/splat.spz']
+        .filter((k) => k.startsWith(prefix))
+        .map((key) => ({ key, size: 1 })),
+    ),
     deleteObject: vi.fn(async (key: string) => {
       sink.deletedKeys.push(key);
     }),
@@ -190,8 +195,10 @@ describe('purge job clears per-frame poses', () => {
     expect(posePurge).toBeDefined();
     expect(posePurge!.patch).toEqual({ posesJson: null });
     // Frames still deleted, world row untouched (soft-delete is kept).
-    expect(sink.deletedKeys).toContain('captures/cap-1/frame_0.heic');
-    expect(sink.deletedKeys).toContain('captures/cap-1/frame_1.heic');
+    expect(sink.deletedKeys).toContain('captures/cap-1/frames/000001.jpg');
+    expect(sink.deletedKeys).toContain('captures/cap-1/frames/000002.jpg');
+    expect(sink.deletedKeys).toContain('bundles/cap-1/capture_bundle.zip');
+    expect(sink.deletedKeys).toContain('worlds/w-1/v1/splat.spz');
     expect(sink.updates.some((u) => u.table === worlds)).toBe(false);
     expect(sink.updates.some((u) => u.table === jobs)).toBe(false);
   });
@@ -204,6 +211,6 @@ describe('purge job clears per-frame poses', () => {
     // framesOnly skips the world-asset keys…
     expect(sink.deletedKeys.some((k) => k.startsWith('worlds/'))).toBe(false);
     // …but still removes the frames.
-    expect(sink.deletedKeys).toContain('captures/cap-1/frame_0.heic');
+    expect(sink.deletedKeys).toContain('captures/cap-1/frames/000001.jpg');
   });
 });
