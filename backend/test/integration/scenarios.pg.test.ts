@@ -3,6 +3,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import type { MockScenario } from '../../src/provider/mock.js';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
 import { failWorldForDeadJob } from '../../src/worker.js';
+import { ProviderError } from '../../src/provider/index.js';
+import { MAX_ATTEMPTS } from '../../src/queue.js';
 
 // PROC-10 scenario matrix (ROADMAP SC4) + concurrent over-budget refusal (SC5,
 // PROC-08). Every scripted failure must end in its documented state with no
@@ -123,6 +125,30 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(p.provider.calls.submit).toHaveLength(1);
     expect(p.provider.calls.submit[0]!.key).toBe(ok[0]!.submissionKey);
   }, 180_000);
+
+  it('CR-01: more transient track errors than MAX_ATTEMPTS never fail a paid world', async () => {
+    const pl = await start('happy');
+    const { worldId } = await pl.seedScan();
+    const status = pl.provider.status.bind(pl.provider);
+    const open = pl.provider.open.bind(pl.provider);
+    let statusErrs = 0;
+    let openErrs = 0;
+    pl.provider.status = async (rid) => {
+      if (statusErrs++ < 4) throw new ProviderError('mock: 503 on status', { status: 503 });
+      return status(rid);
+    };
+    pl.provider.open = async (a) => {
+      if (openErrs++ < 3) throw new Error('mock: storage blip');
+      return open(a);
+    };
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('ready');
+    expect(w.charged).toBe(true);
+    expect(statusErrs + openErrs).toBeGreaterThan(MAX_ATTEMPTS); // 7 errors, none consumed an attempt
+    const { rows } = await pl.pool.query("SELECT phase, attempts, payload FROM jobs WHERE world_id = $1 AND kind = 'track'", [worldId]);
+    expect(rows).toEqual([{ phase: 'done', attempts: expect.any(Number), payload: null }]);
+    expect(rows[0].attempts).toBeLessThanOrEqual(1);
+  }, 120_000);
 
   it('a pipeline job that goes DEAD fails its world (no stuck in-progress status)', async () => {
     const pl = await start('happy');

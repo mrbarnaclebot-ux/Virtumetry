@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { BudgetExceededError, releaseCredits, reserveCredits } from './budget.js';
 import { BundleInvalidError, packCapture } from './bundle/pack.js';
 import type { Db } from './db/client.js';
-import { captures, worlds, type FailureStage, type Job, type World, type WorldStatus } from './db/schema.js';
+import { captures, jobs, worlds, type FailureStage, type Job, type World, type WorldStatus } from './db/schema.js';
 import { ProviderError, type ArtifactKind, type ExportKind } from './provider/index.js';
 import { completeJob, enqueue, heartbeatJob, parkJobDead, snoozeJob } from './queue.js';
 import { worldAssetKey } from './storage/index.js';
@@ -242,7 +242,34 @@ const KEY_COLUMN: Partial<Record<ArtifactKind, 'splatKey' | 'colliderKey' | 'flo
 const EXPORTS: ExportKind[] = ['mesh-simplified', 'floorplan'];
 const loggedUnknown = new Set<string>();
 
+const TRACK_MAX_DELAY_S = 900;
+const trackErrs = (job: Job) => (job.payload as { errs?: number } | null)?.errs ?? 0;
+
+/**
+ * Once provider_request_id exists the request is paid: an error while polling or
+ * importing (provider 429/5xx, storage, DB blip) must never burn the job's
+ * attempts and fail the world. Errors snooze with backoff on a consecutive-error
+ * count in the payload, reset by the next clean pass (CR-01).
+ * ponytail: never gives up; a permanently broken request polls every 15 min
+ * until a human looks (the log says so). Add a TRACK_STALLED park if that hurts.
+ */
 export async function handleTrack(deps: WorkerDeps, job: Job): Promise<void> {
+  const { db, config } = deps;
+  try {
+    await trackOnce(deps, job);
+  } catch (err) {
+    if (err instanceof LeaseLostError) throw err; // another worker owns it now
+    const errs = trackErrs(job) + 1;
+    const delay = Math.min(config.TRACK_POLL_SECONDS * 2 ** errs, TRACK_MAX_DELAY_S);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pipeline] track job ${job.id} error #${errs} on world ${job.worldId}, snoozing ${delay}s: ${msg}`);
+    await db.update(jobs).set({ payload: { errs }, lastError: msg.slice(0, 500) }).where(eq(jobs.id, job.id));
+    return snoozeJob(db, job.id, delay);
+  }
+  if (trackErrs(job) > 0) await db.update(jobs).set({ payload: null }).where(eq(jobs.id, job.id));
+}
+
+async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage, provider, config } = deps;
   const w = await getWorld(db, job.worldId);
   if (!w?.providerRequestId || (w.status !== 'processing' && w.status !== 'importing')) {
