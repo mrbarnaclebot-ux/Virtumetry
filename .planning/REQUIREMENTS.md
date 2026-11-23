@@ -9,11 +9,11 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 
 ### Foundation & Isolation (FND)
 
-- [ ] **FND-01**: Backend runs from `backend/` in the monorepo as a copy of the VirtSpace backend with the stitcher, World Labs provider and depth pipeline removed, and its test suite passes in CI
-- [ ] **FND-02**: Backend uses its own new Neon database, Railway project and separate dev/prod R2 buckets; no config path can reach VirtSpace production
-- [ ] **FND-03**: Backend refuses to start the paid Echo-3 provider unless `ALLOW_PAID_PROVIDER=1` is set, and refuses dev-token auth in production
-- [ ] **FND-04**: Database migrations run automatically on deploy over the direct (non-pooler) Neon host
-- [ ] **FND-05**: App and backend lint, typecheck and tests run on every push in GitHub Actions (not EAS CI minutes)
+- [x] **FND-01**: Backend runs from `backend/` in the monorepo as a copy of the VirtSpace backend with the stitcher, World Labs provider and depth pipeline removed, and its test suite passes in CI
+- [x] **FND-02**: Backend uses its own new Neon database, Railway project and separate dev/prod R2 buckets; no config path can reach VirtSpace production
+- [x] **FND-03**: Backend refuses to start the paid Echo-3 provider unless `ALLOW_PAID_PROVIDER=1` is set, and refuses dev-token auth in production
+- [x] **FND-04**: Database migrations run automatically on deploy over the direct (non-pooler) Neon host
+- [x] **FND-05**: App and backend lint, typecheck and tests run on every push in GitHub Actions (not EAS CI minutes)
 
 ### Account (AUTH)
 
@@ -122,11 +122,11 @@ Deferred. Tracked, not in the current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
-| FND-04 | Phase 1 | Pending |
-| FND-05 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
+| FND-04 | Phase 1 | Complete |
+| FND-05 | Phase 1 | Complete |
 | AUTH-01 | Phase 3 | Pending |
 | AUTH-02 | Phase 3 | Pending |
 | AUTH-03 | Phase 3 | Pending |
