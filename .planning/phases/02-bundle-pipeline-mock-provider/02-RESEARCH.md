@@ -624,7 +624,7 @@ await db.execute(sql`INSERT INTO credit_events (amount, world_id, submission_key
   FROM credit_events WHERE submission_key = ${key} AND kind = 'reserve'
   ON CONFLICT DO NOTHING`);
 ```
-Simplify the release `WHERE` to `kind = 'reserve'` when implementing. The unique `(submission_key, kind)` index does the idempotency. Remove `creditsForModel`/`budgetFits` (World Labs) and their tests. `MONTHLY_CREDIT_BUDGET` default: see Assumptions.
+The unique `(submission_key, kind)` index makes a second release a no-op. Remove `creditsForModel`/`budgetFits` (World Labs) and their tests. `MONTHLY_CREDIT_BUDGET` default: see Assumptions.
 
 ### 8. Fixture conversion (TUM RGB-D → session schema 1)
 - **Dataset:** TUM RGB-D **fr3/long_office_household** (office loop, 87 s, 21 m). URL: `https://cvg.cit.tum.de/rgbd/dataset/freiburg3/rgbd_dataset_freiburg3_long_office_household.tgz` (302 → `webshare.cvg.cit.tum.de`, 1,483,556,251 bytes, `Accept-Ranges: bytes`). Smaller fallback: `…freiburg3_large_cabinet.tgz` (0.48 GB). [VERIFIED: HEAD request + download page]
