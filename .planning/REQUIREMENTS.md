@@ -44,7 +44,7 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 - [x] **PROC-04**: Backend converts ARKit poses to OpenCV `camera_from_world`, writes intrinsics and EXIF timestamps, and packs a valid Echo-3 capture-bundle ZIP on R2 with a Range-capable presigned URL valid ≥24 h
 - [ ] **PROC-05**: Backend submits to Echo-3 at most once per approved scan: idempotency key and exact request body are saved before the call; a retry after failure needs a new explicit owner approval
 - [ ] **PROC-06**: Backend tracks status via signed webhooks (HMAC verified, deduplicated on `delivery_id`) with a polling fallback; webhooks only nudge the tracker
-- [ ] **PROC-07**: When processing finishes, backend copies all outputs (SPZ/SOG splat, `mesh-simplified`, floor plan + affine, `cameras.json`) into our own storage before marking the world ready
+- [x] **PROC-07**: When processing finishes, backend copies all outputs (SPZ/SOG splat, `mesh-simplified`, floor plan + affine, `cameras.json`) into our own storage before marking the world ready
 - [ ] **PROC-08**: Backend enforces a hard credit budget (per day and per month) with an atomic reservation; a scan over budget is refused before any spend
 - [ ] **PROC-09**: Owner gets a push notification when a world is ready or failed
 - [ ] **PROC-10**: A mock provider (including scripted failures: FAILED, 402, 409, 429, 503, duplicate webhooks) is the default everywhere except an explicitly enabled live mode
@@ -148,7 +148,7 @@ Deferred. Tracked, not in the current roadmap.
 | PROC-04 | Phase 2 | Complete |
 | PROC-05 | Phase 6 | Pending |
 | PROC-06 | Phase 2 | Pending |
-| PROC-07 | Phase 2 | Pending |
+| PROC-07 | Phase 2 | Complete |
 | PROC-08 | Phase 2 | Pending |
 | PROC-09 | Phase 7 | Pending |
 | PROC-10 | Phase 2 | Pending |

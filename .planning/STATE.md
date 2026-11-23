@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-11-23T17:32:39.420Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-11-23T17:41:53.146Z"
 last_activity: 2026-11-23
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 11
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 ## Current Position
 
 Phase: 2 (Bundle Pipeline & Mock Provider) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-11-23
 
-Progress: [████████░░] 79%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Recent decisions affecting current work:
 - [Phase 2]: 02-01: backend/test/fixtures pinned to eol=lf in .gitattributes
 - [Phase 2]: 02-04: reserveCredits checks daily before monthly; one reservation per submission_key; release dated at its reservation
 - [Phase 2]: 02-04: mock 429/503 fire once per provider instance; bundle-check failures surface as FAILED+issues, never a thrown submit
+- [Phase 2]: 02-05: pipeline handlers resolve the world's latest capture (not the pack payload); provider progress 0..1 stored as 0-100; harness drain default 60 s for Neon latency
 
 ### Pending Todos
 
@@ -93,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-23T17:32:39.411Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-11-23T17:41:53.137Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
