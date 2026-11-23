@@ -14,7 +14,7 @@ v1 proves the scan-to-3D-room loop for one owner on one iPhone. The roadmap buil
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards (completed 2026-11-23)
-- [ ] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0
+- [x] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0 (completed 2026-11-23)
 - [ ] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state
 - [ ] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
 - [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
@@ -80,7 +80,7 @@ Plans:
   4. Scripted mock failures (FAILED, 402, 409, 429, 503, duplicate webhooks) each end in the documented state with no extra submit *(automated scenario tests)*
   5. Two concurrent scans that would together exceed the daily or monthly credit cap result in exactly one reservation. The over-budget scan is refused before any provider call *(automated concurrency test on the atomic conditional reservation)*
 
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 **Wave 1**
@@ -100,7 +100,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 02-06-PLAN.md — HMAC-verified, deduplicated, nudge-only webhook route + polling fallback tests
-- [ ] 02-07-PLAN.md — Scenario matrix (FAILED/402/409/429/503), concurrent budget refusal, fixture:e2e on dev, README
+- [x] 02-07-PLAN.md — Scenario matrix (FAILED/402/409/429/503), concurrent budget refusal, fixture:e2e on dev, README
 
 ### Phase 3: Owner Account & Scan Library
 
@@ -224,7 +224,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
-| 2. Bundle Pipeline & Mock Provider | 6/7 | In Progress|  |
+| 2. Bundle Pipeline & Mock Provider | 7/7 | Complete   | 2026-11-23 |
 | 3. Owner Account & Scan Library | 0/TBD | Not started | - |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
