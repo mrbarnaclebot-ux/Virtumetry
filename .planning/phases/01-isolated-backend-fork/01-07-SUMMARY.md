@@ -3,8 +3,7 @@ phase: 01-isolated-backend-fork
 plan: 07
 subsystem: ci
 tags: [github-actions, ci, push]
-requirements-completed: [FND-01]
-requirements-pending: [FND-05]
+requirements-completed: [FND-01, FND-05]
 key-files:
   created: [.github/workflows/backend.yml, .github/workflows/app.yml]
   modified: [backend/package-lock.json, .railway/package.json, .railway/package-lock.json]
@@ -31,3 +30,8 @@ key-files:
 ## Commits
 - 6a0d39d ci: backend.yml without Python + app.yml
 - c661c14 chore: rename leftover virtspace package names
+
+
+## CI resolved (2026-11-23)
+
+The repo was made public, so GitHub Actions runs again. Reruns of 45150189343 (backend, 241/241 incl. queue.pg + quota.pg) and 45150189815 (app) both passed. FND-05 is complete.

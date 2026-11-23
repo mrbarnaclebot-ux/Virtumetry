@@ -1,12 +1,8 @@
 ---
 phase: 01-isolated-backend-fork
 verified: 2026-11-23T00:00:00Z
-status: human_needed
-score: 4/4 roadmap truths verified in code (SC1 green-CI pending human)
-human_verification:
-  - test: "Resolve the GitHub billing hold, re-run the backend and app workflows, and confirm both go green on main"
-    expected: "backend (tsc + vitest) and app (expo lint + tsc) pass on ubuntu-latest"
-    why_human: "Runs fail in 4s from the account billing hold. Not a code defect. Local suite is 229 passed and 12 skipped (the 12 are Neon-integration tests)."
+status: passed
+score: 4/4 roadmap truths verified (SC1 CI green: runs 45150189343 backend 241/241, 45150189815 app)
 ---
 
 # Phase 1: Isolated Backend Fork Verification
@@ -37,3 +33,8 @@ None found in the files checked.
 
 ## Gaps
 No code gaps. The only open item is confirming a green GitHub Actions run once billing is resolved.
+
+
+## CI resolved (2026-11-23)
+
+The repo was made public, which removed the billing hold. Reruns passed: backend run 45150189343 (tsc + vitest, 241/241 including queue.pg and quota.pg) and app run 45150189815 (expo lint + tsc). FND-05 is proven; status is now `passed`.
