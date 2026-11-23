@@ -80,7 +80,7 @@ Plans:
   4. Scripted mock failures (FAILED, 402, 409, 429, 503, duplicate webhooks) each end in the documented state with no extra submit *(automated scenario tests)*
   5. Two concurrent scans that would together exceed the daily or monthly credit cap result in exactly one reservation. The over-budget scan is refused before any provider call *(automated concurrency test on the atomic conditional reservation)*
 
-**Plans:** 2/7 plans executed
+**Plans:** 3/7 plans executed
 
 Plans:
 **Wave 1**
@@ -90,7 +90,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-03-PLAN.md — Streaming storage, packCapture to store-only bundle ZIP, local Range, R2 Range proof on virtumetry-dev, prefix purge
+- [x] 02-03-PLAN.md — Streaming storage, packCapture to store-only bundle ZIP, local Range, R2 Range proof on virtumetry-dev, prefix purge
 - [ ] 02-04-PLAN.md — Atomic daily+monthly credit reservation (concurrency-tested) + ReconProvider contract and scripted mock
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -224,7 +224,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
-| 2. Bundle Pipeline & Mock Provider | 2/7 | In Progress|  |
+| 2. Bundle Pipeline & Mock Provider | 3/7 | In Progress|  |
 | 3. Owner Account & Scan Library | 0/TBD | Not started | - |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
