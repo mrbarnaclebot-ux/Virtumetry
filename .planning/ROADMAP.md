@@ -38,7 +38,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The server refuses to boot the Echo-3 provider without `ALLOW_PAID_PROVIDER=1`, and refuses to boot in production when `DEV_AUTH_TOKEN` is set *(automated boot-guard tests)*
   4. A deploy runs pending migrations automatically over the direct (non-pooler) Neon host *(automated test asserting the migration URL is non-pooler + Railway deploy log check)*
 
-**Plans:** 2/7 plans executed
+**Plans:** 3/7 plans executed
 
 Plans:
 **Wave 1**
@@ -48,7 +48,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-03-PLAN.md — Strip World Labs routes, depth, schema columns/statuses/job kinds (wave 2)
+- [x] 01-03-PLAN.md — Strip World Labs routes, depth, schema columns/statuses/job kinds (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -203,7 +203,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Isolated Backend Fork | 2/7 | In Progress|  |
+| 1. Isolated Backend Fork | 3/7 | In Progress|  |
 | 2. Bundle Pipeline & Mock Provider | 0/TBD | Not started | - |
 | 3. Owner Account & Scan Library | 0/TBD | Not started | - |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
