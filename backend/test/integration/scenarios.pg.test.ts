@@ -219,6 +219,19 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(w.charged).toBe(true);
   }, 120_000);
 
+  it('WR-04: no splat artifact → failed/import ARTIFACT_MISSING, reservation kept', async () => {
+    const pl = await start('happy');
+    const { worldId, frameCount } = await pl.seedScan();
+    const artifacts = pl.provider.artifacts.bind(pl.provider);
+    pl.provider.artifacts = async (rid) => (await artifacts(rid)).filter((a) => a.kind !== 'splat');
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('failed');
+    expect(w.failureStage).toBe('import');
+    expect(w.failureCode).toBe('ARTIFACT_MISSING');
+    expect(w.splatKey).toBeNull();
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
+  }, 120_000);
+
   it('a pipeline job that goes DEAD fails its world (no stuck in-progress status)', async () => {
     const pl = await start('happy');
     const { worldId } = await pl.seedScan(); // world is 'packing'

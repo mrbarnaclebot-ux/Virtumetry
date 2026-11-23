@@ -385,7 +385,12 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
     if (col) keys[col] = key;
     if (a.kind === 'floorplan_meta') metaKey = key;
   }
-  const floorplanMeta = metaKey ? (JSON.parse((await storage.getObject(metaKey)).toString('utf8')) as unknown) : null;
+  if (!keys.splatKey) {
+    // Nothing to view (WR-04). Credits were spent: keep the reservation.
+    await failWorld(db, w.id, ['importing'], 'import', 'ARTIFACT_MISSING', 'provider returned no splat');
+    return completeJob(db, job.id);
+  }
+  const floorplanMeta = metaKey ?(JSON.parse((await storage.getObject(metaKey)).toString('utf8')) as unknown) : null;
 
   const done = await db
     .update(worlds)
