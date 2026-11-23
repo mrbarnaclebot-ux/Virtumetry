@@ -134,15 +134,20 @@ export async function startPipeline(
       return { worldId, captureId, frameCount };
     },
 
-    /** Run jobs until the world is terminal (or `until` holds). */
-    async drain(o: { worldId: string; until?: (w: World) => boolean; timeoutMs?: number }): Promise<World> {
+    /** Run jobs until the world is terminal (or `until` holds). `deps` overrides e.g. workerId. */
+    async drain(o: {
+      worldId: string;
+      until?: (w: World) => boolean;
+      timeoutMs?: number;
+      deps?: WorkerDeps;
+    }): Promise<World> {
       // 60 s default: Neon dev round trips make the happy path ~20 s end to end.
       const deadline = Date.now() + (o.timeoutMs ?? 60_000);
       for (;;) {
         const w = await getWorld(o.worldId);
         if (TERMINAL.has(w.status) || o.until?.(w)) return w;
         if (Date.now() > deadline) throw new Error(`drain timed out; world ${o.worldId} is ${w.status}`);
-        if (!(await runOneJob(deps))) await new Promise((r) => setTimeout(r, 50));
+        if (!(await runOneJob(o.deps ?? deps))) await new Promise((r) => setTimeout(r, 50));
       }
     },
 

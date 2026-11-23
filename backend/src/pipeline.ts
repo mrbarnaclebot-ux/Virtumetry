@@ -289,7 +289,7 @@ export async function handleTrack(deps: WorkerDeps, job: Job): Promise<void> {
 
   for (const kind of EXPORTS) {
     const r = await provider.ensureExport(rid, kind);
-    if (r === 'pending') return snooze();
+    if (r === 'pending') return snoozeJob(db, job.id, Math.min(config.TRACK_POLL_SECONDS, 5)); // exports finish in seconds
     if (r === 'failed') {
       // Credits were spent: keep the reservation.
       await failWorld(db, w.id, ['importing'], 'import', 'EXPORT_FAILED', `${kind} export failed`);
