@@ -8,7 +8,7 @@ import { loadConfig } from '../src/config.js';
 // Rate limiting + failed-auth throttle (spec §10 R10). No DB, no network.
 
 const baseEnv = {
-  DATABASE_URL: 'postgres://localhost:5432/virtspace',
+  DATABASE_URL: 'postgres://localhost:5432/virtumetry',
   DEV_AUTH_TOKEN: 'devtoken',
 };
 

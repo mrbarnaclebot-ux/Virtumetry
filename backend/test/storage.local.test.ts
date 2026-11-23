@@ -15,7 +15,7 @@ function makeConfig(): Config {
 }
 
 beforeAll(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'virtspace-storage-'));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'virtumetry-storage-'));
 });
 
 afterAll(async () => {

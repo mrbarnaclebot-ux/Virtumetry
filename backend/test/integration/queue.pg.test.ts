@@ -39,7 +39,7 @@ import {
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)('queue against real Postgres', () => {
-  const schemaName = `virtspace_it_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const schemaName = `virtumetry_it_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   let pool: pg.Pool;
   let db: Db;
   const worldId = randomUUID();

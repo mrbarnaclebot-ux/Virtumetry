@@ -7,7 +7,7 @@ export default defineConfig({
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgres://localhost:5432/virtspace',
+    url: process.env.DATABASE_URL ?? 'postgres://localhost:5432/virtumetry',
   },
   strict: true,
   verbose: true,

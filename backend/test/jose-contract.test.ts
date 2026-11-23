@@ -10,7 +10,7 @@ import { SignJWT, generateKeyPair, exportJWK, createLocalJWKSet, jwtVerify } fro
 // against a LOCAL key set: same jwtVerify, same options, same payload access.
 
 const ISSUER = 'https://appleid.apple.com';
-const AUDIENCE = 'com.example.virtspace';
+const AUDIENCE = 'com.example.virtumetry';
 
 async function makeKeyAndJwks() {
   const { publicKey, privateKey } = await generateKeyPair('RS256', { extractable: true });

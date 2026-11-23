@@ -19,7 +19,7 @@ import { chargeScanQuota } from '../../src/quota.js';
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)('scan quota against real Postgres', () => {
-  const schemaName = `virtspace_q_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const schemaName = `virtumetry_q_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   let pool: pg.Pool;
   let db: Db;
   const userId = randomUUID();

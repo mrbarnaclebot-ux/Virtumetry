@@ -38,7 +38,7 @@ function s3Config(): Config {
     STORAGE_DRIVER: 's3',
     S3_ENDPOINT: 'https://accountid.r2.cloudflarestorage.com',
     S3_REGION: 'auto',
-    S3_BUCKET: 'virtspace',
+    S3_BUCKET: 'virtumetry',
     S3_ACCESS_KEY_ID: 'AKIAEXAMPLE',
     S3_SECRET_ACCESS_KEY: 'secret',
   } as Config;
@@ -92,7 +92,7 @@ describe('local driver size enforcement', () => {
   let dir: string;
 
   beforeAll(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'virtspace-size-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'virtumetry-size-'));
   });
   afterAll(async () => {
     await fs.rm(dir, { recursive: true, force: true });
