@@ -17,6 +17,8 @@ export class BundleInvalidError extends Error {
 }
 
 const pad6 = (i: number) => String(i).padStart(6, '0');
+/** 5000 frames x ~400 B is ~2 MB of frames.jsonl; 8 MiB leaves headroom. */
+export const MANIFEST_MAX_BYTES = 8 * 1024 * 1024;
 
 async function readManifest(
   storage: StorageDriver,
@@ -27,6 +29,11 @@ async function readManifest(
   const missing = ['session.json', 'frames.jsonl'].filter((k) => !listed.has(k));
   if (missing.length) {
     throw new BundleInvalidError([{ code: 'MANIFEST_MISSING', message: `${missing.join(', ')} not uploaded` }]);
+  }
+  // Read whole into memory below, so bound them first (WR-06).
+  const big = ['session.json', 'frames.jsonl'].filter((k) => listed.get(k)! > MANIFEST_MAX_BYTES);
+  if (big.length) {
+    throw new BundleInvalidError([{ code: 'MANIFEST_TOO_LARGE', message: `${big.join(', ')} over ${MANIFEST_MAX_BYTES} bytes` }]);
   }
   const [sessionBuf, framesBuf] = await Promise.all([
     storage.getObject(captureKey(cid, 'session.json')),

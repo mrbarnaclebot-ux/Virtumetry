@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createLocalStorage, type LocalStorage } from '../../src/storage/local.js';
 import { captureKey, bundleKeyFor } from '../../src/storage/index.js';
-import { packCapture, BundleInvalidError } from '../../src/bundle/pack.js';
+import { packCapture, BundleInvalidError, MANIFEST_MAX_BYTES } from '../../src/bundle/pack.js';
 import { parseFramesJsonl } from '../../src/bundle/manifest.js';
 import { arkitToOpenCV } from '../../src/bundle/convert.js';
 import { readCentralDirectory, readEntry, type ReadRange } from '../../src/bundle/zipread.js';
@@ -143,6 +143,15 @@ describe('packCapture (local driver)', () => {
     const boom = new Error('boom');
     await packCapture(spy, cid, { ...OPTS, onProgress: async () => { throw boom; } }).catch(() => undefined);
     expect(deleted).toEqual([bundleKeyFor(cid)]);
+  });
+
+  it('oversized frames.jsonl → MANIFEST_TOO_LARGE before it is read', async () => {
+    const cid = randomUUID();
+    await upload(cid);
+    await storage.putObject(captureKey(cid, 'frames.jsonl'), Buffer.alloc(MANIFEST_MAX_BYTES + 1, 0x20));
+    const err = await packCapture(storage, cid, OPTS).catch((e) => e);
+    expect(err).toBeInstanceOf(BundleInvalidError);
+    expect(err.issues[0].code).toBe('MANIFEST_TOO_LARGE');
   });
 
   it('missing session.json → MANIFEST_MISSING (not a retryable ENOENT)', async () => {
