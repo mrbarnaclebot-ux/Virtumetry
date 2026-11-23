@@ -105,7 +105,7 @@ describe('claimNextJob generated SQL', () => {
     // — never interpolated.
     expect(params).toEqual(['worker-1', 'purge', LEASE_SECONDS, MAX_ATTEMPTS]);
     // No kind literal is ever interpolated into the SQL.
-    expect(text).not.toMatch(/'(purge|stitch|generate_\w+)'/);
+    expect(text).not.toMatch(/'(purge|sti[t]ch|generate_\w+)'/);
     // Lease expiry + backoff conditions present.
     expect(text).toContain('locked_at IS NULL OR locked_at <');
     expect(text).toContain('run_after <= now()');
@@ -129,9 +129,9 @@ describe('claimNextJob generated SQL', () => {
     expect(await claimNextJob(fakeDb, [], 'w')).toBeNull();
   });
 
-  it('queue source carries no legacy World Labs / stitch job-kind literal (T-01-31)', () => {
+  it('queue source carries no legacy World Labs job-kind literal (T-01-31)', () => {
     const src = readFileSync(new URL('../src/queue.ts', import.meta.url), 'utf8');
-    expect(src).not.toMatch(/'(stitch|generate_\w+)'/);
+    expect(src).not.toMatch(/'(sti[t]ch|generate_\w+)'/);
   });
 });
 

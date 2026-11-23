@@ -132,7 +132,7 @@ export function serializeWorld(w: World): Record<string, unknown> {
  * List-item shape for GET /v1/worlds (iOS Library screen contract): the
  * serializeWorld fields plus an `assets` object carrying ONLY a presigned
  * `thumbnail_url` (when the key column is set). Deliberately does NOT presign
- * the heavy asset fields (spz/pano/collider) in list context — presigning is
+ * the heavy asset fields (spz/collider) in list context — presigning is
  * per-item crypto and the Library only renders thumbnails; the detail route
  * keeps signing everything. Exported for tests.
  */

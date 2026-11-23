@@ -150,7 +150,7 @@ describe('loadConfig', () => {
       it(`refuses the VirtSpace endpoint as DATABASE_URL (pooled/direct), NODE_ENV ${tag}`, () => {
         for (const url of [pooled(VS_EP, 'us-east-2'), direct(VS_EP, 'us-east-2')]) {
           const e = nodeEnv ? { ...prodBase, DATABASE_URL: url } : { ...base, DATABASE_URL: url };
-          expect(() => loadConfig(env(e))).toThrow(/DATABASE_URL.*VirtSpace/);
+          expect(() => loadConfig(env(e))).toThrow(/DATABASE_URL.*denylisted/);
         }
       });
 
@@ -159,19 +159,19 @@ describe('loadConfig', () => {
           const e = nodeEnv
             ? { ...prodBase, MIGRATE_DATABASE_URL: url }
             : { ...base, MIGRATE_DATABASE_URL: url };
-          expect(() => loadConfig(env(e))).toThrow(/MIGRATE_DATABASE_URL.*VirtSpace/);
+          expect(() => loadConfig(env(e))).toThrow(/MIGRATE_DATABASE_URL.*denylisted/);
         }
       });
     }
 
     it('refuses the VirtSpace endpoint id even outside the us-east-2 suffix', () => {
-      expect(() => loadConfig(env({ ...base, DATABASE_URL: direct(VS_EP) }))).toThrow(/VirtSpace/);
+      expect(() => loadConfig(env({ ...base, DATABASE_URL: direct(VS_EP) }))).toThrow(/denylisted/);
     });
 
     it('refuses any us-east-2 Neon host', () => {
       expect(() =>
         loadConfig(env({ ...base, DATABASE_URL: pooled('ep-some-other-123', 'us-east-2') })),
-      ).toThrow(/VirtSpace/);
+      ).toThrow(/denylisted/);
     });
 
     it('does not echo the URL in the error', () => {

@@ -59,14 +59,8 @@ export async function runMigrations(connectionString: string): Promise<void> {
 async function main(): Promise<void> {
   const config = getConfig();
   console.log(`[migrate] applying migrations from ${MIGRATIONS_FOLDER}`);
-  if (!config.MIGRATE_DATABASE_URL) {
-    console.warn(
-      '[migrate] WARNING: MIGRATE_DATABASE_URL is not set, falling back to DATABASE_URL. ' +
-        'If that is the pgbouncer pooler, the advisory lock does NOT serialize ' +
-        'concurrent migrators (HANDOFF pooler incident). Set MIGRATE_DATABASE_URL ' +
-        'to the direct (non -pooler) Neon host.',
-    );
-  }
+  // Production is guaranteed a direct, same-endpoint MIGRATE_DATABASE_URL by
+  // config refine() (D-07). Elsewhere DATABASE_URL is an acceptable stand-in.
   await runMigrations(config.MIGRATE_DATABASE_URL ?? config.DATABASE_URL);
   console.log('[migrate] up to date');
 }
