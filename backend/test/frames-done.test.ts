@@ -11,7 +11,7 @@ vi.mock('../src/db/client.js', () => ({
 }));
 
 import { worldsRoutes } from '../src/routes/worlds.js';
-import { worlds, captures, jobs, type World } from '../src/db/schema.js';
+import { worlds, captures, type World } from '../src/db/schema.js';
 import { loadConfig } from '../src/config.js';
 import type { StorageDriver } from '../src/storage/index.js';
 
@@ -44,7 +44,6 @@ function fakeWorld(): World {
     status: 'uploading',
     phase: null,
     progress: null,
-    panoUrl: null,
     thumbnailUrl: null,
     spz100kUrl: null,
     spz500kUrl: null,
@@ -156,25 +155,24 @@ const validPose = {
 };
 
 describe('POST /v1/worlds/:id/frames:done', () => {
-  it('no body → unchanged behavior: status=stitching, stitch job, no capture write', async () => {
+  it('no body → status=uploaded, no job enqueued, no capture write', async () => {
     const state = freshState();
     const app = await makeApp(state);
     const res = await app.inject({ method: 'POST', url: '/v1/worlds/w-1/frames:done' });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().job_id).toBe('job-1');
+    expect(res.json().job_id).toBeNull();
+    expect(res.json().world.status).toBe('uploaded');
     // Exactly one update — the world's status. Captures untouched.
     expect(state.updates).toHaveLength(1);
     expect(state.updates[0]!.table).toBe(worlds);
     // Status flip + progress reset + heartbeat touch, in one update.
     expect(state.updates[0]!.patch).toEqual({
-      status: 'stitching',
+      status: 'uploaded',
       progress: null,
       updatedAt: expect.any(Date),
     });
-    expect(state.inserts).toHaveLength(1);
-    expect(state.inserts[0]!.table).toBe(jobs);
-    expect(state.inserts[0]!.vals['kind']).toBe('stitch');
+    expect(state.inserts).toHaveLength(0);
     await app.close();
   });
 
@@ -192,9 +190,9 @@ describe('POST /v1/worlds/:id/frames:done', () => {
     const captureUpdate = state.updates.find((u) => u.table === captures);
     expect(captureUpdate).toBeDefined();
     expect(captureUpdate!.patch['posesJson']).toEqual([pose]);
-    // World/job flow still ran.
+    // World flip still ran; nothing enqueued.
     expect(state.updates.some((u) => u.table === worlds)).toBe(true);
-    expect(state.inserts[0]!.vals['kind']).toBe('stitch');
+    expect(state.inserts).toHaveLength(0);
     await app.close();
   });
 
@@ -205,8 +203,6 @@ describe('POST /v1/worlds/:id/frames:done', () => {
       ...validPose,
       iso: 320,
       exposureDuration: 0.008,
-      featureDepthMedian: 2.4,
-      depth: { width: 256, height: 192 },
       futureField: 'kept',
     };
     const res = await app.inject({
@@ -224,10 +220,7 @@ describe('POST /v1/worlds/:id/frames:done', () => {
   it.each([
     ['iso as a string', { iso: '320' }],
     ['negative exposureDuration', { exposureDuration: -1 }],
-    ['null featureDepthMedian', { featureDepthMedian: null }],
-    ['depth missing height', { depth: { width: 256 } }],
-    ['fractional depth width', { depth: { width: 256.5, height: 192 } }],
-    ['depth as a boolean', { depth: true }],
+    ['null iso', { iso: null }],
   ])('malformed v2 field (%s) → 400, no state change', async (_name, extra) => {
     const state = freshState();
     const app = await makeApp(state);
@@ -254,7 +247,7 @@ describe('POST /v1/worlds/:id/frames:done', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(state.updates.some((u) => u.table === captures)).toBe(false);
-    expect(state.inserts).toHaveLength(1);
+    expect(state.inserts).toHaveLength(0);
     await app.close();
   });
 
@@ -272,15 +265,14 @@ describe('POST /v1/worlds/:id/frames:done', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('invalid_body');
     expect(state.updates).toHaveLength(0); // world untouched…
-    expect(state.inserts).toHaveLength(0); // …and no stitch job enqueued.
+    expect(state.inserts).toHaveLength(0); // …and no job enqueued.
     await app.close();
   });
 
-  it('replay after draft_ready → 200 with current world, no job, no writes', async () => {
-    // iOS stranded-session recovery replays frames:done when a response was
-    // lost. Re-stitching here would enqueue a second billable generate_draft.
+  it('replay after uploaded → 200 with current world, no job, no writes', async () => {
+    // Client recovery replays frames:done when a response was lost.
     const state = freshState();
-    state.world.status = 'draft_ready';
+    state.world.status = 'uploaded';
     const app = await makeApp(state);
     const res = await app.inject({
       method: 'POST',
@@ -290,14 +282,14 @@ describe('POST /v1/worlds/:id/frames:done', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().job_id).toBeNull();
-    expect(res.json().world.status).toBe('draft_ready');
+    expect(res.json().world.status).toBe('uploaded');
     expect(state.updates).toHaveLength(0); // no status flip, no poses overwrite
-    expect(state.inserts).toHaveLength(0); // no stitch job
+    expect(state.inserts).toHaveLength(0);
     await app.close();
   });
 
-  it.each(['stitching', 'generating_draft', 'generating_hq', 'complete'] as const)(
-    'replay while %s → no job enqueued',
+  it.each(['capturing', 'complete', 'failed_upload'] as const)(
+    'while %s → no flip, no job enqueued',
     async (status) => {
       const state = freshState();
       state.world.status = status;
@@ -309,18 +301,6 @@ describe('POST /v1/worlds/:id/frames:done', () => {
       await app.close();
     },
   );
-
-  it('after failed_stitch → re-stitch allowed', async () => {
-    const state = freshState();
-    state.world.status = 'failed_stitch';
-    const app = await makeApp(state);
-    const res = await app.inject({ method: 'POST', url: '/v1/worlds/w-1/frames:done' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().job_id).toBe('job-1');
-    expect(state.world.status).toBe('stitching');
-    expect(state.inserts[0]!.vals['kind']).toBe('stitch');
-    await app.close();
-  });
 
   it('rejects > 64 poses', async () => {
     const state = freshState();

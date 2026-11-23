@@ -27,7 +27,7 @@ function fakeWorld(overrides: Partial<World> = {}): World {
     id: 'w-1', ownerId: 'user-1', title: null, caption: null, lat: null, lng: null,
     placeName: null, isPublic: false, status: 'uploading', phase: null, progress: null,
     clientRequestId: null,
-    panoUrl: null, thumbnailUrl: null, spz100kUrl: null, spz500kUrl: null,
+    thumbnailUrl: null, spz100kUrl: null, spz500kUrl: null,
     spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1, provider: null,
     draftWorldId: null, hqWorldId: null, draftModel: null, hqModel: null, creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
@@ -203,31 +203,6 @@ describe('POST /v1/worlds with Idempotency-Key', () => {
     expect(second.json().idempotent_replay).toBe(true);
     // Exactly one world row and one quota charge.
     expect(state.inserts.filter((i) => i['table'] === worlds)).toHaveLength(1);
-    expect(state.quotaCharges).toBe(1);
-    await app.close();
-  });
-
-  it('a depth replay returns the same depth_uploads keys as the original', async () => {
-    const state = newState();
-    currentDb = makeDb(state);
-    const app = await buildApp(makeStorage());
-    const req = {
-      method: 'POST' as const,
-      url: '/v1/worlds',
-      headers: { 'idempotency-key': KEY },
-      payload: { frame_count: 2, depth: true },
-    };
-
-    const first = await app.inject(req);
-    const second = await app.inject(req);
-
-    expect(first.statusCode).toBe(201);
-    expect(second.statusCode).toBe(200);
-    const keys = (r: typeof first) =>
-      r.json().depth_uploads.map((u: { key: string }) => u.key);
-    expect(keys(first)).toHaveLength(2);
-    expect(keys(second)).toEqual(keys(first));
-    expect(keys(first)[0]).toMatch(/\/depth_0\.png$/);
     expect(state.quotaCharges).toBe(1);
     await app.close();
   });

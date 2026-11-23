@@ -9,7 +9,7 @@ vi.mock('../src/db/client.js', () => ({ getDb: () => currentDb }));
 
 import { createLocalStorage } from '../src/storage/local.js';
 import { createS3Storage } from '../src/storage/s3.js';
-import { MAX_DEPTH_BYTES, MAX_FRAME_BYTES, type StorageDriver } from '../src/storage/index.js';
+import { MAX_FRAME_BYTES, type StorageDriver } from '../src/storage/index.js';
 import { worldsRoutes, frameSizeMap } from '../src/routes/worlds.js';
 
 import { loadConfig, type Config } from '../src/config.js';
@@ -127,7 +127,7 @@ function fakeWorld(): World {
   return {
     id: 'w-1', ownerId: 'user-1', title: null, caption: null, lat: null, lng: null,
     placeName: null, isPublic: false, status: 'uploading', phase: null, progress: null,
-    panoUrl: null, thumbnailUrl: null, spz100kUrl: null, spz500kUrl: null,
+    thumbnailUrl: null, spz100kUrl: null, spz500kUrl: null,
     spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1, provider: null,
     draftWorldId: null, hqWorldId: null, draftModel: null, hqModel: null, creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
@@ -255,94 +255,6 @@ describe('POST /v1/worlds per-frame size declaration', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('invalid_body');
-    expect(storage.presignUpload).not.toHaveBeenCalled();
-    await app.close();
-  });
-});
-
-// --- route: optional depth maps (spec §5.2 capture v2) ----------------------
-
-describe('POST /v1/worlds depth opt-in', () => {
-  it('absent → response and presign calls identical to the pre-depth contract', async () => {
-    currentDb = routeDb();
-    const storage = routeStorage();
-    const app = await buildApp(storage);
-
-    const res = await app.inject({ method: 'POST', url: '/v1/worlds', payload: { frame_count: 2 } });
-    const off = await app.inject({
-      method: 'POST',
-      url: '/v1/worlds',
-      payload: { frame_count: 2, depth: false },
-    });
-
-    expect(res.statusCode).toBe(201);
-    expect(Object.keys(res.json())).toEqual(['world', 'capture_id', 'uploads']);
-    expect(off.body).toBe(res.body);
-    // Only frame presigns: 2 per request.
-    expect(storage.presignUpload).toHaveBeenCalledTimes(4);
-    expect(storage.presignUpload.mock.calls.every((c) => c[1] === 'image/heic')).toBe(true);
-    await app.close();
-  });
-
-  it('depth: true → depth_uploads with the uploads shape, png keys, 1 MB ceiling', async () => {
-    currentDb = routeDb();
-    const storage = routeStorage();
-    const app = await buildApp(storage);
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/worlds',
-      payload: { frame_count: 2, depth: true, depth_frames: [{ index: 1, bytes: 98765 }] },
-    });
-
-    expect(res.statusCode).toBe(201);
-    const body = res.json();
-    expect(body.uploads.map((u: { key: string }) => u.key)).toEqual([
-      'captures/cap-1/frame_0.heic',
-      'captures/cap-1/frame_1.heic',
-    ]);
-    expect(body.depth_uploads).toEqual([
-      {
-        index: 0,
-        key: 'captures/cap-1/depth_0.png',
-        url: 'https://signed.example/captures/cap-1/depth_0.png',
-        method: 'PUT',
-        headers: { 'content-type': 'image/png' },
-      },
-      {
-        index: 1,
-        key: 'captures/cap-1/depth_1.png',
-        url: 'https://signed.example/captures/cap-1/depth_1.png',
-        method: 'PUT',
-        headers: { 'content-type': 'image/png', 'content-length': '98765' },
-      },
-    ]);
-    const depthCalls = storage.presignUpload.mock.calls.filter((c) => c[1] === 'image/png');
-    expect(depthCalls.map((c) => [c[0], c[2], c[3]])).toEqual([
-      ['captures/cap-1/depth_0.png', MAX_DEPTH_BYTES, undefined],
-      ['captures/cap-1/depth_1.png', MAX_DEPTH_BYTES, 98765],
-    ]);
-    await app.close();
-  });
-
-  it('rejects a declared depth size over 1 MB, and a non-boolean depth, with 400', async () => {
-    currentDb = routeDb();
-    const storage = routeStorage();
-    const app = await buildApp(storage);
-
-    const big = await app.inject({
-      method: 'POST',
-      url: '/v1/worlds',
-      payload: { frame_count: 1, depth: true, depth_frames: [{ index: 0, bytes: MAX_DEPTH_BYTES + 1 }] },
-    });
-    const bad = await app.inject({
-      method: 'POST',
-      url: '/v1/worlds',
-      payload: { frame_count: 1, depth: 'yes' },
-    });
-
-    expect(big.statusCode).toBe(400);
-    expect(bad.statusCode).toBe(400);
     expect(storage.presignUpload).not.toHaveBeenCalled();
     await app.close();
   });

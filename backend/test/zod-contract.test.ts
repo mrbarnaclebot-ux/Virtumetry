@@ -12,11 +12,11 @@ const pose = {
 };
 
 describe('zod 4 request contract', () => {
-  it('poses keep unknown fields verbatim, at the pose and depth level', () => {
+  it('poses keep unknown fields verbatim, at the pose and nested level', () => {
     const parsed = framesDoneBody.parse({
-      poses: [{ ...pose, futureField: 'x', depth: { width: 2, height: 3, extra: 1 } }],
+      poses: [{ ...pose, futureField: 'x', meta: { width: 2, height: 3, extra: 1 } }],
     });
-    expect(parsed?.poses?.[0]).toMatchObject({ futureField: 'x', depth: { extra: 1 } });
+    expect(parsed?.poses?.[0]).toMatchObject({ futureField: 'x', meta: { extra: 1 } });
   });
 
   it('frames:done body may be absent or null', () => {

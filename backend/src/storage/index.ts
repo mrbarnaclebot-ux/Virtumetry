@@ -15,13 +15,6 @@ export interface PresignedUpload {
  */
 export const MAX_FRAME_BYTES = 12 * 1024 * 1024;
 
-/**
- * Per-frame LiDAR depth-map ceiling (spec §5.2 capture v2). A 16-bit 256x192
- * PNG is ~100 KB; 1 MB is generous headroom while keeping a bogus upload from
- * costing worker memory. Enforced the same three ways as MAX_FRAME_BYTES.
- */
-export const MAX_DEPTH_BYTES = 1024 * 1024;
-
 // Storage driver contract (task requirement 4). Keys are opaque paths like
 // `captures/{captureId}/frame_0.heic`.
 export interface StorageDriver {

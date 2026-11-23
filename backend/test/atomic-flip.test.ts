@@ -12,8 +12,7 @@ import type { StorageDriver } from '../src/storage/index.js';
 
 // spec §10 R27 — every status flip / soft delete and the job that carries it on
 // must be written in ONE transaction. A crash between two separate statements
-// left a world with no job: generating_hq forever, or a deleted world whose
-// assets were never purged (§13).
+// left a deleted world whose assets were never purged (§13).
 
 const config = loadConfig({
   DATABASE_URL: 'postgres://u:p@localhost:5432/db',
@@ -25,7 +24,7 @@ const WORLD_ID = '11111111-2222-3333-4444-555555555555';
 const world = {
   id: WORLD_ID,
   ownerId: 'user-1',
-  status: 'draft_ready',
+  status: 'uploaded',
   deletedAt: null,
 } as unknown as World;
 
@@ -69,8 +68,6 @@ function makeDb(writes: Write[]) {
         },
       }),
       transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => fn(build(true)),
-      // budgetFits' SUM (enhance's advisory credit check): nothing spent.
-      execute: async () => ({ rows: [{ total: 0 }] }),
     };
     return handle;
   };
@@ -98,15 +95,6 @@ function expectFlipAndJobInTx(writes: Write[]) {
 }
 
 describe('flip + enqueue atomicity (§10 R27)', () => {
-  it(':enhance flips to generating_hq and enqueues generate_hq in one transaction', async () => {
-    const writes: Write[] = [];
-    const app = await makeApp(writes);
-    const res = await app.inject({ method: 'POST', url: `/v1/worlds/${WORLD_ID}:enhance` });
-    expect(res.statusCode).toBe(200);
-    expectFlipAndJobInTx(writes);
-    await app.close();
-  });
-
   it('DELETE /v1/worlds/:id soft-deletes and enqueues the purge in one transaction', async () => {
     const writes: Write[] = [];
     const app = await makeApp(writes);

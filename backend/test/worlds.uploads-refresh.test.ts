@@ -50,7 +50,6 @@ function fakeWorld(): World {
     status: 'uploading',
     phase: null,
     progress: null,
-    panoUrl: null,
     thumbnailUrl: null,
     spz100kUrl: null,
     spz500kUrl: null,
@@ -160,43 +159,6 @@ describe('POST /v1/worlds/:id/uploads:refresh', () => {
       'image/heic',
       12 * 1024 * 1024,
       undefined,
-    );
-    await app.close();
-  });
-
-  it('depth: true → depth_uploads on the same capture prefix; absent → no key', async () => {
-    const storage = makeStorage();
-    const state: DbState = {
-      world: fakeWorld(),
-      capture: {
-        id: 'cap-1',
-        worldId: 'w-1',
-        frameCount: 2,
-        r2FramesPrefix: 'captures/cap-1',
-        createdAt: new Date('2026-07-12T10:00:00Z'),
-      },
-    };
-    const app = await makeApp(state, storage);
-    const plain = await app.inject({ method: 'POST', url: '/v1/worlds/w-1/uploads:refresh' });
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/worlds/w-1/uploads:refresh',
-      payload: { depth: true, depth_frames: [{ index: 0, bytes: 4242 }] },
-    });
-
-    expect(Object.keys(plain.json())).toEqual(['world', 'capture_id', 'uploads']);
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body.uploads).toHaveLength(2);
-    expect(body.depth_uploads.map((u: { index: number; key: string }) => [u.index, u.key])).toEqual([
-      [0, 'captures/cap-1/depth_0.png'],
-      [1, 'captures/cap-1/depth_1.png'],
-    ]);
-    expect(storage.presignUpload).toHaveBeenCalledWith(
-      'captures/cap-1/depth_0.png',
-      'image/png',
-      1024 * 1024,
-      4242,
     );
     await app.close();
   });
