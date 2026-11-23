@@ -74,10 +74,10 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
   const w = await getWorld(db, job.worldId);
   const cap = await latestCapture(db, job.worldId);
   // Soft-deleted (CR-03): stop; purge owns the world's objects now.
-  if (w?.status !== 'packing' || w.deletedAt) return completeJob(db, job.id);
+  if (w?.status !== 'packing' || w.deletedAt) return completeJob(db, job.id, job.lockedBy);
   if (!cap) {
     await failWorld(db, w.id, ['packing'], 'validate', 'CAPTURE_MISSING', 'no capture row');
-    return completeJob(db, job.id);
+    return completeJob(db, job.id, job.lockedBy);
   }
 
   const limits = await provider.limits();
@@ -88,13 +88,13 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
     if (!(err instanceof BundleInvalidError)) throw err; // retryable
     const codes = err.issues.map((i) => i.code);
     await failWorld(db, w.id, ['packing'], 'validate', codes[0] ?? 'BUNDLE_INVALID', codes.join(', '));
-    return completeJob(db, job.id);
+    return completeJob(db, job.id, job.lockedBy);
   }
   // Deleted while we packed: purge may already have listed bundles/, so the
   // bundle we just wrote is ours to remove (deleted_at commits before purge runs).
   if ((await getWorld(db, w.id))?.deletedAt) {
     await storage.deleteObject(res.bundleKey);
-    return completeJob(db, job.id);
+    return completeJob(db, job.id, job.lockedBy);
   }
 
   await db.transaction(async (tx) => {
@@ -116,7 +116,7 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
       .returning({ id: worlds.id });
     if (flipped.length > 0) await enqueue(tx, 'submit', w.id);
   });
-  await completeJob(db, job.id);
+  await completeJob(db, job.id, job.lockedBy);
 }
 
 // --- submit (the only credit-spending step) ------------------------------------
@@ -124,11 +124,11 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
 export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage, provider, config } = deps;
   let w = await getWorld(db, job.worldId);
-  if (w?.status !== 'submitting' || w.deletedAt) return completeJob(db, job.id);
+  if (w?.status !== 'submitting' || w.deletedAt) return completeJob(db, job.id, job.lockedBy);
   const worldId = w.id;
   const refuse = async (code: string, message: string) => {
     await failWorld(db, worldId, ['submitting'], 'submit', code, message);
-    await completeJob(db, job.id);
+    await completeJob(db, job.id, job.lockedBy);
   };
 
   if (w.approvedMaxCredits == null) return refuse('NOT_APPROVED', 'no approved credit ceiling');
@@ -225,7 +225,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
       // Never mint a new key; the reservation stays (it may be billed).
       console.error(`[pipeline] IDEMPOTENCY_KEY_REUSED on world ${worldId}; parking submit job ${job.id}`);
       await failWorld(db, worldId, ['submitting'], 'submit', 'IDEMPOTENCY_KEY_REUSED', 'provider returned 409');
-      return parkJobDead(db, job.id, 'IDEMPOTENCY_KEY_REUSED');
+      return parkJobDead(db, job.id, 'IDEMPOTENCY_KEY_REUSED', job.lockedBy);
     }
     if (status === 429 || status === 503) {
       if (job.attempts < SUBMIT_MAX_ATTEMPTS) {
@@ -242,7 +242,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
       throw new RetryLaterError(`submit outcome uncertain (${status ?? 'network'}), retrying with the same key`, backoff);
     }
     await failWorld(db, worldId, ['submitting'], 'submit', 'SUBMIT_UNCERTAIN', `submit outcome uncertain after ${job.attempts} attempts`);
-    return parkJobDead(db, job.id, 'SUBMIT_UNCERTAIN');
+    return parkJobDead(db, job.id, 'SUBMIT_UNCERTAIN', job.lockedBy);
   }
 
   const cur = await getWorld(db, worldId);
@@ -266,7 +266,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   if (cur?.status === 'failed') {
     console.error(`[pipeline] world ${worldId} was failed mid-submit but request ${requestId} exists; tracking it`);
   }
-  await completeJob(db, job.id);
+  await completeJob(db, job.id, job.lockedBy);
 }
 
 // --- track + import -------------------------------------------------------------
@@ -302,7 +302,7 @@ export async function handleTrack(deps: WorkerDeps, job: Job): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[pipeline] track job ${job.id} error #${errs} on world ${job.worldId}, snoozing ${delay}s: ${msg}`);
     await db.update(jobs).set({ payload: { errs }, lastError: msg.slice(0, 500) }).where(eq(jobs.id, job.id));
-    return snoozeJob(db, job.id, delay);
+    return snoozeJob(db, job.id, delay, job.lockedBy);
   }
   if (trackErrs(job) > 0) await db.update(jobs).set({ payload: null }).where(eq(jobs.id, job.id));
 }
@@ -311,7 +311,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage, provider, config } = deps;
   const w = await getWorld(db, job.worldId);
   if (!w?.providerRequestId || (w.status !== 'processing' && w.status !== 'importing')) {
-    return completeJob(db, job.id);
+    return completeJob(db, job.id, job.lockedBy);
   }
   const rid = w.providerRequestId;
   if (w.deletedAt) {
@@ -320,9 +320,9 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
     if (w.status === 'processing') {
       await provider.cancel(rid).catch((e) => console.warn(`[pipeline] cancel ${rid} for deleted world ${w.id} failed: ${String(e)}`));
     }
-    return completeJob(db, job.id);
+    return completeJob(db, job.id, job.lockedBy);
   }
-  const snooze = () => snoozeJob(db, job.id, config.TRACK_POLL_SECONDS);
+  const snooze = () => snoozeJob(db, job.id, config.TRACK_POLL_SECONDS, job.lockedBy);
 
   if (w.status === 'processing') {
     const s = await provider.status(rid);
@@ -330,7 +330,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
       const codes = (s.issues ?? []).map((i) => i.code);
       await failWorld(db, w.id, ['processing'], 'processing', s.error?.code ?? codes[0] ?? 'FAILED', codes.join(', ') || (s.error?.code ?? 'FAILED'));
       await releaseCredits(db, w.submissionKey!); // FAILED = 0 credits
-      return completeJob(db, job.id);
+      return completeJob(db, job.id, job.lockedBy);
     }
     if (s.status === 'CANCELLED') {
       await db
@@ -338,7 +338,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
         .set({ status: 'cancelled', progress: null, updatedAt: new Date() })
         .where(and(eq(worlds.id, w.id), eq(worlds.status, 'processing')));
       await releaseCredits(db, w.submissionKey!);
-      return completeJob(db, job.id);
+      return completeJob(db, job.id, job.lockedBy);
     }
     if (s.status !== 'COMPLETED') {
       // PENDING / PROCESSING / anything unknown (open enum) → keep polling.
@@ -357,16 +357,16 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
       .update(worlds)
       .set({ status: 'importing', progress: null, updatedAt: new Date() })
       .where(and(eq(worlds.id, w.id), eq(worlds.status, 'processing')));
-    if ((await getWorld(db, w.id))?.status !== 'importing') return completeJob(db, job.id);
+    if ((await getWorld(db, w.id))?.status !== 'importing') return completeJob(db, job.id, job.lockedBy);
   }
 
   for (const kind of EXPORTS) {
     const r = await provider.ensureExport(rid, kind);
-    if (r === 'pending') return snoozeJob(db, job.id, Math.min(config.TRACK_POLL_SECONDS, 5)); // exports finish in seconds
+    if (r === 'pending') return snoozeJob(db, job.id, Math.min(config.TRACK_POLL_SECONDS, 5), job.lockedBy); // exports finish in seconds
     if (r === 'failed') {
       // Credits were spent: keep the reservation.
       await failWorld(db, w.id, ['importing'], 'import', 'EXPORT_FAILED', `${kind} export failed`);
-      return completeJob(db, job.id);
+      return completeJob(db, job.id, job.lockedBy);
     }
   }
 
@@ -388,7 +388,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   if (!keys.splatKey) {
     // Nothing to view (WR-04). Credits were spent: keep the reservation.
     await failWorld(db, w.id, ['importing'], 'import', 'ARTIFACT_MISSING', 'provider returned no splat');
-    return completeJob(db, job.id);
+    return completeJob(db, job.id, job.lockedBy);
   }
   const floorplanMeta = metaKey ?(JSON.parse((await storage.getObject(metaKey)).toString('utf8')) as unknown) : null;
 
@@ -409,5 +409,5 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   if (done.length === 0 && (await getWorld(db, w.id))?.deletedAt) {
     await purgePrefix(storage, `worlds/${w.id}/`);
   }
-  await completeJob(db, job.id);
+  await completeJob(db, job.id, job.lockedBy);
 }

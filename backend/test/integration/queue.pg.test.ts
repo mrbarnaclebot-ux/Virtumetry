@@ -10,6 +10,7 @@ import {
   enqueue,
   failJob,
   heartbeatJob,
+  parkJobDead,
   snoozeJob,
 } from '../../src/queue.js';
 import { createTestSchema } from '../helpers/pg-schema.js';
@@ -217,6 +218,21 @@ describe.skipIf(!url)('queue against real Postgres', () => {
     );
     expect(row.rows[0].long).toBe(true);
     await completeJob(db, jobId);
+  });
+
+  it('WR-05: a worker whose lease was taken over cannot snooze/complete/fail/park the job', async () => {
+    const jobId = await enqueue(db, 'track', worldId);
+    await claimNextJob(db, ['track'], 'worker-A');
+    // Lease expired and worker-B re-claimed it.
+    await pool.query("UPDATE jobs SET locked_by = 'worker-B' WHERE id = $1", [jobId]);
+    await snoozeJob(db, jobId, 60, 'worker-A');
+    await completeJob(db, jobId, 'worker-A');
+    expect(await failJob(db, jobId, 'stale', 0, 'worker-A')).toBeNull();
+    await parkJobDead(db, jobId, 'stale', 'worker-A');
+    const row = await pool.query('SELECT phase, locked_by, attempts FROM jobs WHERE id = $1', [jobId]);
+    expect(row.rows[0]).toEqual({ phase: 'running', locked_by: 'worker-B', attempts: 1 });
+    await completeJob(db, jobId, 'worker-B');
+    expect((await pool.query('SELECT phase FROM jobs WHERE id = $1', [jobId])).rows[0].phase).toBe('done');
   });
 
   it('drizzle raw execute sanity: search_path isolation works', async () => {

@@ -140,7 +140,7 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
       .where(eq(captures.worldId, worldId));
   }
 
-  await completeJob(db, job.id);
+  await completeJob(db, job.id, job.lockedBy);
 }
 
 export async function processJob(deps: WorkerDeps, job: Job): Promise<void> {
@@ -171,19 +171,19 @@ export async function handleJobError(db: Db, job: Job, err: unknown): Promise<vo
 
   if (err instanceof NonRetryableJobError) {
     console.error(`[worker] job ${job.id} (${job.kind}) parked DEAD: ${message}`);
-    await parkJobDead(db, job.id, message);
+    await parkJobDead(db, job.id, message, job.lockedBy);
     await failWorldForDeadJob(db, job);
     return;
   }
 
   if (err instanceof RetryLaterError) {
     console.warn(`[worker] job ${job.id} (${job.kind}) retry in ${err.retryAfterS}s: ${message}`);
-    await failJob(db, job.id, message, err.retryAfterS);
+    await failJob(db, job.id, message, err.retryAfterS, job.lockedBy);
     return;
   }
 
   console.error(`[worker] job ${job.id} (${job.kind}) failed (retryable): ${message}`);
-  if ((await failJob(db, job.id, message)) === 'dead') {
+  if ((await failJob(db, job.id, message, undefined, job.lockedBy)) === 'dead') {
     console.error(`[worker] job ${job.id} (${job.kind}) exhausted its retries, now DEAD`);
     await failWorldForDeadJob(db, job);
   }

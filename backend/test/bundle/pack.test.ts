@@ -130,6 +130,21 @@ describe('packCapture (local driver)', () => {
     expect(err.issues[0].code).toBe('MANIFEST_INVALID');
   });
 
+  it('WR-05: a lost lease mid-zip does not delete the bundle key (the new owner writes it)', async () => {
+    const cid = randomUUID();
+    await upload(cid);
+    const deleted: string[] = [];
+    const spy = { ...storage, deleteObject: async (k: string) => void deleted.push(k) };
+    const lost = Object.assign(new Error('lease lost'), { name: 'LeaseLostError' });
+    const err = await packCapture(spy, cid, { ...OPTS, onProgress: async () => { throw lost; } }).catch((e) => e);
+    expect(err).toBe(lost);
+    expect(deleted).toEqual([]);
+    // Any other mid-zip error still cleans up its own partial bundle.
+    const boom = new Error('boom');
+    await packCapture(spy, cid, { ...OPTS, onProgress: async () => { throw boom; } }).catch(() => undefined);
+    expect(deleted).toEqual([bundleKeyFor(cid)]);
+  });
+
   it('missing session.json → MANIFEST_MISSING (not a retryable ENOENT)', async () => {
     const cid = randomUUID();
     await upload(cid);

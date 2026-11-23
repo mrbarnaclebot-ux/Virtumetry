@@ -185,12 +185,19 @@ export async function parkExhaustedJobs(db: Db, kinds: JobKind[]): Promise<Job[]
   return rows.map(mapJobRow);
 }
 
+/**
+ * Ownership guard for the finalizers below (WR-05): with `owner` (the job's
+ * locked_by at claim time) a worker whose lease was taken over cannot snooze,
+ * complete, fail or park the new owner's run. Omitted = unconditional.
+ */
+const ownedBy = (owner?: string | null) => (owner ? sql` AND locked_by = ${owner}` : sql``);
+
 /** Mark a job done and release its lease. */
-export async function completeJob(db: Db, jobId: string): Promise<void> {
+export async function completeJob(db: Db, jobId: string, owner?: string | null): Promise<void> {
   await db.execute(sql`
     UPDATE jobs
     SET phase = 'done', locked_at = NULL, locked_by = NULL, updated_at = now()
-    WHERE id = ${jobId}
+    WHERE id = ${jobId}${ownedBy(owner)}
   `);
 }
 
@@ -205,6 +212,7 @@ export async function failJob(
   jobId: string,
   error: string,
   delaySeconds?: number,
+  owner?: string | null,
 ): Promise<JobPhase | null> {
   const delay =
     delaySeconds === undefined
@@ -218,7 +226,7 @@ export async function failJob(
         phase = CASE WHEN attempts >= ${MAX_ATTEMPTS} THEN 'dead' ELSE 'queued' END,
         run_after = now() + (${delay} * interval '1 second'),
         updated_at = now()
-    WHERE id = ${jobId}
+    WHERE id = ${jobId}${ownedBy(owner)}
     RETURNING phase
   `);
   const rows = (result as unknown as { rows: { phase: JobPhase }[] }).rows;
@@ -230,7 +238,7 @@ export async function failJob(
  * provider "still processing" or a 429/503 is not a failure). Undoes the
  * attempt claimNextJob counted and releases the lease.
  */
-export async function snoozeJob(db: Db, jobId: string, seconds: number): Promise<void> {
+export async function snoozeJob(db: Db, jobId: string, seconds: number, owner?: string | null): Promise<void> {
   await db.execute(sql`
     UPDATE jobs
     SET phase = 'queued',
@@ -239,7 +247,7 @@ export async function snoozeJob(db: Db, jobId: string, seconds: number): Promise
         attempts = GREATEST(attempts - 1, 0),
         run_after = now() + (${seconds} * interval '1 second'),
         updated_at = now()
-    WHERE id = ${jobId}
+    WHERE id = ${jobId}${ownedBy(owner)}
   `);
 }
 
@@ -253,6 +261,7 @@ export async function parkJobDead(
   db: Db,
   jobId: string,
   error: string,
+  owner?: string | null,
 ): Promise<void> {
   await db.execute(sql`
     UPDATE jobs
@@ -261,7 +270,7 @@ export async function parkJobDead(
         locked_by = NULL,
         phase = 'dead',
         updated_at = now()
-    WHERE id = ${jobId}
+    WHERE id = ${jobId}${ownedBy(owner)}
   `);
 }
 

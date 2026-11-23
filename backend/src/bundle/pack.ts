@@ -101,7 +101,10 @@ export async function packCapture(
     await Promise.race([upload.done, failed]);
   } catch (e) {
     await upload.done.catch(() => undefined);
-    await storage.deleteObject(bundleKey).catch(() => undefined);
+    // A lost lease means another worker owns this key now (WR-05): its bundle is not ours to delete.
+    if ((zipErr as Error | undefined)?.name !== 'LeaseLostError') {
+      await storage.deleteObject(bundleKey).catch(() => undefined);
+    }
     throw zipErr ?? e;
   }
 
