@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, afterEach } from 'vitest';
 import type { MockScenario } from '../../src/provider/mock.js';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
-import { failWorldForDeadJob } from '../../src/worker.js';
+import { failWorldForDeadJob, runOneJob } from '../../src/worker.js';
 import { ProviderError } from '../../src/provider/index.js';
 import { MAX_ATTEMPTS } from '../../src/queue.js';
 
@@ -148,6 +148,45 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     const { rows } = await pl.pool.query("SELECT phase, attempts, payload FROM jobs WHERE world_id = $1 AND kind = 'track'", [worldId]);
     expect(rows).toEqual([{ phase: 'done', attempts: expect.any(Number), payload: null }]);
     expect(rows[0].attempts).toBeLessThanOrEqual(1);
+  }, 120_000);
+
+  /** Like drain, but skips every backoff gate (the uncertain path backs off 60 s+). */
+  const drainNow = async (pl: Pipeline, worldId: string) => {
+    for (let i = 0; i < 500; i++) {
+      const w = await pl.getWorld(worldId);
+      if (w.status === 'ready' || w.status === 'failed' || w.status === 'cancelled') return w;
+      await pl.pool.query("UPDATE jobs SET run_after = now() WHERE world_id = $1 AND phase = 'queued'", [worldId]);
+      if (!(await runOneJob(pl.deps))) await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`drainNow: world ${worldId} not terminal`);
+  };
+
+  it('CR-02: 500 then 503 x3 keeps the reservation (the first attempt may be billed)', async () => {
+    const pl = await start('happy');
+    const { worldId, frameCount } = await pl.seedScan();
+    let n = 0;
+    pl.provider.submit = async (body, key) => {
+      pl.provider.calls.submit.push({ key, body });
+      throw n++ === 0
+        ? new ProviderError('mock: 500', { status: 500 })
+        : new ProviderError('mock: 503', { status: 503, retryAfterS: 0 });
+    };
+    const w = await drainNow(pl, worldId);
+    expect(pl.provider.calls.submit).toHaveLength(4);
+    expect(w.status).toBe('failed');
+    expect(w.failureCode).toBe('SUBMIT_UNCERTAIN');
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
+  }, 120_000);
+
+  it('CR-02: a crash mid-send (sending marker left) then 402 keeps the reservation', async () => {
+    const pl = await start('402');
+    const { worldId, frameCount } = await pl.seedScan();
+    await pl.drain({ worldId, until: (w) => w.status === 'submitting' });
+    await pl.pool.query(`UPDATE jobs SET payload = '{"sending":true}' WHERE world_id = $1 AND kind = 'submit'`, [worldId]);
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('failed');
+    expect(w.failureCode).toBe('INSUFFICIENT_CREDITS');
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
   }, 120_000);
 
   it('a pipeline job that goes DEAD fails its world (no stuck in-progress status)', async () => {

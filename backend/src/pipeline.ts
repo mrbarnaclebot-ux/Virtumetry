@@ -186,15 +186,27 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     throw err;
   }
 
+  // Sticky (CR-02): once any earlier attempt's outcome was unknown (an error that
+  // was not a definitive refusal, or a crash mid-send that left `sending` set), a
+  // later 4xx/429/503 proves nothing about it, so the reservation is never released.
+  // ponytail: job-scoped marker; there is one submit job per world today.
+  const prev = (job.payload ?? {}) as { uncertain?: boolean; sending?: boolean };
+  const uncertain = prev.uncertain === true || prev.sending === true;
+  const mark = (p: { uncertain: boolean; sending?: boolean }) =>
+    db.update(jobs).set({ payload: p }).where(eq(jobs.id, job.id));
+  await mark({ uncertain, sending: true });
+
   let requestId: string;
   try {
     ({ requestId } = await provider.submit(JSON.stringify(w.submitBody), key));
   } catch (err) {
     const status = err instanceof ProviderError ? err.status : undefined;
     const backoff = Math.min(30 * 2 ** job.attempts, SUBMIT_MAX_DELAY_S);
+    const definitive = status === 400 || status === 402 || status === 403 || status === 429 || status === 503;
+    await mark({ uncertain: uncertain || !definitive });
     if (status === 400 || status === 402 || status === 403) {
-      // Known not charged.
-      await releaseCredits(db, key);
+      // Known not charged (unless an earlier attempt may have been).
+      if (!uncertain) await releaseCredits(db, key);
       return refuse((err as ProviderError).code ?? `HTTP_${status}`, `provider refused submit (${status})`);
     }
     if (status === 409) {
@@ -208,8 +220,10 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
         const delay = Math.min((err as ProviderError).retryAfterS ?? backoff, SUBMIT_MAX_DELAY_S);
         throw new RetryLaterError(`submit ${status}, retrying with the same key`, delay + Math.round(Math.random()));
       }
-      await releaseCredits(db, key); // never accepted
-      return refuse(status === 429 ? 'RATE_LIMITED' : 'PROVIDER_UNAVAILABLE', `submit ${status} after ${job.attempts} attempts`);
+      if (!uncertain) {
+        await releaseCredits(db, key); // never accepted
+        return refuse(status === 429 ? 'RATE_LIMITED' : 'PROVIDER_UNAVAILABLE', `submit ${status} after ${job.attempts} attempts`);
+      }
     }
     // 5xx / timeout / network: the request may exist and be billed — keep the reservation.
     if (job.attempts < SUBMIT_MAX_ATTEMPTS) {
