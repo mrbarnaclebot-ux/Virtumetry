@@ -11,13 +11,13 @@ import { createLocalStorage } from '../src/storage/local.js';
 import { createS3Storage } from '../src/storage/s3.js';
 import { MAX_DEPTH_BYTES, MAX_FRAME_BYTES, type StorageDriver } from '../src/storage/index.js';
 import { worldsRoutes, frameSizeMap } from '../src/routes/worlds.js';
-import { handleStitch, NonRetryableJobError, type WorkerDeps } from '../src/worker.js';
+
 import { loadConfig, type Config } from '../src/config.js';
 import { worlds, captures, users, type World } from '../src/db/schema.js';
 
 // spec §10 R7 — presigned frame uploads had NO enforced size cap: s3.ts took a
 // `_maxBytes` argument and ignored it. Now an exact declared size is signed into
-// the URL, and the worker ALWAYS size-checks a frame before reading it.
+// the URL. (The worker-side pre-read guard returns with the reconstruction worker.)
 
 const config = loadConfig({
   DATABASE_URL: 'postgres://u:p@localhost:5432/db',
@@ -357,88 +357,3 @@ describe('frameSizeMap', () => {
   });
 });
 
-// --- worker guard (mandatory, independent of presigning) ---------------------
-
-describe('worker frame size guard', () => {
-  const capture = {
-    id: 'cap-1',
-    worldId: 'w-1',
-    frameCount: 1,
-    posesJson: null,
-    r2FramesPrefix: 'captures/cap-1',
-    createdAt: new Date(),
-  };
-
-  function stitchDeps(sizes: Record<string, number>, gets: string[]): WorkerDeps {
-    const world = { ...fakeWorld(), status: 'stitching' } as World;
-    const db = {
-      select: () => ({
-        from: (table: unknown) => {
-          const rows = table === worlds ? [world] : [capture];
-          const chain = { where: () => chain, orderBy: () => chain, limit: async () => rows };
-          return chain;
-        },
-      }),
-      update: () => ({
-        set: () => ({
-          where: () =>
-            Object.assign(Promise.resolve([{ id: 'w-1' }]), {
-              returning: async () => [{ id: 'w-1' }],
-            }),
-        }),
-      }),
-      insert: () => ({ values: () => ({ returning: async () => [{ id: 'j' }] }) }),
-      execute: async () => ({ rows: [{ id: 'job-1' }] }),
-      transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(db),
-    };
-    const storage = {
-      kind: 'local',
-      presignUpload: vi.fn(),
-      presignDownload: vi.fn(),
-      putObject: vi.fn(),
-      getObject: vi.fn(async (key: string) => {
-        gets.push(key);
-        return Buffer.from('bytes');
-      }),
-      deleteObject: vi.fn(),
-      objectSize: vi.fn(async (key: string) => {
-        const size = sizes[key];
-        if (size === undefined) throw new Error('NoSuchKey');
-        return size;
-      }),
-    } as unknown as StorageDriver;
-    return {
-      db: db as unknown as WorkerDeps['db'],
-      storage,
-      provider: {} as WorkerDeps['provider'],
-      config,
-      push: (async () => undefined) as unknown as WorkerDeps['push'],
-    };
-  }
-
-  const job = { id: 'job-1', kind: 'stitch', worldId: 'w-1' } as never;
-
-  it('refuses (non-retryably) to read a frame over the cap, and never reads it', async () => {
-    const gets: string[] = [];
-    const deps = stitchDeps({ 'captures/cap-1/frame_0.heic': MAX_FRAME_BYTES + 1 }, gets);
-
-    await expect(handleStitch(deps, job)).rejects.toBeInstanceOf(NonRetryableJobError);
-    expect(gets).toEqual([]); // never pulled into memory
-  });
-
-  it('reads a frame at or under the cap', async () => {
-    const gets: string[] = [];
-    const deps = stitchDeps({ 'captures/cap-1/frame_0.heic': MAX_FRAME_BYTES }, gets);
-
-    await handleStitch(deps, job);
-    expect(gets).toEqual(['captures/cap-1/frame_0.heic']);
-  });
-
-  it('treats an unsizeable (missing) frame as non-retryable', async () => {
-    const gets: string[] = [];
-    const deps = stitchDeps({}, gets);
-
-    await expect(handleStitch(deps, job)).rejects.toBeInstanceOf(NonRetryableJobError);
-    expect(gets).toEqual([]);
-  });
-});

@@ -11,11 +11,11 @@ import {
 } from './types.js';
 
 // Offline provider for PROVIDER_MODE=mock. Burns ZERO credits and makes NO
-// network calls, so the whole pipeline (stitch → generate → store) runs end to
+// network calls, so the whole pipeline (upload → generate → store) runs end to
 // end locally. Operations complete instantly. Asset "downloads" are served from
 // a tiny in-memory fixture map keyed by the fake URLs this provider hands out.
 
-const FAKE_HOST = 'https://mock.worldlabs.local';
+const FAKE_HOST = 'https://mock.provider.local';
 
 // --- Fixtures ---------------------------------------------------------------
 // Realistic-enough bytes so the iOS app renders them in dev (plain text stubs
@@ -24,7 +24,7 @@ const FAKE_HOST = 'https://mock.worldlabs.local';
 /**
  * A REAL 951-byte 64x32 blue→orange gradient JPEG (base64-inlined), generated
  * once via a raw-BMP + `sips` one-off script. Valid JFIF: starts FF D8 and
- * decodes in any image stack. Served for thumbnail AND pano downloads.
+ * decodes in any image stack. Served for thumbnail and any other .jpg download.
  */
 const JPEG_FIXTURE = Buffer.from(
   '/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKAC' +
@@ -66,7 +66,7 @@ const GLB_FIXTURE = (() => {
 function fixtureFor(url: string): Buffer {
   if (url.endsWith('.spz')) return SPZ_FIXTURE;
   if (url.endsWith('.glb')) return GLB_FIXTURE;
-  // .jpg (thumbnail, pano) and anything else image-ish.
+  // .jpg (thumbnail) and anything else image-ish.
   return JPEG_FIXTURE;
 }
 
@@ -104,7 +104,7 @@ export function createMockProvider(): WorldGenProvider {
       return 0;
     },
 
-    async uploadPano(_bytes, _filename): Promise<string> {
+    async uploadImage(_bytes, _filename): Promise<string> {
       return `mock-media-${randomUUID()}`;
     },
 

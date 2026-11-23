@@ -1,5 +1,5 @@
-// World-generation provider contract (spec §4 "World Labs job contract", §14).
-// Two implementations: worldlabs.ts (live, money-path) and mock.ts (offline,
+// World-generation provider contract (spec §14).
+// Implementations: a live money-path provider (later phase) and mock.ts (offline,
 // zero-credit). The worker (src/worker.ts) only ever talks to this interface.
 
 /** Supported Marble models and their credit cost (spec §2.1 / pricing). */
@@ -59,8 +59,8 @@ export interface WorldMatch {
 
 export interface WorldGenProvider {
   readonly mode: 'mock' | 'live';
-  /** prepare_upload + PUT the pano (FREE). Returns the media_asset_id. */
-  uploadPano(bytes: Buffer, filename: string): Promise<string>;
+  /** Upload the input image to the provider (FREE). Returns the media_asset_id. */
+  uploadImage(bytes: Buffer, filename: string): Promise<string>;
   /**
    * worlds:generate (SPENDS CREDITS). Returns the operation_id. MUST NOT be
    * retried internally — a blind resubmit double-bills (spec §14).

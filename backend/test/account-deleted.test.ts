@@ -171,7 +171,6 @@ describe('purge job clears per-frame poses', () => {
     const deps = {
       db: makePurgeDb([capture], sink),
       storage: purgeStorage(sink),
-      provider: {} as WorkerDeps['provider'],
       config: devConfig,
       push: (async () => undefined) as unknown as WorkerDeps['push'],
     } as WorkerDeps;

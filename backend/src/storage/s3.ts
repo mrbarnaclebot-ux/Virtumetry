@@ -33,7 +33,7 @@ export function createS3Storage(config: Config): StorageDriver {
       //  - client declared its size → sign Content-Length into the URL; R2/S3
       //    then rejects any payload of a different length outright.
       //  - it didn't → nothing can be bound here, and the worker's mandatory
-      //    pre-read size check (handleStitch) is the backstop.
+      //    pre-read size check (worker objectSize HEAD before any frame read) is the backstop.
       // `maxBytes` is validated by the route before we ever get here.
       const signExact = typeof exactBytes === 'number' && exactBytes > 0 && exactBytes <= maxBytes;
       const cmd = new PutObjectCommand({

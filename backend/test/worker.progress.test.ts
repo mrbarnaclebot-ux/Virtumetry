@@ -1,9 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  parseProgressLine,
-  createProgressLineStream,
-  createProgressThrottle,
-  pseudoProgress,
   isWorldReapable,
   reapStaleUploads,
   REAPER_STALE_UPLOAD_MS,
@@ -12,82 +8,8 @@ import {
 import { serializeWorld } from '../src/routes/worlds.js';
 import { jobs, worlds, type World } from '../src/db/schema.js';
 
-// Pipeline progress visibility + orphan-world reaper (pure pieces + mocked-db
-// dispatch). No DB, no network, no Python.
-
-// --- PROGRESS line parsing ----------------------------------------------------
-describe('parseProgressLine', () => {
-  it('parses machine-readable PROGRESS lines from reproject.py', () => {
-    expect(parseProgressLine('PROGRESS 0')).toBe(0);
-    expect(parseProgressLine('PROGRESS 42')).toBe(42);
-    expect(parseProgressLine('PROGRESS 100')).toBe(100);
-    expect(parseProgressLine('  PROGRESS 7  ')).toBe(7); // tolerant of whitespace
-  });
-
-  it('ignores human log lines and out-of-range values', () => {
-    expect(parseProgressLine('frame 3: pose(lat=0) covered 1234 px')).toBeNull();
-    expect(parseProgressLine('coverage 91.2% before inpaint')).toBeNull();
-    expect(parseProgressLine('PROGRESS 101')).toBeNull();
-    expect(parseProgressLine('PROGRESS -5')).toBeNull();
-    expect(parseProgressLine('PROGRESS')).toBeNull();
-    expect(parseProgressLine('PROGRESS abc')).toBeNull();
-    expect(parseProgressLine('XPROGRESS 10')).toBeNull();
-  });
-});
-
-describe('createProgressLineStream', () => {
-  it('handles chunks that split lines arbitrarily', () => {
-    const seen: number[] = [];
-    const push = createProgressLineStream((p) => seen.push(p));
-    push('reproject: mode=poses width=8192\nPROG');
-    push('RESS 5\nframe 0: covered 10 px\nPROGRESS 1');
-    push('0\n');
-    expect(seen).toEqual([5, 10]);
-  });
-
-  it('does not fire for a trailing line without a newline', () => {
-    const seen: number[] = [];
-    const push = createProgressLineStream((p) => seen.push(p));
-    push('PROGRESS 50'); // incomplete — no \n yet
-    expect(seen).toEqual([]);
-    push('\n');
-    expect(seen).toEqual([50]);
-  });
-});
-
-// --- write throttle -----------------------------------------------------------
-describe('createProgressThrottle', () => {
-  it('always writes the first value, then requires >=5 delta or >=5s', () => {
-    let t = 0;
-    const should = createProgressThrottle({ now: () => t });
-    expect(should(0)).toBe(true); // first write
-    expect(should(2)).toBe(false); // +2 points, 0s later → suppressed
-    expect(should(5)).toBe(true); // +5 points → writes
-    t = 4_000;
-    expect(should(6)).toBe(false); // +1 point, 4s → suppressed
-    t = 10_000;
-    expect(should(6)).toBe(true); // same value but >=5s elapsed → heartbeat write
-  });
-});
-
-// --- pseudo-progress math -------------------------------------------------------
-describe('pseudoProgress', () => {
-  it('is linear against the expected duration', () => {
-    expect(pseudoProgress(0, 45_000)).toBe(0);
-    expect(pseudoProgress(22_500, 45_000)).toBe(50);
-    expect(pseudoProgress(40_500, 45_000)).toBe(90);
-  });
-
-  it('caps at 95 — never claims done before the status flips', () => {
-    expect(pseudoProgress(45_000, 45_000)).toBe(95);
-    expect(pseudoProgress(10 * 45_000, 45_000)).toBe(95);
-  });
-
-  it('handles degenerate inputs', () => {
-    expect(pseudoProgress(-100, 45_000)).toBe(0);
-    expect(pseudoProgress(1_000, 0)).toBe(95);
-  });
-});
+// Orphan-world reaper + progress serialization (pure pieces + mocked-db
+// dispatch). No DB, no network.
 
 // --- reaper predicate (pure SQL mirror, same pattern as isJobClaimable) --------
 describe('isWorldReapable', () => {
@@ -99,7 +21,7 @@ describe('isWorldReapable', () => {
   it('reaps only uploading worlds older than 24h', () => {
     expect(isWorldReapable(w('uploading', hoursAgo(25)), now)).toBe(true);
     expect(isWorldReapable(w('uploading', hoursAgo(23)), now)).toBe(false); // too young
-    expect(isWorldReapable(w('stitching', hoursAgo(25)), now)).toBe(false); // wrong status
+    expect(isWorldReapable(w('processing', hoursAgo(25)), now)).toBe(false); // wrong status
     expect(isWorldReapable(w('draft_ready', hoursAgo(48)), now)).toBe(false);
     expect(isWorldReapable(w('failed_upload', hoursAgo(48)), now)).toBe(false); // already reaped
   });
@@ -194,8 +116,8 @@ describe('reapStaleUploads', () => {
 describe('serializeWorld progress + heartbeat', () => {
   const base: World = {
     id: 'w-1', ownerId: 'u-1', title: 'T', caption: null, lat: null, lng: null,
-    placeName: null, isPublic: false, status: 'stitching', phase: null,
-    progress: 40, panoUrl: null, thumbnailUrl: null, spz100kUrl: null,
+    placeName: null, isPublic: false, status: 'processing', phase: null,
+    progress: 40, thumbnailUrl: null, spz100kUrl: null,
     spz500kUrl: null, spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1,
     provider: null, draftWorldId: null, hqWorldId: null, draftModel: null,
     hqModel: null, creditsSpent: 0,

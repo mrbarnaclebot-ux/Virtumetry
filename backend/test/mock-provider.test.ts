@@ -22,12 +22,12 @@ describe('mock provider asset fixtures', () => {
     expect(bytes[1]).toBe(0xd8); // JPEG SOI marker.
     expect(bytes.subarray(6, 10).toString('ascii')).toBe('JFIF');
     expect(bytes.byteLength).toBeLessThan(2048);
-    // Any .jpg served from the mock host (incl. a pano URL from a resumed
+    // Any .jpg served from the mock host (incl. a frame URL from a resumed
     // world minted in a prior process) gets the same JPEG bytes.
-    const pano = await provider.downloadAsset(
-      'https://mock.worldlabs.local/worlds/w-x/pano.jpg',
+    const frame = await provider.downloadAsset(
+      'https://mock.provider.local/worlds/w-x/frame.jpg',
     );
-    expect(pano.equals(bytes)).toBe(true);
+    expect(frame.equals(bytes)).toBe(true);
   });
 
   it('spz download is gzip whose decompressed bytes start with the SPZ magic "NGSP"', async () => {
