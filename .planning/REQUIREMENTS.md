@@ -120,15 +120,64 @@ Deferred. Tracked, not in the current roadmap.
 
 ## Traceability
 
-Filled by the roadmap.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| FND-04 | Phase 1 | Pending |
+| FND-05 | Phase 1 | Pending |
+| AUTH-01 | Phase 3 | Pending |
+| AUTH-02 | Phase 3 | Pending |
+| AUTH-03 | Phase 3 | Pending |
+| AUTH-04 | Phase 8 | Pending |
+| AUTH-05 | Phase 3 | Pending |
+| CAP-01 | Phase 4 | Pending |
+| CAP-02 | Phase 8 | Pending |
+| CAP-03 | Phase 8 | Pending |
+| CAP-04 | Phase 8 | Pending |
+| CAP-05 | Phase 4 | Pending |
+| CAP-06 | Phase 4 | Pending |
+| CAP-07 | Phase 4 | Pending |
+| CAP-08 | Phase 8 | Pending |
+| CAP-09 | Phase 4 | Pending |
+| CAP-10 | Phase 4 | Pending |
+| PROC-01 | Phase 4 | Pending |
+| PROC-02 | Phase 4 | Pending |
+| PROC-03 | Phase 4 | Pending |
+| PROC-04 | Phase 2 | Pending |
+| PROC-05 | Phase 6 | Pending |
+| PROC-06 | Phase 2 | Pending |
+| PROC-07 | Phase 2 | Pending |
+| PROC-08 | Phase 2 | Pending |
+| PROC-09 | Phase 7 | Pending |
+| PROC-10 | Phase 2 | Pending |
+| LIB-01 | Phase 3 | Pending |
+| LIB-02 | Phase 6 | Pending |
+| LIB-03 | Phase 3 | Pending |
+| VIEW-01 | Phase 5 | Pending |
+| VIEW-02 | Phase 5 | Pending |
+| VIEW-03 | Phase 5 | Pending |
+| VIEW-04 | Phase 5 | Pending |
+| VIEW-05 | Phase 5 | Pending |
+| VIEW-06 | Phase 5 | Pending |
+| SHARE-01 | Phase 5 | Pending |
+| SHARE-02 | Phase 5 | Pending |
+| SHARE-03 | Phase 5 | Pending |
+| SHARE-04 | Phase 5 | Pending |
+| SHARE-05 | Phase 5 | Pending |
+| OPS-01 | Phase 7 | Pending |
+| OPS-02 | Phase 7 | Pending |
+| OPS-03 | Phase 9 | Pending |
+| OPS-04 | Phase 8 | Pending |
+| OPS-05 | Phase 7 | Pending |
+| OPS-06 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 50 total
-- Mapped to phases: 0 (pending roadmap)
+- Mapped to phases: 50
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-11-23*
-*Last updated: 2026-11-23 after initial definition*
+*Last updated: 2026-11-23 after roadmap creation*
