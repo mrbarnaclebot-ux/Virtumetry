@@ -203,6 +203,22 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(pl.provider.calls.submit).toHaveLength(2);
   }, 120_000);
 
+  it('WR-02: a world failed mid-submit is still tracked once the request is confirmed', async () => {
+    const pl = await start('happy');
+    const { worldId } = await pl.seedScan();
+    const submit = pl.provider.submit.bind(pl.provider);
+    pl.provider.submit = async (body, key) => {
+      await failWorldForDeadJob(pl.db, { kind: 'submit', worldId }); // the reaper wins the race
+      return submit(body, key);
+    };
+    const revived = await pl.drain({ worldId, until: (w) => w.providerRequestId != null });
+    expect(revived.status).toBe('processing');
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('ready');
+    expect(w.failureCode).toBeNull();
+    expect(w.charged).toBe(true);
+  }, 120_000);
+
   it('a pipeline job that goes DEAD fails its world (no stuck in-progress status)', async () => {
     const pl = await start('happy');
     const { worldId } = await pl.seedScan(); // world is 'packing'

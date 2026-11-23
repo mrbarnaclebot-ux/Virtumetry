@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { BudgetExceededError, releaseCredits, reserveCredits } from './budget.js';
 import { BundleInvalidError, packCapture } from './bundle/pack.js';
 import type { Db } from './db/client.js';
@@ -245,15 +245,27 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     return parkJobDead(db, job.id, 'SUBMIT_UNCERTAIN');
   }
 
+  const cur = await getWorld(db, worldId);
   await db.transaction(async (tx) => {
     await tx.update(worlds).set({ providerRequestId: requestId }).where(eq(worlds.id, worldId));
-    const flipped = await tx
+    // A confirmed (paid) request beats a stale submit-stage failure (WR-02): if
+    // the world was failed under us (e.g. reaper after a lease expiry), revive
+    // it so the request is tracked instead of silently orphaned.
+    const [flipped] = await tx
       .update(worlds)
-      .set({ status: 'processing', progress: null, updatedAt: new Date() })
-      .where(and(eq(worlds.id, worldId), eq(worlds.status, 'submitting')))
+      .set({ status: 'processing', progress: null, failureStage: null, failureCode: null, failureMessage: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(worlds.id, worldId),
+          or(eq(worlds.status, 'submitting'), and(eq(worlds.status, 'failed'), eq(worlds.failureStage, 'submit'))),
+        ),
+      )
       .returning({ id: worlds.id });
-    if (flipped.length > 0) await enqueue(tx, 'track', worldId);
+    if (flipped) await enqueue(tx, 'track', worldId);
   });
+  if (cur?.status === 'failed') {
+    console.error(`[pipeline] world ${worldId} was failed mid-submit but request ${requestId} exists; tracking it`);
+  }
   await completeJob(db, job.id);
 }
 
