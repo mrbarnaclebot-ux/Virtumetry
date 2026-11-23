@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { getConfig } from './config.js';
+import { getConfig, migrateUrl } from './config.js';
 import { withVerifyFullSslMode } from './db/client.js';
 
 // Programmatic migrator (spec §10 R10).
@@ -59,9 +59,8 @@ export async function runMigrations(connectionString: string): Promise<void> {
 async function main(): Promise<void> {
   const config = getConfig();
   console.log(`[migrate] applying migrations from ${MIGRATIONS_FOLDER}`);
-  // Production is guaranteed a direct, same-endpoint MIGRATE_DATABASE_URL by
-  // config refine() (D-07). Elsewhere DATABASE_URL is an acceptable stand-in.
-  await runMigrations(config.MIGRATE_DATABASE_URL ?? config.DATABASE_URL);
+  // migrateUrl refuses production without a direct MIGRATE_DATABASE_URL (D-07).
+  await runMigrations(migrateUrl(config));
   console.log('[migrate] up to date');
 }
 

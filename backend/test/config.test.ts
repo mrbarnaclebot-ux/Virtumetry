@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, migrateUrl } from '../src/config.js';
 
 const env = (o: Record<string, string | undefined>) => o as NodeJS.ProcessEnv;
 
@@ -197,10 +197,18 @@ describe('loadConfig', () => {
   });
 
   describe('MIGRATE_DATABASE_URL in production (D-07, D-13)', () => {
-    it('refuses a missing MIGRATE_DATABASE_URL', () => {
-      expect(() => loadConfig(env({ ...prodBase, MIGRATE_DATABASE_URL: undefined }))).toThrow(
-        /MIGRATE_DATABASE_URL is required/,
-      );
+    it('boots server/worker without MIGRATE_DATABASE_URL (only the migrator needs it)', () => {
+      expect(() => loadConfig(env({ ...prodBase, MIGRATE_DATABASE_URL: undefined }))).not.toThrow();
+    });
+
+    it('migrateUrl refuses a missing MIGRATE_DATABASE_URL in production', () => {
+      const cfg = loadConfig(env({ ...prodBase, MIGRATE_DATABASE_URL: undefined }));
+      expect(() => migrateUrl(cfg)).toThrow(/MIGRATE_DATABASE_URL is required/);
+    });
+
+    it('migrateUrl returns the direct URL in production and DATABASE_URL elsewhere', () => {
+      expect(migrateUrl(loadConfig(env(prodBase)))).toBe(direct(PROD_EP));
+      expect(migrateUrl(loadConfig(env(base)))).toBe(base.DATABASE_URL);
     });
 
     it('refuses a -pooler MIGRATE_DATABASE_URL', () => {

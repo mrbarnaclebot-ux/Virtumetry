@@ -174,13 +174,15 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
       throw new Error('STORAGE_DRIVER=local refused under NODE_ENV=production: set STORAGE_DRIVER=s3');
     }
     // Migrations over the direct host of the same endpoint (D-07, D-13).
-    if (!cfg.MIGRATE_DATABASE_URL) {
-      throw new Error('MIGRATE_DATABASE_URL is required under NODE_ENV=production');
-    }
-    if (isPoolerUrl(cfg.MIGRATE_DATABASE_URL)) {
+    // Only the migrator needs it (api preDeploy); migrateUrl() requires it there,
+    // so the worker and api runtime boot without it.
+    if (cfg.MIGRATE_DATABASE_URL && isPoolerUrl(cfg.MIGRATE_DATABASE_URL)) {
       throw new Error('MIGRATE_DATABASE_URL refused: must be the direct host, not the -pooler host');
     }
-    if (neonEndpointId(cfg.MIGRATE_DATABASE_URL) !== neonEndpointId(cfg.DATABASE_URL)) {
+    if (
+      cfg.MIGRATE_DATABASE_URL &&
+      neonEndpointId(cfg.MIGRATE_DATABASE_URL) !== neonEndpointId(cfg.DATABASE_URL)
+    ) {
       throw new Error('MIGRATE_DATABASE_URL refused: must be the same Neon endpoint as DATABASE_URL');
     }
   }
@@ -189,6 +191,19 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
     ...cfg,
     PUBLIC_BASE_URL: cfg.PUBLIC_BASE_URL ?? `http://localhost:${cfg.PORT}`,
   };
+}
+
+/**
+ * The URL migrate.ts connects with. Production must use the direct host
+ * (refine() already checked it is non-pooler and same-endpoint when set);
+ * elsewhere DATABASE_URL is an acceptable stand-in.
+ */
+export function migrateUrl(cfg: Config): string {
+  if (cfg.MIGRATE_DATABASE_URL) return cfg.MIGRATE_DATABASE_URL;
+  if (cfg.NODE_ENV === 'production') {
+    throw new Error('MIGRATE_DATABASE_URL is required under NODE_ENV=production');
+  }
+  return cfg.DATABASE_URL;
 }
 
 /** Validate an env object into a typed Config. Throws on invalid input. */
