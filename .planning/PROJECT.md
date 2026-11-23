@@ -12,7 +12,9 @@ A walk-through scan of a real room comes back as a faithful, walkable 3D world, 
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Mock provider + recorded fixture bundles so development never spends Echo-3 credits by accident — Validated in Phase 2: Bundle Pipeline & Mock Provider
+- [x] Hard credit budget caps on the backend (daily + monthly, atomic reservation) — Validated in Phase 2
+- [x] Backend packs the bundle ZIP and hosts it on R2 (Range-capable 24 h URL), runs submit/track/import against the mock with webhook + polling, and re-hosts outputs — Validated in Phase 2 (live Echo-3 submit is Phase 6)
 
 ### Active
 
@@ -20,14 +22,12 @@ A walk-through scan of a real room comes back as a faithful, walkable 3D world, 
 - [ ] The app captures Echo-3-ready keyframes: sharp JPEGs (long edge ≤1920), per-frame intrinsics, ARKit camera poses, motion-gated (≥0.12 s, ≥7 cm / 10°)
 - [ ] The app checks a scan before upload (frame count, blur, coverage) and shows the processing cost quote before spending credits
 - [ ] Scans upload reliably: survive phone lock, suspension and iOS termination, and resume after force-quit by re-sending only frames the server reports missing
-- [ ] Backend packs the bundle ZIP, hosts it on R2, submits it to Echo-3 with an idempotency key, tracks status via webhook + polling, and re-hosts the outputs
+- [ ] Backend submits real bundles to Echo-3 with an idempotency key (live provider, Phase 6)
 - [ ] Owner can walk the finished room in the app (splat viewer, smooth on iPhone 17 Pro, collider-based walk mode)
 - [ ] Owner can see the auto floor plan and measure distances in the room
 - [ ] Owner can share a room via a public web link that opens in any browser
 - [ ] Library of scans with clear states (capturing, uploading, processing, ready, failed + retry)
 - [ ] Real authentication (owner account) — no shared anonymous library
-- [ ] Mock provider + recorded fixture bundles so development never spends Echo-3 credits by accident
-- [ ] Hard credit budget caps on the backend
 
 ### Out of Scope
 
@@ -90,4 +90,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-23 after initialization*
+*Last updated: 2026-11-24 after Phase 2*
