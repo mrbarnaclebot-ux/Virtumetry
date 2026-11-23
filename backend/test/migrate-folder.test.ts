@@ -15,8 +15,11 @@ describe('drizzle migrations folder', () => {
     }
   });
 
-  it('history is a single fresh 0000_init migration', () => {
-    expect(journal.entries).toHaveLength(1);
-    expect(journal.entries[0]!.tag.startsWith('0000_init')).toBe(true);
+  it('history is 0000_init then the split Phase 2 add/drop migrations', () => {
+    expect(journal.entries.map((e) => e.tag)).toEqual([
+      expect.stringMatching(/^0000_init/),
+      '0001_phase2_add',
+      '0002_phase2_drop',
+    ]);
   });
 });

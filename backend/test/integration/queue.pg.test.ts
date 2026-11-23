@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import pg from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import type pg from 'pg';
 import { sql } from 'drizzle-orm';
 import type { Db } from '../../src/db/client.js';
-import * as schema from '../../src/db/schema.js';
 import {
   LEASE_SECONDS,
   claimNextJob,
@@ -12,81 +10,39 @@ import {
   enqueue,
   failJob,
   heartbeatJob,
+  snoozeJob,
 } from '../../src/queue.js';
+import { createTestSchema } from '../helpers/pg-schema.js';
 
 // OPTIONAL integration test — runs ONLY when TEST_DATABASE_URL is set, so CI
 // without a database stays green. It exercises the queue's raw SQL against a
 // REAL Postgres, closing the gap that let `kind = ANY(<tuple>)` ship: unit
 // tests rendered/mocked SQL but never executed it.
 //
-//   TEST_DATABASE_URL=postgres://user:pass@localhost:5432/postgres npm test
+//   cd backend && node --env-file=.env scripts/test-pg.mjs
 //
-// Isolation: everything happens inside a throwaway schema (dropped afterAll)
-// selected via search_path. Only the `jobs` table is created — the queue
-// functions never touch worlds/users, so the world FK is intentionally omitted
-// here (world ids are just uuids from the test's perspective).
-//
-// search_path is applied via a pool 'connect' hook (`SET search_path` runs as
-// the FIRST query on every new connection), NOT via the `options` startup
-// parameter — Neon's pooled endpoint (pgbouncer) rejects that with
-// "unsupported startup parameter in options: search_path". The hook (option a)
-// is required rather than schema-qualifying, because the queue functions under
-// test reference unqualified `jobs`. Caveat: under a transaction-mode pooler a
-// session-level SET is not guaranteed to stick if server connections are
-// multiplexed between transactions; if you ever see cross-schema flakiness,
-// point TEST_DATABASE_URL at the DIRECT (non-pooled) endpoint.
+// Isolation: a throwaway schema built from the REAL committed migration SQL
+// (test/helpers/pg-schema.ts), dropped afterAll. jobs.world_id has its FK, so
+// one user + world row is seeded.
 
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)('queue against real Postgres', () => {
-  const schemaName = `virtumetry_it_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   let pool: pg.Pool;
   let db: Db;
+  let drop: () => Promise<void>;
+  const userId = randomUUID();
   const worldId = randomUUID();
 
   beforeAll(async () => {
-    pool = new pg.Pool({ connectionString: url, max: 2 });
-    // Route every unqualified table reference into the throwaway schema.
-    // Per-connection SET (not a startup option — Neon's pooler rejects those).
-    // node-postgres runs this enqueued query before any consumer query on the
-    // same client, so it always wins the race. Setting search_path to a
-    // not-yet-created schema is harmless (first connection, pre-CREATE).
-    pool.on('connect', (client) => {
-      client
-        .query(`SET search_path TO "${schemaName}"`)
-        .catch((err: unknown) =>
-          // Surface loudly — a silent failure here would leak queries into public.
-          console.error(`[queue.pg.test] SET search_path failed: ${String(err)}`),
-        );
-    });
-    await pool.query(`CREATE SCHEMA "${schemaName}"`);
-    // Mirror of the jobs DDL from drizzle/0000_*.sql, minus the worlds FK.
-    await pool.query(`
-      CREATE TABLE "${schemaName}"."jobs" (
-        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-        "world_id" uuid NOT NULL,
-        "kind" text NOT NULL,
-        "phase" text DEFAULT 'queued' NOT NULL,
-        "attempts" integer DEFAULT 0 NOT NULL,
-        "last_error" text,
-        "payload" jsonb,
-        "provider_operation_id" text,
-        "run_after" timestamp with time zone DEFAULT now() NOT NULL,
-        "locked_at" timestamp with time zone,
-        "locked_by" text,
-        "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
-      )
-    `);
-    db = drizzle(pool, { schema }) as unknown as Db;
-  });
+    ({ pool, db, drop } = await createTestSchema(url!));
+    await pool.query('INSERT INTO users (id, apple_sub) VALUES ($1, $2)', [userId, `it-${userId}`]);
+    await pool.query('INSERT INTO worlds (id, owner_id) VALUES ($1, $2)', [worldId, userId]);
+  }, 60_000); // remote Neon: schema build is several round trips
 
   afterAll(async () => {
-    if (pool) {
-      await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`).catch(() => undefined);
-      await pool.end();
-    }
-  });
+    if (drop) await drop();
+  }, 30_000);
 
   it('enqueue → claim (two jobs) → complete round-trips', async () => {
     const firstId = await enqueue(db, 'purge', worldId);
@@ -220,6 +176,47 @@ describe.skipIf(!url)('queue against real Postgres', () => {
     // A finished/parked job cannot be heartbeated by anyone.
     await completeJob(db, jobId);
     expect(await heartbeatJob(db, jobId, 'worker-new')).toBe(false);
+  });
+
+  it('snoozeJob requeues without consuming an attempt and respects run_after', async () => {
+    const jobId = await enqueue(db, 'track', worldId);
+    const claimed = await claimNextJob(db, ['track'], 'worker-A');
+    expect(claimed!.id).toBe(jobId);
+    expect(claimed!.attempts).toBe(1);
+
+    await snoozeJob(db, jobId, 60);
+    const row = await pool.query(
+      'SELECT phase, attempts, locked_at, locked_by, run_after > now() AS deferred FROM jobs WHERE id = $1',
+      [jobId],
+    );
+    expect(row.rows[0]).toEqual({
+      phase: 'queued',
+      attempts: 0,
+      locked_at: null,
+      locked_by: null,
+      deferred: true,
+    });
+    expect(await claimNextJob(db, ['track'], 'worker-A')).toBeNull();
+
+    await pool.query("UPDATE jobs SET run_after = now() - interval '1 second' WHERE id = $1", [
+      jobId,
+    ]);
+    const again = await claimNextJob(db, ['track'], 'worker-B');
+    expect(again!.id).toBe(jobId);
+    expect(again!.attempts).toBe(1); // the snooze did not burn an attempt
+    await completeJob(db, jobId);
+  });
+
+  it('failJob honours an explicit delaySeconds', async () => {
+    const jobId = await enqueue(db, 'track', worldId);
+    await claimNextJob(db, ['track'], 'worker-A');
+    await failJob(db, jobId, '503', 3600);
+    const row = await pool.query(
+      "SELECT run_after > now() + interval '3500 seconds' AS long FROM jobs WHERE id = $1",
+      [jobId],
+    );
+    expect(row.rows[0].long).toBe(true);
+    await completeJob(db, jobId);
   });
 
   it('drizzle raw execute sanity: search_path isolation works', async () => {

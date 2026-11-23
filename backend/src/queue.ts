@@ -73,7 +73,7 @@ export async function enqueue(
 /**
  * Raw `db.execute` rows come back with snake_case column names (drizzle only
  * remaps to camelCase for query-builder calls). Casting them straight to Job
- * left worldId/providerOperationId undefined at runtime — which would have
+ * left worldId undefined at runtime — which would have
  * silently defeated the §14 resume check. Map explicitly instead.
  */
 /**
@@ -96,7 +96,6 @@ export function mapJobRow(raw: Record<string, unknown>): Job {
     attempts: raw['attempts'] as number,
     lastError: (raw['last_error'] as string | null) ?? null,
     payload: raw['payload'] ?? null,
-    providerOperationId: (raw['provider_operation_id'] as string | null) ?? null,
     // NOT NULL columns in the schema — coerced, never null in practice.
     runAfter: toDate(raw['run_after'])!,
     lockedAt: toDate(raw['locked_at']),
@@ -205,20 +204,43 @@ export async function failJob(
   db: Db,
   jobId: string,
   error: string,
+  delaySeconds?: number,
 ): Promise<JobPhase | null> {
+  const delay =
+    delaySeconds === undefined
+      ? sql`LEAST(POWER(2, attempts) * ${BASE_BACKOFF_SECONDS}, ${MAX_BACKOFF_SECONDS})`
+      : sql`${delaySeconds}`;
   const result = await db.execute<{ phase: JobPhase }>(sql`
     UPDATE jobs
     SET last_error = ${error},
         locked_at = NULL,
         locked_by = NULL,
         phase = CASE WHEN attempts >= ${MAX_ATTEMPTS} THEN 'dead' ELSE 'queued' END,
-        run_after = now() + (LEAST(POWER(2, attempts) * ${BASE_BACKOFF_SECONDS}, ${MAX_BACKOFF_SECONDS}) * interval '1 second'),
+        run_after = now() + (${delay} * interval '1 second'),
         updated_at = now()
     WHERE id = ${jobId}
     RETURNING phase
   `);
   const rows = (result as unknown as { rows: { phase: JobPhase }[] }).rows;
   return rows[0]?.phase ?? null;
+}
+
+/**
+ * Requeue a job to run again in `seconds` WITHOUT consuming an attempt (a
+ * provider "still processing" or a 429/503 is not a failure). Undoes the
+ * attempt claimNextJob counted and releases the lease.
+ */
+export async function snoozeJob(db: Db, jobId: string, seconds: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET phase = 'queued',
+        locked_at = NULL,
+        locked_by = NULL,
+        attempts = GREATEST(attempts - 1, 0),
+        run_after = now() + (${seconds} * interval '1 second'),
+        updated_at = now()
+    WHERE id = ${jobId}
+  `);
 }
 
 /**
@@ -271,46 +293,4 @@ export async function heartbeatJob(
   `);
   const rows = (result as unknown as { rows: { id: string }[] }).rows;
   return rows.length > 0;
-}
-
-/**
- * Clear a `pending:<jobId>` intent marker (spec §10 R1) after a failure that
- * happened strictly BEFORE `worlds:generate` — i.e. where no generation can
- * possibly have been submitted, so the next attempt should start cleanly instead
- * of reconciling and parking.
- *
- * Conditional on the stored value still being `expected`: if a concurrent worker
- * has since written a real operation id (or its own marker), this must not wipe
- * it. Returns whether the marker was actually cleared.
- */
-export async function clearProviderOperationId(
-  db: Db,
-  jobId: string,
-  expected: string,
-): Promise<boolean> {
-  const result = await db.execute<{ id: string }>(sql`
-    UPDATE jobs
-    SET provider_operation_id = NULL, updated_at = now()
-    WHERE id = ${jobId}
-      AND provider_operation_id = ${expected}
-    RETURNING id
-  `);
-  const rows = (result as unknown as { rows: { id: string }[] }).rows;
-  return rows.length > 0;
-}
-
-/**
- * Persist the provider operation id atomically (spec §14) so a resumed worker
- * never blind-resubmits a credit-spending worlds:generate call.
- */
-export async function setProviderOperationId(
-  db: Db,
-  jobId: string,
-  operationId: string,
-): Promise<void> {
-  await db.execute(sql`
-    UPDATE jobs
-    SET provider_operation_id = ${operationId}, updated_at = now()
-    WHERE id = ${jobId}
-  `);
 }

@@ -136,7 +136,7 @@ describe('claimNextJob generated SQL', () => {
 });
 
 describe('mapJobRow', () => {
-  it('maps snake_case raw claim rows to the Job shape (worldId, providerOperationId)', () => {
+  it('maps snake_case raw claim rows to the Job shape (worldId)', () => {
     const created = new Date('2026-07-12T11:00:00Z');
     const mapped = mapJobRow({
       id: 'j1',
@@ -146,7 +146,6 @@ describe('mapJobRow', () => {
       attempts: 2,
       last_error: null,
       payload: null,
-      provider_operation_id: 'op-77',
       run_after: created,
       locked_at: created,
       locked_by: 'worker-1',
@@ -155,7 +154,6 @@ describe('mapJobRow', () => {
     });
     // These two drove the §14 resume check — undefined here meant re-billing.
     expect(mapped.worldId).toBe('w1');
-    expect(mapped.providerOperationId).toBe('op-77');
     expect(mapped.attempts).toBe(2);
     expect(mapped.lockedBy).toBe('worker-1');
   });
@@ -170,7 +168,6 @@ describe('mapJobRow', () => {
       attempts: 1,
       last_error: null,
       payload: null,
-      provider_operation_id: null,
       run_after: '2026-07-11 21:31:21.397825+00',
       locked_at: '2026-07-11 21:31:21.397825+00',
       locked_by: 'worker-1',
@@ -198,7 +195,6 @@ describe('mapJobRow', () => {
       attempts: 0,
       last_error: null,
       payload: null,
-      provider_operation_id: null,
       run_after: d,
       locked_at: null,
       locked_by: null,
@@ -223,7 +219,7 @@ describe('parkExhaustedJobs (§10 R27)', () => {
           rows: [
             {
               id: 'j1', world_id: 'w1', kind: 'purge', phase: 'dead', attempts: 5,
-              last_error: 'x', payload: null, provider_operation_id: null,
+              last_error: 'x', payload: null,
               run_after: now, locked_at: null, locked_by: null, created_at: now, updated_at: now,
             },
           ],

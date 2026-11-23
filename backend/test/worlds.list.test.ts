@@ -17,14 +17,14 @@ function fakeWorld(overrides: Partial<World> = {}): World {
     lng: null,
     placeName: null,
     isPublic: false,
-    status: 'complete',
+    status: 'ready',
     phase: null,
     progress: null,
-    thumbnailUrl: null,
-    spz100kUrl: null,
-    spz500kUrl: null,
-    spzFullUrl: null,
-    colliderGlbUrl: null,
+    splatKey: null,
+    colliderKey: null,
+    floorplanKey: null,
+    camerasKey: null,
+    thumbnailKey: null,
     assetVersion: 1,
     provider: null,
     creditsSpent: 0,
@@ -50,7 +50,7 @@ describe('serializeWorldListItem', () => {
   it('includes assets.thumbnail_url (presigned) when the thumbnail key is set', async () => {
     const storage = mockStorage();
     const item = await serializeWorldListItem(
-      fakeWorld({ thumbnailUrl: 'worlds/w-1/thumbnail.jpg' }),
+      fakeWorld({ thumbnailKey: 'worlds/w-1/thumbnail.jpg' }),
       storage,
     );
 
@@ -62,7 +62,7 @@ describe('serializeWorldListItem', () => {
     // serializeWorld fields ride along unchanged.
     expect(item.id).toBe('w-1');
     expect(item.title).toBe('Kloofendal');
-    expect(item.status).toBe('complete');
+    expect(item.status).toBe('ready');
   });
 
   it('has an empty assets object (no thumbnail_url key) when unset', async () => {
@@ -78,11 +78,11 @@ describe('serializeWorldListItem', () => {
     const storage = mockStorage();
     const item = await serializeWorldListItem(
       fakeWorld({
-        thumbnailUrl: 'worlds/w-1/thumbnail.jpg',
-        spz100kUrl: 'worlds/w-1/splat_100k.spz',
-        spz500kUrl: 'worlds/w-1/splat_500k.spz',
-        spzFullUrl: 'worlds/w-1/splat_full.spz',
-        colliderGlbUrl: 'worlds/w-1/collider.glb',
+        thumbnailKey: 'worlds/w-1/thumbnail.jpg',
+        splatKey: 'worlds/w-1/splat.spz',
+        colliderKey: 'worlds/w-1/collider.ply',
+        floorplanKey: 'worlds/w-1/floorplan.png',
+        camerasKey: 'worlds/w-1/cameras.json',
       }),
       storage,
     );

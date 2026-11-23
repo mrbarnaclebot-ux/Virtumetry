@@ -44,11 +44,11 @@ function fakeWorld(): World {
     status: 'uploading',
     phase: null,
     progress: null,
-    thumbnailUrl: null,
-    spz100kUrl: null,
-    spz500kUrl: null,
-    spzFullUrl: null,
-    colliderGlbUrl: null,
+    splatKey: null,
+    colliderKey: null,
+    floorplanKey: null,
+    camerasKey: null,
+    thumbnailKey: null,
     assetVersion: 1,
     provider: null,
     creditsSpent: 0,
@@ -151,24 +151,30 @@ const validPose = {
 };
 
 describe('POST /v1/worlds/:id/frames:done', () => {
-  it('no body → status=uploaded, no job enqueued, no capture write', async () => {
+  it('no body → status=packing, pack job enqueued, no capture write', async () => {
     const state = freshState();
     const app = await makeApp(state);
     const res = await app.inject({ method: 'POST', url: '/v1/worlds/w-1/frames:done' });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().job_id).toBeNull();
-    expect(res.json().world.status).toBe('uploaded');
+    expect(res.json().job_id).toBe('job-1');
+    expect(res.json().world.status).toBe('packing');
     // Exactly one update — the world's status. Captures untouched.
     expect(state.updates).toHaveLength(1);
     expect(state.updates[0]!.table).toBe(worlds);
     // Status flip + progress reset + heartbeat touch, in one update.
     expect(state.updates[0]!.patch).toEqual({
-      status: 'uploaded',
+      status: 'packing',
       progress: null,
       updatedAt: expect.any(Date),
     });
-    expect(state.inserts).toHaveLength(0);
+    // Same transaction: the pack job for the latest capture.
+    expect(state.inserts).toHaveLength(1);
+    expect(state.inserts[0]!.vals).toMatchObject({
+      kind: 'pack',
+      worldId: 'w-1',
+      payload: { captureId: 'cap-1' },
+    });
     await app.close();
   });
 
@@ -186,9 +192,9 @@ describe('POST /v1/worlds/:id/frames:done', () => {
     const captureUpdate = state.updates.find((u) => u.table === captures);
     expect(captureUpdate).toBeDefined();
     expect(captureUpdate!.patch['posesJson']).toEqual([pose]);
-    // World flip still ran; nothing enqueued.
+    // World flip still ran; exactly one pack job enqueued.
     expect(state.updates.some((u) => u.table === worlds)).toBe(true);
-    expect(state.inserts).toHaveLength(0);
+    expect(state.inserts).toHaveLength(1);
     await app.close();
   });
 
@@ -243,7 +249,7 @@ describe('POST /v1/worlds/:id/frames:done', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(state.updates.some((u) => u.table === captures)).toBe(false);
-    expect(state.inserts).toHaveLength(0);
+    expect(state.inserts).toHaveLength(1); // the pack job
     await app.close();
   });
 
@@ -265,10 +271,10 @@ describe('POST /v1/worlds/:id/frames:done', () => {
     await app.close();
   });
 
-  it('replay after uploaded → 200 with current world, no job, no writes', async () => {
+  it('replay after packing → 200 with current world, no job, no writes', async () => {
     // Client recovery replays frames:done when a response was lost.
     const state = freshState();
-    state.world.status = 'uploaded';
+    state.world.status = 'packing';
     const app = await makeApp(state);
     const res = await app.inject({
       method: 'POST',
@@ -278,13 +284,13 @@ describe('POST /v1/worlds/:id/frames:done', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().job_id).toBeNull();
-    expect(res.json().world.status).toBe('uploaded');
+    expect(res.json().world.status).toBe('packing');
     expect(state.updates).toHaveLength(0); // no status flip, no poses overwrite
     expect(state.inserts).toHaveLength(0);
     await app.close();
   });
 
-  it.each(['capturing', 'complete', 'failed_upload'] as const)(
+  it.each(['ready', 'failed', 'cancelled'] as const)(
     'while %s → no flip, no job enqueued',
     async (status) => {
       const state = freshState();

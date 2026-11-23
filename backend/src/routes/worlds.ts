@@ -20,12 +20,13 @@ function sendScanQuotaExceeded(reply: FastifyReply, charge: QuotaChargeResult) {
 }
 
 // Asset columns that hold a storage key → the JSON field name we sign into.
+// Keys are re-hosted Echo-3 outputs (D-15/PROC-07).
 const ASSET_FIELDS = [
-  ['thumbnailUrl', 'thumbnail_url'],
-  ['spz100kUrl', 'spz_100k_url'],
-  ['spz500kUrl', 'spz_500k_url'],
-  ['spzFullUrl', 'spz_full_url'],
-  ['colliderGlbUrl', 'collider_glb_url'],
+  ['splatKey', 'splat_url'],
+  ['colliderKey', 'collider_url'],
+  ['floorplanKey', 'floorplan_url'],
+  ['camerasKey', 'cameras_url'],
+  ['thumbnailKey', 'thumbnail_url'],
 ] as const;
 
 /**
@@ -141,9 +142,9 @@ export async function serializeWorldListItem(
   storage: StorageDriver,
 ): Promise<Record<string, unknown>> {
   const assets: { thumbnail_url?: string } = {};
-  if (w.thumbnailUrl) {
+  if (w.thumbnailKey) {
     assets.thumbnail_url = await storage.presignDownload(
-      w.thumbnailUrl,
+      w.thumbnailKey,
       DOWNLOAD_TTL_SECONDS,
     );
   }
@@ -306,9 +307,9 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     },
   );
 
-  // POST /v1/worlds/:id/frames:done — all frames uploaded → status `uploaded`.
-  // `uploaded` is the Phase 1 terminal state: nothing is enqueued yet (the
-  // processing pipeline and its states arrive in Phase 2), so job_id is null.
+  // POST /v1/worlds/:id/frames:done — all frames uploaded → status `packing`,
+  // and the `pack` job is enqueued in the same transaction (a packing world
+  // without a pack job would be stranded). Returns that job_id.
   // Optionally accepts { poses: [...] } (per-frame ARKit poses) which is stored
   // verbatim into captures.poses_json. No body / empty body = old behavior.
   app.post<{ Params: { id: string } }>(
@@ -333,13 +334,13 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
       if (!world) return reply.code(404).send({ error: 'world_not_found' });
 
       // Clients REPLAY frames:done when a response was lost. The flip is one
-      // conditional UPDATE (uploading → uploaded) and the poses write shares
-      // its transaction: a refused flip (replay) writes nothing.
+      // conditional UPDATE (uploading → packing); the poses write and the
+      // pack enqueue share its transaction: a refused flip (replay) writes nothing.
       const flipped = await db.transaction(async (tx) => {
         const [row] = await tx
           .update(worlds)
           // Entering a new status → progress resets; updated_at is the heartbeat.
-          .set({ status: 'uploaded', progress: null, updatedAt: new Date() })
+          .set({ status: 'packing', progress: null, updatedAt: new Date() })
           .where(
             and(
               eq(worlds.id, world.id),
@@ -350,22 +351,21 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
           .returning();
         if (!row) return null;
 
+        const [capture] = await tx
+          .select()
+          .from(captures)
+          .where(eq(captures.worldId, world.id))
+          .orderBy(desc(captures.createdAt))
+          .limit(1);
         // Store poses on the world's (latest) capture row when provided.
-        if (poses && poses.length > 0) {
-          const [capture] = await tx
-            .select()
-            .from(captures)
-            .where(eq(captures.worldId, world.id))
-            .orderBy(desc(captures.createdAt))
-            .limit(1);
-          if (capture) {
-            await tx
-              .update(captures)
-              .set({ posesJson: poses })
-              .where(eq(captures.id, capture.id));
-          }
+        if (capture && poses && poses.length > 0) {
+          await tx
+            .update(captures)
+            .set({ posesJson: poses })
+            .where(eq(captures.id, capture.id));
         }
-        return row;
+        const jobId = await enqueue(tx, 'pack', world.id, { captureId: capture?.id ?? null });
+        return { row, jobId };
       });
 
       if (!flipped) {
@@ -374,7 +374,7 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
         const current = await findOwnedWorld(db, world.id, userId);
         return reply.send({ world: serializeWorld(current ?? world), job_id: null });
       }
-      return reply.send({ world: serializeWorld(flipped), job_id: null });
+      return reply.send({ world: serializeWorld(flipped.row), job_id: flipped.jobId });
     },
   );
 

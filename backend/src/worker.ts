@@ -192,7 +192,7 @@ export function isWorldReapable(
 }
 
 /**
- * Sweep worlds stuck in `uploading` for >24 h → status 'failed_upload' and a
+ * Sweep worlds stuck in `uploading` for >24 h → status 'failed' (stage upload, UPLOAD_STALE) and a
  * frames-only purge of the capture prefix. The row is kept and NOT
  * soft-deleted (it stays visible as failed in the Library); the client-side
  * abandon flow deletes its world eagerly — this is the server backstop.
@@ -200,12 +200,18 @@ export function isWorldReapable(
  */
 export async function reapStaleUploads(db: Db): Promise<string[]> {
   // One transaction (spec §10 R27): a crash between the flip and the enqueues
-  // would leave failed_upload worlds whose frames are never purged (§13) — the
+  // would leave stale-failed worlds whose frames are never purged (§13) — the
   // flip takes them out of this sweep for good.
   return db.transaction(async (tx) => {
     const rows = await tx
       .update(worlds)
-      .set({ status: 'failed_upload', progress: null, updatedAt: sql`now()` })
+      .set({
+        status: 'failed',
+        failureStage: 'upload',
+        failureCode: 'UPLOAD_STALE',
+        progress: null,
+        updatedAt: sql`now()`,
+      })
       .where(
         and(
           eq(worlds.status, 'uploading'),
@@ -215,7 +221,7 @@ export async function reapStaleUploads(db: Db): Promise<string[]> {
       .returning({ id: worlds.id });
 
     for (const row of rows) {
-      console.log(`[worker] reaped stale uploading world ${row.id} → failed_upload`);
+      console.log(`[worker] reaped stale uploading world ${row.id} → failed (UPLOAD_STALE)`);
       await enqueue(tx, 'purge', row.id, { framesOnly: true });
     }
     return rows.map((r) => r.id);

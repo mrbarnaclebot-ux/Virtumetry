@@ -21,9 +21,9 @@ describe('isWorldReapable', () => {
   it('reaps only uploading worlds older than 24h', () => {
     expect(isWorldReapable(w('uploading', hoursAgo(25)), now)).toBe(true);
     expect(isWorldReapable(w('uploading', hoursAgo(23)), now)).toBe(false); // too young
-    expect(isWorldReapable(w('uploaded', hoursAgo(25)), now)).toBe(false); // wrong status
-    expect(isWorldReapable(w('complete', hoursAgo(48)), now)).toBe(false);
-    expect(isWorldReapable(w('failed_upload', hoursAgo(48)), now)).toBe(false); // already reaped
+    expect(isWorldReapable(w('packing', hoursAgo(25)), now)).toBe(false); // wrong status
+    expect(isWorldReapable(w('ready', hoursAgo(48)), now)).toBe(false);
+    expect(isWorldReapable(w('failed', hoursAgo(48)), now)).toBe(false); // already reaped
   });
 
   it('threshold matches the exported constant (24h)', () => {
@@ -68,7 +68,7 @@ function makeReaperDb(reapedIds: string[], sink: ReapSink) {
 }
 
 describe('reapStaleUploads', () => {
-  it('flips reaped worlds to failed_upload (progress cleared, row kept) and enqueues a frames-only purge each', async () => {
+  it('flips reaped worlds to failed/upload (progress cleared, row kept) and enqueues a frames-only purge each', async () => {
     const sink: ReapSink = { updates: [], inserts: [] };
     const db = makeReaperDb(['w-1', 'w-2'], sink);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -79,7 +79,9 @@ describe('reapStaleUploads', () => {
     expect(sink.updates).toHaveLength(1);
     const patch = sink.updates[0]!.patch;
     expect(sink.updates[0]!.table).toBe(worlds);
-    expect(patch['status']).toBe('failed_upload');
+    expect(patch['status']).toBe('failed');
+    expect(patch['failureStage']).toBe('upload');
+    expect(patch['failureCode']).toBe('UPLOAD_STALE');
     expect(patch['progress']).toBeNull();
     expect(patch['updatedAt']).toBeDefined(); // heartbeat touched
     // Keep the row: never a soft delete from the reaper.
@@ -116,9 +118,9 @@ describe('reapStaleUploads', () => {
 describe('serializeWorld progress + heartbeat', () => {
   const base: World = {
     id: 'w-1', ownerId: 'u-1', title: 'T', caption: null, lat: null, lng: null,
-    placeName: null, isPublic: false, status: 'uploaded', phase: null,
-    progress: 40, thumbnailUrl: null, spz100kUrl: null,
-    spz500kUrl: null, spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1,
+    placeName: null, isPublic: false, status: 'packing', phase: null,
+    progress: 40, splatKey: null, colliderKey: null,
+    floorplanKey: null, camerasKey: null, thumbnailKey: null, assetVersion: 1,
     provider: null,
     creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
@@ -133,7 +135,7 @@ describe('serializeWorld progress + heartbeat', () => {
   });
 
   it('progress serializes as null between phases', () => {
-    const out = serializeWorld({ ...base, progress: null, status: 'complete' });
+    const out = serializeWorld({ ...base, progress: null, status: 'ready' });
     expect(out['progress']).toBeNull();
     expect(out['heartbeat_at']).toBeInstanceOf(Date);
   });

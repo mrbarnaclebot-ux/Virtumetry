@@ -94,8 +94,8 @@ function fakeWorld(): World {
   return {
     id: 'w-1', ownerId: 'user-1', title: null, caption: null, lat: null, lng: null,
     placeName: null, isPublic: false, status: 'uploading', phase: null, progress: null,
-    thumbnailUrl: null, spz100kUrl: null, spz500kUrl: null,
-    spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1, provider: null,
+    splatKey: null, colliderKey: null, floorplanKey: null,
+    camerasKey: null, thumbnailKey: null, assetVersion: 1, provider: null,
     creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
     updatedAt: new Date('2026-07-12T10:00:00Z'), deletedAt: null,

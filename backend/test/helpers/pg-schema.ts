@@ -35,9 +35,9 @@ export async function createTestSchema(
       '"public".',
       `"${schemaName}".`,
     );
-    for (const stmt of ddl.split('--> statement-breakpoint')) {
-      if (stmt.trim()) await pool.query(stmt);
-    }
+    // `--> statement-breakpoint` is a SQL comment, so one multi-statement
+    // simple query per file (one round trip, not one per statement).
+    await pool.query(ddl);
   }
 
   const db = drizzle(pool, { schema }) as unknown as Db;

@@ -24,7 +24,7 @@ const WORLD_ID = '11111111-2222-3333-4444-555555555555';
 const world = {
   id: WORLD_ID,
   ownerId: 'user-1',
-  status: 'uploaded',
+  status: 'packing',
   deletedAt: null,
 } as unknown as World;
 

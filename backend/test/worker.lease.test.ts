@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
-import { clearProviderOperationId, heartbeatJob } from '../src/queue.js';
+import { heartbeatJob } from '../src/queue.js';
 import {
   handleJobError,
   reapExhaustedJobs,
@@ -53,39 +53,6 @@ describe('heartbeatJob', () => {
       execute: async () => ({ rows: [] }),
     } as unknown as Db;
     expect(await heartbeatJob(db, 'job-1', 'worker-A')).toBe(false);
-  });
-});
-
-// --- clearProviderOperationId SQL (spec §10 R1 unwind) -----------------------
-
-describe('clearProviderOperationId', () => {
-  const dialect = new PgDialect();
-
-  async function render(rows: unknown[]) {
-    let captured: SQL | undefined;
-    const db = {
-      execute: async (q: SQL) => {
-        captured = q;
-        return { rows };
-      },
-    } as unknown as Db;
-    const cleared = await clearProviderOperationId(db, 'job-1', 'pending:job-1');
-    return { cleared, ...dialect.sqlToQuery(captured!) };
-  }
-
-  it('nulls the column only while it still holds THIS job’s marker', async () => {
-    const { cleared, sql: text, params } = await render([{ id: 'job-1' }]);
-    expect(cleared).toBe(true);
-    expect(text).toContain('provider_operation_id = NULL');
-    // Conditional: a concurrent worker's real operation id must never be wiped.
-    expect(text).toMatch(/provider_operation_id = \$\d+/);
-    expect(text).toContain('RETURNING id');
-    expect(params).toEqual(['job-1', 'pending:job-1']);
-  });
-
-  it('reports false when the marker was already replaced', async () => {
-    const { cleared } = await render([]);
-    expect(cleared).toBe(false);
   });
 });
 
