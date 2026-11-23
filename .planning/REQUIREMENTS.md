@@ -1,0 +1,134 @@
+# Requirements: Virtumetry
+
+**Defined:** 2026-11-23
+**Core Value:** A walk-through scan of a real room comes back as a faithful, walkable 3D world, reliably, without wasting paid processing on bad captures.
+
+## v1 Requirements
+
+v1 = single room, owner-only testing, iPhone first. Each requirement maps to one roadmap phase.
+
+### Foundation & Isolation (FND)
+
+- [ ] **FND-01**: Backend runs from `backend/` in the monorepo as a copy of the VirtSpace backend with the stitcher, World Labs provider and depth pipeline removed, and its test suite passes in CI
+- [ ] **FND-02**: Backend uses its own new Neon database, Railway project and separate dev/prod R2 buckets; no config path can reach VirtSpace production
+- [ ] **FND-03**: Backend refuses to start the paid Echo-3 provider unless `ALLOW_PAID_PROVIDER=1` is set, and refuses dev-token auth in production
+- [ ] **FND-04**: Database migrations run automatically on deploy over the direct (non-pooler) Neon host
+- [ ] **FND-05**: App and backend lint, typecheck and tests run on every push in GitHub Actions (not EAS CI minutes)
+
+### Account (AUTH)
+
+- [ ] **AUTH-01**: Owner can log in with email and password; sign-up is disabled and only allowlisted emails can log in
+- [ ] **AUTH-02**: Owner stays logged in across app restarts (session stored in SecureStore)
+- [ ] **AUTH-03**: Owner can log out from Settings
+- [ ] **AUTH-04**: Owner can sign in with Apple (added once the native dev build exists)
+- [ ] **AUTH-05**: Every scan and world belongs to one account; no shared or anonymous library
+
+### Capture (CAP)
+
+- [ ] **CAP-01**: Owner sees a short prep checklist (lights on, doors open, avoid mirrors) and camera-permission priming before the first scan
+- [ ] **CAP-02**: Owner can scan a room by walking it with the iPhone camera; the app keeps only Echo-3-ready keyframes (≥0.12 s and ≥7 cm or 10° apart, predicted blur ≤64 px, 1920x1440, no resize/rotation)
+- [ ] **CAP-03**: Owner gets one live coaching prompt at a time (slow down, more light, look at the floor/ceiling line, turn around)
+- [ ] **CAP-04**: When ARKit tracking is lost, capture pauses automatically, tells the owner how to recover, and resumes only after tracking has been normal for a short warm-up
+- [ ] **CAP-05**: Owner sees a readiness meter (green/amber/red) combining frame count, coverage, blur and tracking quality, with thresholds that can be tuned without an app build
+- [ ] **CAP-06**: Owner sees a live cost meter showing the current Echo-3 cost (900 + frames credits, in $) while scanning
+- [ ] **CAP-07**: Owner sees a top-down coverage mini-map of the path walked and directions looked
+- [ ] **CAP-08**: Capture enforces Echo-3 min/max frame limits and warns about heat or low storage before and during a scan
+- [ ] **CAP-09**: A finished scan is saved on the phone first; owner can review it (frame count, duration, cost, readiness) and choose upload or discard
+- [ ] **CAP-10**: In Expo Go and tests, a fixture capture source replays a recorded scan through the same interface as the native module
+
+### Upload & Processing (PROC)
+
+- [ ] **PROC-01**: Before spending credits the app runs pre-upload checks (frame count, blur, coverage, tracking gaps) and the backend re-runs the same rules plus semantic checks (pose continuity, forward vector vs motion, intrinsics vs image size)
+- [ ] **PROC-02**: Owner sees the Echo-3 cost quote and must explicitly approve it before processing starts
+- [ ] **PROC-03**: Uploads continue while the phone is locked or the app is suspended or terminated by iOS, and after a force-quit they resume on next launch by re-sending only the frames the server reports missing
+- [ ] **PROC-04**: Backend converts ARKit poses to OpenCV `camera_from_world`, writes intrinsics and EXIF timestamps, and packs a valid Echo-3 capture-bundle ZIP on R2 with a Range-capable presigned URL valid ≥24 h
+- [ ] **PROC-05**: Backend submits to Echo-3 at most once per approved scan: idempotency key and exact request body are saved before the call; a retry after failure needs a new explicit owner approval
+- [ ] **PROC-06**: Backend tracks status via signed webhooks (HMAC verified, deduplicated on `delivery_id`) with a polling fallback; webhooks only nudge the tracker
+- [ ] **PROC-07**: When processing finishes, backend copies all outputs (SPZ/SOG splat, `mesh-simplified`, floor plan + affine, `cameras.json`) into our own storage before marking the world ready
+- [ ] **PROC-08**: Backend enforces a hard credit budget (per day and per month) with an atomic reservation; a scan over budget is refused before any spend
+- [ ] **PROC-09**: Owner gets a push notification when a world is ready or failed
+- [ ] **PROC-10**: A mock provider (including scripted failures: FAILED, 402, 409, 429, 503, duplicate webhooks) is the default everywhere except an explicitly enabled live mode
+
+### Library (LIB)
+
+- [ ] **LIB-01**: Owner sees all scans with clear states: saved on phone, uploading (with progress), processing (with estimate), ready, failed
+- [ ] **LIB-02**: Owner can retry a failed scan only when the failure is retryable, after re-confirming the cost
+- [ ] **LIB-03**: Owner can rename and delete a scan; deleting removes it from our database and storage and requests deletion at SpAItial
+
+### Viewer (VIEW)
+
+- [ ] **VIEW-01**: Owner can open a ready world and orbit it smoothly on iPhone 17 Pro (level-of-detail splat budget, honest loading progress)
+- [ ] **VIEW-02**: The world opens from a sensible start viewpoint, and the owner can reset the view
+- [ ] **VIEW-03**: Owner can switch to walk mode and move first-person with collision against the Echo-3 collider mesh
+- [ ] **VIEW-04**: Owner can open the floor plan, see "you are here", and tap a spot to teleport there
+- [ ] **VIEW-05**: Owner can measure the distance between two tapped points, labelled as approximate
+- [ ] **VIEW-06**: The viewer recovers automatically if the WebView or WebGL context crashes
+
+### Sharing (SHARE)
+
+- [ ] **SHARE-01**: Owner can create a public link (unguessable slug) that opens the world in any browser using the same viewer
+- [ ] **SHARE-02**: Owner can revoke a link and it stops working immediately
+- [ ] **SHARE-03**: Shared links show a preview (thumbnail + title) when pasted into messaging apps, and are `noindex`
+- [ ] **SHARE-04**: Owner can optionally protect a link with a password
+- [ ] **SHARE-05**: Owner can see how many times each link was opened
+
+### Native Build & Privacy (OPS)
+
+- [ ] **OPS-01**: A macOS GitHub Actions job runs `expo prebuild` and an unsigned `xcodebuild` so Swift compile errors are caught before any EAS build
+- [ ] **OPS-02**: EAS dev/preview profiles use a fingerprint runtime policy so JS-only changes ship by EAS Update, and native changes are batched (target ≤5 iOS builds for the capture phase)
+- [ ] **OPS-03**: Raw frames and bundles follow a written retention policy enforced by R2 lifecycle rules and a purge job
+- [ ] **OPS-04**: The app shows a versioned consent screen naming SpAItial as processor before the first upload, and ships a correct privacy manifest
+- [ ] **OPS-05**: Crash and error reporting is wired for app and backend
+- [ ] **OPS-06**: The owner is alerted when spend reaches a set share of the budget
+
+## v2 Requirements
+
+Deferred. Tracked, not in the current roadmap.
+
+### Whole house
+- **HOUSE-01**: Merge up to 8 room scans into one property (Echo-3 `zips[]`) with a floor switcher
+- **HOUSE-02**: Labelled floor plan with room names and dimensions
+- **HOUSE-03**: Dollhouse overview
+
+### Marketplace
+- **MKT-01**: Listings (address, price, details, photos, 3D tour) on a public web marketplace
+- **MKT-02**: Broker accounts and organisations; buyer/renter accounts
+- **MKT-03**: Embed code and MLS-compliant unbranded tour links
+- **MKT-04**: Hotspots and privacy redaction before publishing
+- **MKT-05**: Search and discovery
+
+### Platform & business
+- **PLAT-01**: Android capture with ARCore
+- **PLAT-02**: Payments / broker pricing (per scan or subscription)
+- **PLAT-03**: Self-hosted reconstruction provider (gsplat/Brush on GPU) behind the provider interface
+- **PLAT-04**: Auto room dimensions, threshold-tuning UI, dense live mesh preview
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Generative fill / virtual staging | Listings must be faithful; generated content misleads buyers |
+| Square-footage / GLA claims | Liability on listings; measurements stay "approximate" |
+| Exporting splat/mesh files | Echo-3 Standard plan outputs are non-commercial; revisit on Pro |
+| Importing videos/photos from other cameras | Echo-3 needs posed keyframes with intrinsics from our capture |
+| Automatic retry of paid jobs | Double-charge risk; retries always need owner approval |
+| "Paint every surface" coverage UI | Echo-3 fills gaps; aim for "good enough", not exhaustive |
+| Public gallery / social feed | Not part of the listings goal |
+| World Labs Marble / pano stitching | Generative, not faithful (VirtSpace research) |
+| Reverse-engineering SpAItial | ToS; model is server-side |
+| Public sign-up / App Store release | v1 is owner-only testing |
+
+## Traceability
+
+Filled by the roadmap.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+
+**Coverage:**
+- v1 requirements: 50 total
+- Mapped to phases: 0 (pending roadmap)
+
+---
+*Requirements defined: 2026-11-23*
+*Last updated: 2026-11-23 after initial definition*

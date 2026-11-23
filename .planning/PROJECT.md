@@ -19,7 +19,7 @@ A walk-through scan of a real room comes back as a faithful, walkable 3D world, 
 - [ ] Owner can scan a room on iPhone by walking it with the camera, with live guidance on what is covered and when the scan is good enough
 - [ ] The app captures Echo-3-ready keyframes: sharp JPEGs (long edge ≤1920), per-frame intrinsics, ARKit camera poses, motion-gated (≥0.12 s, ≥7 cm / 10°)
 - [ ] The app checks a scan before upload (frame count, blur, coverage) and shows the processing cost quote before spending credits
-- [ ] Scans upload reliably in the background and survive app kill / phone lock
+- [ ] Scans upload reliably: survive phone lock, suspension and iOS termination, and resume after force-quit by re-sending only frames the server reports missing
 - [ ] Backend packs the bundle ZIP, hosts it on R2, submits it to Echo-3 with an idempotency key, tracks status via webhook + polling, and re-hosts the outputs
 - [ ] Owner can walk the finished room in the app (splat viewer, smooth on iPhone 17 Pro, collider-based walk mode)
 - [ ] Owner can see the auto floor plan and measure distances in the room
