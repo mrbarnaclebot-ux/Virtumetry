@@ -88,19 +88,15 @@ describe.skipIf(!url)('queue against real Postgres', () => {
     }
   });
 
-  it('enqueue → claim (multiple kinds) → complete round-trips', async () => {
-    const stitchId = await enqueue(db, 'stitch', worldId);
-    const draftId = await enqueue(db, 'generate_draft', worldId, { note: 'p' });
-    expect(stitchId).toBeTruthy();
+  it('enqueue → claim (two jobs) → complete round-trips', async () => {
+    const firstId = await enqueue(db, 'purge', worldId);
+    const secondId = await enqueue(db, 'purge', worldId, { note: 'p' });
+    expect(firstId).toBeTruthy();
 
-    // Multi-kind claim — this exact statement failed in prod with ANY(tuple).
-    const first = await claimNextJob(
-      db,
-      ['stitch', 'generate_draft', 'generate_hq', 'purge'],
-      'worker-A',
-    );
+    // IN-list claim — the ANY(tuple) form of this statement failed in prod.
+    const first = await claimNextJob(db, ['purge'], 'worker-A');
     expect(first).not.toBeNull();
-    expect(['stitch', 'generate_draft']).toContain(first!.kind);
+    expect(first!.kind).toBe('purge');
     expect(first!.worldId).toBe(worldId); // snake_case → camelCase mapping.
     expect(first!.phase).toBe('running');
     expect(first!.attempts).toBe(1);
@@ -108,11 +104,11 @@ describe.skipIf(!url)('queue against real Postgres', () => {
     expect(first!.lockedAt).toBeInstanceOf(Date);
 
     // Second claim gets the other job; third finds an empty queue.
-    const second = await claimNextJob(db, ['stitch', 'generate_draft'], 'worker-B');
+    const second = await claimNextJob(db, ['purge'], 'worker-B');
     expect(second).not.toBeNull();
     expect(second!.id).not.toBe(first!.id);
-    expect([first!.id, second!.id].sort()).toEqual([stitchId, draftId].sort());
-    expect(await claimNextJob(db, ['stitch', 'generate_draft'], 'worker-C')).toBeNull();
+    expect([first!.id, second!.id].sort()).toEqual([firstId, secondId].sort());
+    expect(await claimNextJob(db, ['purge'], 'worker-C')).toBeNull();
 
     // Complete both: phase done, lease released, no longer claimable.
     await completeJob(db, first!.id);
@@ -121,12 +117,12 @@ describe.skipIf(!url)('queue against real Postgres', () => {
       first!.id,
     ]);
     expect(done.rows[0]).toEqual({ phase: 'done', locked_at: null, locked_by: null });
-    expect(await claimNextJob(db, ['stitch', 'generate_draft'], 'worker-D')).toBeNull();
+    expect(await claimNextJob(db, ['purge'], 'worker-D')).toBeNull();
   });
 
   it('failJob schedules a backoff retry that becomes claimable when run_after passes', async () => {
-    const jobId = await enqueue(db, 'generate_hq', worldId);
-    const claimed = await claimNextJob(db, ['generate_hq'], 'worker-A');
+    const jobId = await enqueue(db, 'purge', worldId);
+    const claimed = await claimNextJob(db, ['purge'], 'worker-A');
     expect(claimed!.id).toBe(jobId);
 
     await failJob(db, jobId, 'provider hiccup');
@@ -138,21 +134,21 @@ describe.skipIf(!url)('queue against real Postgres', () => {
     expect(row.rows[0].last_error).toBe('provider hiccup');
     expect(row.rows[0].locked_at).toBeNull();
     expect(row.rows[0].deferred).toBe(true); // inside the backoff window…
-    expect(await claimNextJob(db, ['generate_hq'], 'worker-A')).toBeNull();
+    expect(await claimNextJob(db, ['purge'], 'worker-A')).toBeNull();
 
     // …until run_after passes, then it is claimable again (attempts grows).
     await pool.query("UPDATE jobs SET run_after = now() - interval '1 second' WHERE id = $1", [
       jobId,
     ]);
-    const reclaimed = await claimNextJob(db, ['generate_hq'], 'worker-B');
+    const reclaimed = await claimNextJob(db, ['purge'], 'worker-B');
     expect(reclaimed!.id).toBe(jobId);
     expect(reclaimed!.attempts).toBe(2);
     await completeJob(db, jobId);
   });
 
   it('failJob reports dead once a job exhausts MAX_ATTEMPTS (5)', async () => {
-    const jobId = await enqueue(db, 'stitch', worldId);
-    await claimNextJob(db, ['stitch'], 'worker-A'); // attempts = 1
+    const jobId = await enqueue(db, 'purge', worldId);
+    await claimNextJob(db, ['purge'], 'worker-A'); // attempts = 1
     expect(await failJob(db, jobId, 'first')).toBe('queued');
 
     // Jump to the 5th claim: attempts = 4 here, the claim makes it 5.
@@ -160,10 +156,10 @@ describe.skipIf(!url)('queue against real Postgres', () => {
       "UPDATE jobs SET attempts = 4, run_after = now() - interval '1 second' WHERE id = $1",
       [jobId],
     );
-    const fifth = await claimNextJob(db, ['stitch'], 'worker-A');
+    const fifth = await claimNextJob(db, ['purge'], 'worker-A');
     expect(fifth!.attempts).toBe(5);
     expect(await failJob(db, jobId, 'fifth')).toBe('dead');
-    expect(await claimNextJob(db, ['stitch'], 'worker-A')).toBeNull();
+    expect(await claimNextJob(db, ['purge'], 'worker-A')).toBeNull();
   });
 
   it('lease expiry: a crashed worker\'s job is re-claimable after LEASE_SECONDS', async () => {
@@ -190,8 +186,8 @@ describe.skipIf(!url)('queue against real Postgres', () => {
   // spec §10 R6 — a long phase must be able to hold its lease open, and a worker
   // that lost the lease must find out instead of finalizing behind the new owner.
   it('heartbeatJob keeps a live job un-claimable past LEASE_SECONDS', async () => {
-    const jobId = await enqueue(db, 'generate_draft', worldId);
-    const claimed = await claimNextJob(db, ['generate_draft'], 'worker-live');
+    const jobId = await enqueue(db, 'purge', worldId);
+    const claimed = await claimNextJob(db, ['purge'], 'worker-live');
     expect(claimed!.id).toBe(jobId);
 
     // Age the lease past expiry — without a heartbeat this job is up for grabs.
@@ -202,20 +198,20 @@ describe.skipIf(!url)('queue against real Postgres', () => {
     expect(await heartbeatJob(db, jobId, 'worker-live')).toBe(true);
 
     // The refreshed lease blocks the re-claim the stale one would have allowed.
-    expect(await claimNextJob(db, ['generate_draft'], 'worker-thief')).toBeNull();
+    expect(await claimNextJob(db, ['purge'], 'worker-thief')).toBeNull();
     await completeJob(db, jobId);
   });
 
   it('heartbeatJob reports the lease LOST to a worker that no longer holds it', async () => {
-    const jobId = await enqueue(db, 'generate_hq', worldId);
-    await claimNextJob(db, ['generate_hq'], 'worker-old');
+    const jobId = await enqueue(db, 'purge', worldId);
+    await claimNextJob(db, ['purge'], 'worker-old');
 
     // Someone else re-claims after the lease expires (crash recovery).
     await pool.query(
       `UPDATE jobs SET locked_at = now() - ($1 + 1) * interval '1 second' WHERE id = $2`,
       [LEASE_SECONDS, jobId],
     );
-    const rescued = await claimNextJob(db, ['generate_hq'], 'worker-new');
+    const rescued = await claimNextJob(db, ['purge'], 'worker-new');
     expect(rescued!.lockedBy).toBe('worker-new');
 
     expect(await heartbeatJob(db, jobId, 'worker-old')).toBe(false);

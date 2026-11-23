@@ -29,7 +29,7 @@ function fakeWorld(overrides: Partial<World> = {}): World {
     clientRequestId: null,
     thumbnailUrl: null, spz100kUrl: null, spz500kUrl: null,
     spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1, provider: null,
-    draftWorldId: null, hqWorldId: null, draftModel: null, hqModel: null, creditsSpent: 0,
+    creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
     updatedAt: new Date('2026-07-12T10:00:00Z'), deletedAt: null,
     ...overrides,

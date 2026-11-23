@@ -21,8 +21,8 @@ describe('isWorldReapable', () => {
   it('reaps only uploading worlds older than 24h', () => {
     expect(isWorldReapable(w('uploading', hoursAgo(25)), now)).toBe(true);
     expect(isWorldReapable(w('uploading', hoursAgo(23)), now)).toBe(false); // too young
-    expect(isWorldReapable(w('processing', hoursAgo(25)), now)).toBe(false); // wrong status
-    expect(isWorldReapable(w('draft_ready', hoursAgo(48)), now)).toBe(false);
+    expect(isWorldReapable(w('uploaded', hoursAgo(25)), now)).toBe(false); // wrong status
+    expect(isWorldReapable(w('complete', hoursAgo(48)), now)).toBe(false);
     expect(isWorldReapable(w('failed_upload', hoursAgo(48)), now)).toBe(false); // already reaped
   });
 
@@ -116,11 +116,11 @@ describe('reapStaleUploads', () => {
 describe('serializeWorld progress + heartbeat', () => {
   const base: World = {
     id: 'w-1', ownerId: 'u-1', title: 'T', caption: null, lat: null, lng: null,
-    placeName: null, isPublic: false, status: 'processing', phase: null,
+    placeName: null, isPublic: false, status: 'uploaded', phase: null,
     progress: 40, thumbnailUrl: null, spz100kUrl: null,
     spz500kUrl: null, spzFullUrl: null, colliderGlbUrl: null, assetVersion: 1,
-    provider: null, draftWorldId: null, hqWorldId: null, draftModel: null,
-    hqModel: null, creditsSpent: 0,
+    provider: null,
+    creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
     updatedAt: new Date('2026-07-12T10:05:00Z'),
     deletedAt: null,
@@ -133,7 +133,7 @@ describe('serializeWorld progress + heartbeat', () => {
   });
 
   it('progress serializes as null between phases', () => {
-    const out = serializeWorld({ ...base, progress: null, status: 'draft_ready' });
+    const out = serializeWorld({ ...base, progress: null, status: 'complete' });
     expect(out['progress']).toBeNull();
     expect(out['heartbeat_at']).toBeInstanceOf(Date);
   });

@@ -17,10 +17,9 @@ function fakeWorld(overrides: Partial<World> = {}): World {
     lng: null,
     placeName: null,
     isPublic: false,
-    status: 'draft_ready',
+    status: 'complete',
     phase: null,
     progress: null,
-    panoUrl: null,
     thumbnailUrl: null,
     spz100kUrl: null,
     spz500kUrl: null,
@@ -28,10 +27,6 @@ function fakeWorld(overrides: Partial<World> = {}): World {
     colliderGlbUrl: null,
     assetVersion: 1,
     provider: null,
-    draftWorldId: null,
-    hqWorldId: null,
-    draftModel: null,
-    hqModel: null,
     creditsSpent: 0,
     createdAt: new Date('2026-07-12T10:00:00Z'),
     updatedAt: new Date('2026-07-12T11:00:00Z'),
@@ -67,7 +62,7 @@ describe('serializeWorldListItem', () => {
     // serializeWorld fields ride along unchanged.
     expect(item.id).toBe('w-1');
     expect(item.title).toBe('Kloofendal');
-    expect(item.status).toBe('draft_ready');
+    expect(item.status).toBe('complete');
   });
 
   it('has an empty assets object (no thumbnail_url key) when unset', async () => {
@@ -84,7 +79,6 @@ describe('serializeWorldListItem', () => {
     const item = await serializeWorldListItem(
       fakeWorld({
         thumbnailUrl: 'worlds/w-1/thumbnail.jpg',
-        panoUrl: 'worlds/w-1/pano.jpg',
         spz100kUrl: 'worlds/w-1/splat_100k.spz',
         spz500kUrl: 'worlds/w-1/splat_500k.spz',
         spzFullUrl: 'worlds/w-1/splat_full.spz',

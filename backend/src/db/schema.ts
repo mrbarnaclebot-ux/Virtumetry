@@ -16,26 +16,19 @@ import {
 // minted at read time. Timestamps are timestamptz; UUID PKs default to random.
 
 // --- World status state machine (spec §7) -----------------------------------
-// capturing → uploading → stitching → generating_draft → draft_ready
-//   → (enhance) generating_hq → complete
-// plus failed_<phase> variants that are retryable.
+// capturing → uploading → uploaded (Phase 1 terminal; processing states are
+// defined in Phase 2) → complete, plus failed_upload.
 export const WORLD_STATUSES = [
   'capturing',
   'uploading',
-  'stitching',
-  'generating_draft',
-  'draft_ready',
-  'generating_hq',
+  'uploaded',
   'complete',
   'failed_upload',
-  'failed_stitch',
-  'failed_generating_draft',
-  'failed_generating_hq',
 ] as const;
 export type WorldStatus = (typeof WORLD_STATUSES)[number];
 
 // Job queue kinds + phases (spec §7 / §14).
-export const JOB_KINDS = ['stitch', 'generate_draft', 'generate_hq', 'purge'] as const;
+export const JOB_KINDS = ['purge'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 // A job's phase tracks lifecycle within the queue: queued → running → done,
@@ -80,12 +73,11 @@ export const worlds = pgTable(
     status: text('status').notNull().default('capturing'),
     phase: text('phase'),
     // Within-status completion, 0–100. Written (throttled) by the worker while
-    // stitching/generating; reset to NULL on every status transition so a
+    // processing; reset to NULL on every status transition so a
     // stale percentage never bleeds into the next phase.
     progress: smallint('progress'),
 
     // Asset columns — all point at OUR storage (never the provider CDN).
-    panoUrl: text('pano_url'),
     thumbnailUrl: text('thumbnail_url'),
     spz100kUrl: text('spz_100k_url'),
     spz500kUrl: text('spz_500k_url'),
@@ -93,12 +85,7 @@ export const worlds = pgTable(
     colliderGlbUrl: text('collider_glb_url'),
     assetVersion: integer('asset_version').notNull().default(1),
 
-    // Provider columns — draft-first means up to two provider worlds each.
     provider: text('provider'),
-    draftWorldId: text('draft_world_id'),
-    hqWorldId: text('hq_world_id'),
-    draftModel: text('draft_model'),
-    hqModel: text('hq_model'),
     creditsSpent: integer('credits_spent').notNull().default(0),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

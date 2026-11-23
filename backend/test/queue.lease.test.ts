@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 import {
@@ -97,26 +98,14 @@ describe('claimNextJob generated SQL', () => {
   }
 
   it('binds kinds as an IN list of parameters, not ANY(tuple)', async () => {
-    const { sql: text, params } = await renderClaimSql([
-      'stitch',
-      'generate_draft',
-      'generate_hq',
-      'purge',
-    ]);
+    const { sql: text, params } = await renderClaimSql(['purge']);
     expect(text).not.toMatch(/ANY\s*\(\(/i); // the exact production failure.
-    expect(text).toMatch(/kind IN \(\$\d+, \$\d+, \$\d+, \$\d+\)/);
+    expect(text).toMatch(/kind IN \(\$\d+\)/);
     // Values are bound parameters (workerId, kinds, LEASE_SECONDS, MAX_ATTEMPTS)
     // — never interpolated.
-    expect(params).toEqual([
-      'worker-1',
-      'stitch',
-      'generate_draft',
-      'generate_hq',
-      'purge',
-      LEASE_SECONDS,
-      MAX_ATTEMPTS,
-    ]);
-    expect(text).not.toContain("'stitch'");
+    expect(params).toEqual(['worker-1', 'purge', LEASE_SECONDS, MAX_ATTEMPTS]);
+    // No kind literal is ever interpolated into the SQL.
+    expect(text).not.toMatch(/'(purge|stitch|generate_\w+)'/);
     // Lease expiry + backoff conditions present.
     expect(text).toContain('locked_at IS NULL OR locked_at <');
     expect(text).toContain('run_after <= now()');
@@ -139,6 +128,11 @@ describe('claimNextJob generated SQL', () => {
     } as unknown as Db;
     expect(await claimNextJob(fakeDb, [], 'w')).toBeNull();
   });
+
+  it('queue source carries no legacy World Labs / stitch job-kind literal (T-01-31)', () => {
+    const src = readFileSync(new URL('../src/queue.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/'(stitch|generate_\w+)'/);
+  });
 });
 
 describe('mapJobRow', () => {
@@ -147,7 +141,7 @@ describe('mapJobRow', () => {
     const mapped = mapJobRow({
       id: 'j1',
       world_id: 'w1',
-      kind: 'generate_draft',
+      kind: 'purge',
       phase: 'running',
       attempts: 2,
       last_error: null,
@@ -199,7 +193,7 @@ describe('mapJobRow', () => {
     const mapped = mapJobRow({
       id: 'j3',
       world_id: 'w3',
-      kind: 'stitch',
+      kind: 'purge',
       phase: 'queued',
       attempts: 0,
       last_error: null,
@@ -228,7 +222,7 @@ describe('parkExhaustedJobs (§10 R27)', () => {
         return {
           rows: [
             {
-              id: 'j1', world_id: 'w1', kind: 'stitch', phase: 'dead', attempts: 5,
+              id: 'j1', world_id: 'w1', kind: 'purge', phase: 'dead', attempts: 5,
               last_error: 'x', payload: null, provider_operation_id: null,
               run_after: now, locked_at: null, locked_by: null, created_at: now, updated_at: now,
             },
@@ -237,18 +231,18 @@ describe('parkExhaustedJobs (§10 R27)', () => {
       },
     } as unknown as Db;
 
-    const parked = await parkExhaustedJobs(fakeDb, ['stitch', 'purge']);
+    const parked = await parkExhaustedJobs(fakeDb, ['purge']);
 
-    expect(parked.map((j) => [j.id, j.worldId, j.kind])).toEqual([['j1', 'w1', 'stitch']]);
+    expect(parked.map((j) => [j.id, j.worldId, j.kind])).toEqual([['j1', 'w1', 'purge']]);
     const { sql: text, params } = dialect.sqlToQuery(captured!);
     expect(text).toContain("SET phase = 'dead'");
-    expect(text).toMatch(/kind IN \(\$\d+, \$\d+\)/);
+    expect(text).toMatch(/kind IN \(\$\d+\)/);
     expect(text).toContain("phase IN ('queued', 'running')");
     expect(text).toMatch(/attempts >= \$\d+/);
     // Same lease test as claim: a live 5th attempt (fresh lease) is left alone.
     expect(text).toContain('locked_at IS NULL OR locked_at <');
     expect(text).toContain('RETURNING *');
-    expect(params).toEqual(expect.arrayContaining(['stitch', 'purge', MAX_ATTEMPTS, LEASE_SECONDS]));
+    expect(params).toEqual(expect.arrayContaining(['purge', MAX_ATTEMPTS, LEASE_SECONDS]));
   });
 
   it('no kinds → no SQL', async () => {
