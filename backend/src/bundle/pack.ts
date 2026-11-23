@@ -18,7 +18,16 @@ export class BundleInvalidError extends Error {
 
 const pad6 = (i: number) => String(i).padStart(6, '0');
 
-async function readManifest(storage: StorageDriver, cid: string): Promise<{ session: Session; frames: FrameLine[] }> {
+async function readManifest(
+  storage: StorageDriver,
+  cid: string,
+  listed: Map<string, number>,
+): Promise<{ session: Session; frames: FrameLine[] }> {
+  // Absent from the listing = never uploaded: a validate failure, not a retry (WR-03).
+  const missing = ['session.json', 'frames.jsonl'].filter((k) => !listed.has(k));
+  if (missing.length) {
+    throw new BundleInvalidError([{ code: 'MANIFEST_MISSING', message: `${missing.join(', ')} not uploaded` }]);
+  }
   const [sessionBuf, framesBuf] = await Promise.all([
     storage.getObject(captureKey(cid, 'session.json')),
     storage.getObject(captureKey(cid, 'frames.jsonl')),
@@ -35,9 +44,10 @@ export async function packCapture(
   captureId: string,
   opts: { minFrames: number; maxFrames: number; onProgress?: () => Promise<void> },
 ): Promise<{ bundleKey: string; bundleBytes: number; manifestKey: string; frameCount: number; imageW: number; imageH: number }> {
-  const { session, frames } = await readManifest(storage, captureId);
   const prefix = captureKey(captureId, '');
-  const objects = (await storage.list(captureKey(captureId, 'frames/'))).map((o) => ({ key: o.key.slice(prefix.length), size: o.size }));
+  const all = (await storage.list(prefix)).map((o) => ({ key: o.key.slice(prefix.length), size: o.size }));
+  const { session, frames } = await readManifest(storage, captureId, new Map(all.map((o) => [o.key, o.size])));
+  const objects = all.filter((o) => o.key.startsWith('frames/'));
   const issues = validateSession(session, frames, objects, opts);
   if (issues.length) throw new BundleInvalidError(issues);
   const sizes = new Map(objects.map((o) => [o.key, o.size]));

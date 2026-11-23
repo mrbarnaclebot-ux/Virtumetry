@@ -129,4 +129,13 @@ describe('packCapture (local driver)', () => {
     expect(err).toBeInstanceOf(BundleInvalidError);
     expect(err.issues[0].code).toBe('MANIFEST_INVALID');
   });
+
+  it('missing session.json → MANIFEST_MISSING (not a retryable ENOENT)', async () => {
+    const cid = randomUUID();
+    await upload(cid);
+    await storage.deleteObject(captureKey(cid, 'session.json'));
+    const err = await packCapture(storage, cid, OPTS).catch((e) => e);
+    expect(err).toBeInstanceOf(BundleInvalidError);
+    expect(err.issues[0].code).toBe('MANIFEST_MISSING');
+  });
 });

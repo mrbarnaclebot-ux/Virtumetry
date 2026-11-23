@@ -52,7 +52,7 @@ Never use `drizzle-kit push`.
 - `GET /healthz`
 - `POST /v1/worlds` (idempotent on `client_request_id`, daily scan quota)
 - `POST /v1/worlds/:id/uploads:refresh` (re-presign frame upload URLs)
-- `POST /v1/worlds/:id/frames:done`: flips `uploading` to `uploaded`, enqueues nothing yet
+- `POST /v1/worlds/:id/frames:done`: flips `uploading` to `packing` and enqueues `pack`. Known dead end until Phase 3 reshapes these routes: they still presign `frame_{i}.heic` and never upload `session.json`/`frames.jsonl` or set `approved_max_credits`, so such a world fails as `validate/MANIFEST_MISSING` (0 credits). Phase 2 tests seed storage directly.
 - `GET /v1/worlds`, `GET /v1/worlds/:id`, `DELETE /v1/worlds/:id`
 - `GET /v1/me/quota`, `POST /v1/devices`, `DELETE /v1/account`
 
