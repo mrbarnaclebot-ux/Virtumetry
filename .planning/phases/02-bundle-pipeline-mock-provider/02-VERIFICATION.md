@@ -1,8 +1,8 @@
 ---
 phase: 02-bundle-pipeline-mock-provider
-verified: 2026-11-24T00:30:00Z
-status: gaps_found
-score: 5/5 roadmap criteria verified functionally; 1 CI-gate gap (vitest run exits 1)
+verified: 2026-11-24T00:40:00Z
+status: passed
+score: 5/5 roadmap criteria verified; CI-gate gap closed in re-verification
 overrides_applied: 0
 gaps:
   - truth: "The backend unit suite passes cleanly in CI (Phase 1 SC1 contract, relied on by every Phase 2 'automated tests' criterion)"
@@ -22,7 +22,7 @@ human_verification: []
 # Phase 2: Bundle Pipeline & Mock Provider Verification Report
 
 **Phase Goal:** The on-disk session format is fixed. A recorded session can be turned by the backend into a valid Echo-3 capture bundle and run end to end through the mock provider to a ready world with re-hosted outputs, without spending a credit.
-**Status:** gaps_found (one small, mechanical gap)
+**Status:** passed (gap closed, see Re-verification)
 **Re-verification:** No, initial verification
 
 ## Observable Truths (ROADMAP success criteria)
@@ -70,3 +70,13 @@ All five success criteria hold in the code and in the PG integration run. One bl
 
 _Verified: 2026-11-24_
 _Verifier: Claude (gsd-verifier)_
+
+
+## Re-verification
+
+**Date:** 2026-11-24 | **Scope:** the single CI-gate gap (`npx vitest run` exit 1).
+
+- **Fix (commit 5edcc30, `backend/src/storage/local.ts`):** `putStream` now does `body.on('error', () => undefined)` before the `mkdir().then(pipeline)` chain. Root cause: an abort before mkdir resolved destroyed the body while no 'error' listener existed, so Node raised an uncaught exception. The no-op listener only suppresses that uncaught emission.
+- **Does not mask failures:** `done` is still `mkdir(...).then(() => pipeline(body, createWriteStream(file)))`. `pipeline` rejects on an already-destroyed/errored source, and `abort()` still calls `body.destroy(err)`. Callers still see the rejection via `done`. Behavior is unchanged except that no unhandled event is emitted.
+- **Run:** `cd backend && npx tsc --noEmit && npx vitest run` gave tsc clean, 32 files passed / 7 skipped, 296 tests passed / 48 skipped, **exit=0**. A second run counted 0 occurrences of "unhandled" in the output.
+- **Result:** gap closed. No remaining gaps; Phase 2 goal achieved.
