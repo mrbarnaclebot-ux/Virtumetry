@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-11-23T17:25:54.071Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-11-23T17:32:39.420Z"
 last_activity: 2026-11-23
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 11
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 ## Current Position
 
 Phase: 2 (Bundle Pipeline & Mock Provider) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-11-23
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███████░░░] 71%
 
 *Updated after each plan completion*
 | Phase 2 P01 | 12min | 3 tasks | 52 files |
+| Phase 2 P04 | 6min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Phase 2]: 02-01: fixture is TUM fr3/nostructure_texture_far (CC BY 4.0), 30 frames, 1.65 MB
 - [Phase 2]: 02-01: fixture world up = TUM mocap +Z (image-down heuristic wrong for a downward-looking camera)
 - [Phase 2]: 02-01: backend/test/fixtures pinned to eol=lf in .gitattributes
+- [Phase 2]: 02-04: reserveCredits checks daily before monthly; one reservation per submission_key; release dated at its reservation
+- [Phase 2]: 02-04: mock 429/503 fire once per provider instance; bundle-check failures surface as FAILED+issues, never a thrown submit
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-23T17:25:54.062Z
-Stopped at: Phase 2 context gathered
+Last session: 2026-11-23T17:32:39.411Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
