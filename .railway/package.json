@@ -1,5 +1,5 @@
 {
-  "name": "virtspace-railway-iac",
+  "name": "virtumetry-railway-iac",
   "private": true,
   "description": "Railway Infrastructure as Code tooling only; not part of the app image.",
   "devDependencies": {
