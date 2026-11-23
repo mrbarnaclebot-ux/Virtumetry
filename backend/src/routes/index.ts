@@ -8,6 +8,7 @@ import { worldsRoutes } from './worlds.js';
 import { devicesRoutes } from './devices.js';
 import { accountRoutes } from './account.js';
 import { meRoutes } from './me.js';
+import { webhookRoutes } from './webhooks.js';
 import type { RouteDeps } from './deps.js';
 
 /**
@@ -57,6 +58,8 @@ export async function registerRoutes(
   // Unauthenticated: liveness + (dev-only) local storage.
   healthRoutes(app, { storage: deps.storage });
   registerDevStorageRoutes(app, deps.storage);
+  // Provider webhook: its HMAC is its auth, so it lives outside the authed scope.
+  await webhookRoutes(app, deps);
 
   // Failed-auth throttle, shared by every authenticated route. Auth failures
   // never reach the limiter above (the auth hook short-circuits first), and they
