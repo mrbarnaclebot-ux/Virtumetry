@@ -1,109 +1,82 @@
-// World-generation provider contract (spec §14).
-// Implementations: a live money-path provider (later phase) and mock.ts (offline,
-// zero-credit). The worker (src/worker.ts) only ever talks to this interface.
+import { createHmac } from 'node:crypto';
+import type { Readable } from 'node:stream';
+import { secretEquals } from '../auth.js';
 
-/** Supported Marble models and their credit cost (spec §2.1 / pricing). */
-export type WorldModel = 'marble-1.0-draft' | 'marble-1.1';
+// Reconstruction provider contract (D-11). Implementations: mock.ts (default,
+// zero-credit) and echo3.ts (Phase 6, money path). The pipeline jobs only ever
+// talk to this interface.
 
-export const MODEL_CREDITS: Record<WorldModel, number> = {
-  'marble-1.0-draft': 150,
-  'marble-1.1': 1500,
-};
-
-/** Pure credit lookup — exported for reuse + testing. */
-export function creditsForModel(model: WorldModel): number {
-  const credits = MODEL_CREDITS[model];
-  if (credits === undefined) {
-    throw new ProviderError(`unknown model: ${model}`);
-  }
-  return credits;
+export interface ProviderLimits {
+  minFrames: number;
+  maxFrames: number;
 }
 
-/** Result of GET /operations/{id} — normalized across provider quirks. */
-export interface OperationStatus {
-  done: boolean;
-  worldId?: string;
-  error?: string;
+export interface ProviderQuote {
+  credits: number;
+  available: number;
 }
 
-/**
- * Normalized world assets. All URLs point at the PROVIDER CDN; the worker
- * downloads them and re-hosts on our storage before exposing anything (spec
- * §14 "asset ownership"). spzUrls keys map to the provider's 100k/500k/full_res.
- */
-export interface WorldAssets {
-  spzUrls: { k100?: string; k500?: string; full?: string };
-  colliderMeshUrl?: string;
-  thumbnailUrl?: string;
-  caption?: string;
+export interface ProviderStatus {
+  /** PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED | unknown (open enum: unknown = keep polling). */
+  status: string;
+  /** 0..1, or null when the provider doesn't say. Never treat null as 0. */
+  progress: number | null;
+  error?: { code: string; message: string };
+  issues?: { code: string; message: string }[];
 }
 
-/**
- * A provider-side world found by reconciliation (spec §10 R1). Returned when a
- * worker resumes a job whose `provider_operation_id` is still the
- * `pending:<jobId>` intent marker and must find out whether its
- * credit-spending `worlds:generate` actually went through.
- */
-export interface WorldMatch {
-  /** The provider's world id. */
-  worldId: string;
-  /** The operation to resume polling on, when the provider still exposes one. */
-  operationId?: string;
-  /**
-   * Whether generation has finished. `false` means "exists but still running"
-   * (reconcile again later); `undefined` means the listing doesn't say, and the
-   * caller treats the world as adoptable.
-   */
-  done?: boolean;
+export type ExportKind = 'mesh-simplified' | 'floorplan';
+export type ArtifactKind = 'splat' | 'collider' | 'floorplan' | 'floorplan_meta' | 'cameras';
+
+export interface Artifact {
+  kind: ArtifactKind;
+  name: string;
+  contentType: string;
+  /** Provider-specific locator, resolved fresh by open(). */
+  ref: string;
 }
 
-export interface WorldGenProvider {
+export interface ReconProvider {
   readonly mode: 'mock' | 'live';
-  /** Upload the input image to the provider (FREE). Returns the media_asset_id. */
-  uploadImage(bytes: Buffer, filename: string): Promise<string>;
+  /** Frame-count limits (FREE). */
+  limits(): Promise<ProviderLimits>;
+  /** Credit quote for a capture of `frameCount` frames (FREE). */
+  quote(frameCount: number): Promise<ProviderQuote>;
   /**
-   * worlds:generate (SPENDS CREDITS). Returns the operation_id. MUST NOT be
-   * retried internally — a blind resubmit double-bills (spec §14).
+   * Submit a capture bundle (SPENDS CREDITS). `body` is the exact persisted JSON
+   * and `idempotencyKey` the persisted submission_key: a resubmit MUST reuse
+   * both. Never retried internally.
    */
-  generateWorld(
-    mediaAssetId: string,
-    model: WorldModel,
-    displayName: string,
-  ): Promise<string>;
-  /** Poll an operation (FREE). */
-  getOperation(operationId: string): Promise<OperationStatus>;
-  /**
-   * Reconciliation lookup (FREE): find a world this account already owns whose
-   * display name matches exactly. Used ONLY to resolve a `pending:<jobId>`
-   * intent marker — i.e. to learn whether a `worlds:generate` that we could not
-   * confirm actually spent credits (spec §10 R1). Returns null when no such
-   * world is listed. A thrown error means "could not determine" and MUST leave
-   * the money path untouched.
-   */
-  findWorldByDisplayName(displayName: string): Promise<WorldMatch | null>;
-  /** Fetch a finished world's asset URLs (FREE). */
-  getWorld(worldId: string): Promise<WorldAssets>;
-  /**
-   * Download an asset's bytes from a provider URL. Part of the interface (not
-   * in the original 5-method sketch) so mock mode can serve fixture bytes for
-   * an end-to-end offline run without a real HTTP fetch.
-   */
-  downloadAsset(url: string): Promise<Buffer>;
-  creditsForModel(model: WorldModel): number;
+  submit(body: string, idempotencyKey: string): Promise<{ requestId: string }>;
+  /** Poll a request (FREE). */
+  status(requestId: string): Promise<ProviderStatus>;
+  /** Start or poll an export (FREE). */
+  ensureExport(requestId: string, kind: ExportKind): Promise<'pending' | 'ready' | 'failed'>;
+  /** List a finished request's downloadable outputs (FREE). */
+  artifacts(requestId: string): Promise<Artifact[]>;
+  /** Stream one artifact's bytes (FREE download). */
+  open(artifact: Artifact): Promise<Readable>;
+  cancel(requestId: string): Promise<void>;
+  /** HMAC check over the exact raw body bytes. */
+  verifyWebhook(raw: Buffer, signatureHeader: string | undefined): boolean;
 }
 
-/** Typed provider failure. `retryable` distinguishes transient vs terminal. */
+/** Typed provider failure: HTTP status + provider error code + Retry-After. */
 export class ProviderError extends Error {
   readonly status?: number;
   readonly endpoint?: string;
+  readonly code?: string;
+  readonly retryAfterS?: number;
   constructor(
     message: string,
-    opts?: { status?: number; endpoint?: string; cause?: unknown },
+    opts?: { status?: number; endpoint?: string; code?: string; retryAfterS?: number; cause?: unknown },
   ) {
     super(message, opts?.cause !== undefined ? { cause: opts.cause } : undefined);
     this.name = 'ProviderError';
     this.status = opts?.status;
     this.endpoint = opts?.endpoint;
+    this.code = opts?.code;
+    this.retryAfterS = opts?.retryAfterS;
   }
 }
 
@@ -113,4 +86,19 @@ export class ProviderTimeoutError extends ProviderError {
     super(message, endpoint !== undefined ? { endpoint } : undefined);
     this.name = 'ProviderTimeoutError';
   }
+}
+
+/** `X-Spaitial-Signature` value: 'sha256=' + hex HMAC-SHA256 of the raw bytes. */
+export function signWebhook(secret: string, raw: Buffer): string {
+  return `sha256=${createHmac('sha256', secret).update(raw).digest('hex')}`;
+}
+
+/** Constant-time signature check. Unset secret or missing header → false (fail closed). */
+export function verifyWebhookSignature(
+  secret: string | undefined,
+  raw: Buffer,
+  header: string | undefined,
+): boolean {
+  if (!secret || typeof header !== 'string') return false;
+  return secretEquals(header, signWebhook(secret, raw));
 }
