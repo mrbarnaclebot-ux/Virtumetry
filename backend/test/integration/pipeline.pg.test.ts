@@ -63,4 +63,48 @@ describe.skipIf(!url)('pipeline end to end (mock provider, real Postgres)', () =
     }
     expect(jobs.find((j) => j.kind === 'track')!.attempts).toBeLessThanOrEqual(1);
   }, 30_000);
+
+  it('validate: a session missing a frame fails as failed/validate, 0 credits, 0 submits', async () => {
+    const submitsBefore = p.provider.calls.submit.length;
+    const { worldId } = await p.seedScan({ mutate: (f) => void f.delete('frames/000007.jpg') });
+    const w = await p.drain({ worldId });
+    expect(w.status).toBe('failed');
+    expect(w.failureStage).toBe('validate');
+    expect(w.failureCode).toBeTruthy();
+    expect(p.provider.calls.submit.length - submitsBefore).toBe(0);
+    expect(await ledger(worldId)).toEqual([]);
+  }, 30_000);
+
+  it('NOT_APPROVED: no approved ceiling is refused before any submit', async () => {
+    const submitsBefore = p.provider.calls.submit.length;
+    const { worldId } = await p.seedScan({ approvedMaxCredits: null });
+    const w = await p.drain({ worldId });
+    expect(w.status).toBe('failed');
+    expect(w.failureStage).toBe('submit');
+    expect(w.failureCode).toBe('NOT_APPROVED');
+    expect(p.provider.calls.submit.length - submitsBefore).toBe(0);
+    expect(await ledger(worldId)).toEqual([]);
+  }, 30_000);
+});
+
+describe.skipIf(!url)('pipeline budget refusal (real Postgres)', () => {
+  let p: Pipeline;
+  beforeAll(async () => {
+    p = await startPipeline({ daily: 100 });
+  }, 60_000);
+  afterAll(async () => {
+    await p?.close();
+  });
+
+  it('BUDGET_EXCEEDED: over the daily budget fails before any submit, nothing reserved', async () => {
+    const { worldId } = await p.seedScan();
+    const w = await p.drain({ worldId });
+    expect(w.status).toBe('failed');
+    expect(w.failureStage).toBe('submit');
+    expect(w.failureCode).toBe('BUDGET_EXCEEDED');
+    expect(w.failureMessage).toContain('daily');
+    expect(p.provider.calls.submit.length).toBe(0);
+    const rows = (await p.pool.query('SELECT 1 FROM credit_events WHERE world_id = $1', [worldId])).rows;
+    expect(rows).toEqual([]);
+  }, 30_000);
 });

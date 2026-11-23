@@ -14,18 +14,31 @@ import {
 } from './queue.js';
 import { createStorage, type StorageDriver } from './storage/index.js';
 import { sendPush, type SendPush } from './push.js';
+import { createProvider, type ReconProvider } from './provider/index.js';
+import { handlePack, handleSubmit, handleTrack } from './pipeline.js';
 
-// Worker loop. Entrypoint: `npm run worker`. Claims `purge` jobs only and runs
-// the two reapers (stale uploads, exhausted jobs). Reconstruction job kinds
-// arrive with the real provider in a later phase.
+// Worker loop. Entrypoint: `npm run worker`. Claims the pipeline jobs
+// (pack/submit/track, src/pipeline.ts) and purge, and runs the two reapers
+// (stale uploads, exhausted jobs).
 
-const WORKER_KINDS: JobKind[] = ['purge'];
+const WORKER_KINDS: JobKind[] = ['pack', 'submit', 'track', 'purge'];
 
 /** Errors that must NOT be retried — the job is parked dead immediately. */
 export class NonRetryableJobError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'NonRetryableJobError';
+  }
+}
+
+/** Retry later with an explicit delay (e.g. provider Retry-After), via failJob. */
+export class RetryLaterError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterS: number,
+  ) {
+    super(message);
+    this.name = 'RetryLaterError';
   }
 }
 
@@ -68,6 +81,7 @@ export interface WorkerDeps {
   storage: StorageDriver;
   config: Config;
   push: SendPush;
+  provider: ReconProvider;
   clock?: WorkerClock;
   /**
    * Identity of the worker processing the job (`hostname:pid`). Set by
@@ -115,6 +129,12 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
 
 export async function processJob(deps: WorkerDeps, job: Job): Promise<void> {
   switch (job.kind as JobKind) {
+    case 'pack':
+      return handlePack(deps, job);
+    case 'submit':
+      return handleSubmit(deps, job);
+    case 'track':
+      return handleTrack(deps, job);
     case 'purge':
       return handlePurge(deps, job);
     default:
@@ -136,6 +156,12 @@ export async function handleJobError(db: Db, job: Job, err: unknown): Promise<vo
   if (err instanceof NonRetryableJobError) {
     console.error(`[worker] job ${job.id} (${job.kind}) parked DEAD: ${message}`);
     await parkJobDead(db, job.id, message);
+    return;
+  }
+
+  if (err instanceof RetryLaterError) {
+    console.warn(`[worker] job ${job.id} (${job.kind}) retry in ${err.retryAfterS}s: ${message}`);
+    await failJob(db, job.id, message, err.retryAfterS);
     return;
   }
 
@@ -226,6 +252,24 @@ export function makeWorkerId(): string {
   return `${os.hostname()}:${process.pid}`;
 }
 
+/**
+ * Claim and run one job. Returns false when nothing was claimable. Claim
+ * errors propagate; job errors go through handleJobError.
+ */
+export async function runOneJob(rawDeps: WorkerDeps): Promise<boolean> {
+  const deps: WorkerDeps = { ...rawDeps, workerId: rawDeps.workerId ?? makeWorkerId() };
+  const job = await claimNextJob(deps.db, WORKER_KINDS, deps.workerId!);
+  if (!job) return false;
+  try {
+    await processJob(deps, job);
+  } catch (err) {
+    await handleJobError(deps.db, job, err).catch((e) =>
+      console.error(`[worker] error-handler failed: ${String(e)}`),
+    );
+  }
+  return true;
+}
+
 export interface WorkerHandle {
   stop(): void;
   done: Promise<void>;
@@ -261,25 +305,13 @@ export function startWorker(rawDeps: WorkerDeps): WorkerHandle {
           console.error(`[worker] reaper error (staying alive): ${String(err)}`);
         }
       }
-      let job: Job | null = null;
+      let ran = false;
       try {
-        job = await claimNextJob(deps.db, WORKER_KINDS, workerId);
+        ran = await runOneJob(deps);
       } catch (err) {
         console.error(`[worker] claim error (staying alive): ${String(err)}`);
-        await sleep(pollMs);
-        continue;
       }
-      if (!job) {
-        await sleep(pollMs);
-        continue;
-      }
-      try {
-        await processJob(deps, job);
-      } catch (err) {
-        await handleJobError(deps.db, job, err).catch((e) =>
-          console.error(`[worker] error-handler failed: ${String(e)}`),
-        );
-      }
+      if (!ran) await sleep(pollMs);
     }
     console.log(`[worker] ${workerId} stopped`);
   })();
@@ -294,6 +326,7 @@ async function main(): Promise<void> {
     storage: createStorage(config),
     config,
     push: sendPush,
+    provider: createProvider(config),
   };
   const handle = startWorker(deps);
 
