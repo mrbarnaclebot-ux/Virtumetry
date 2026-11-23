@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "coordinate_system": "spaitial-world-v1",
+  "projection": "orthographic_top_down",
+  "origin_xz": [
+    -1.6,
+    -1.6
+  ],
+  "image_x_axis_xz": [
+    1,
+    0
+  ],
+  "image_y_axis_xz": [
+    0,
+    1
+  ],
+  "extent_m": [
+    3.2,
+    3.2
+  ],
+  "cut_height_y": 1,
+  "scene_bounds": {
+    "min": [
+      -1.6,
+      0,
+      -1.6
+    ],
+    "max": [
+      1.6,
+      2.5,
+      1.6
+    ]
+  },
+  "image": {
+    "width_px": 64,
+    "height_px": 64,
+    "meters_per_pixel": 0.05,
+    "world_xz_from_pixel": [
+      [
+        0.05,
+        0,
+        -1.6
+      ],
+      [
+        0,
+        0.05,
+        -1.6
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ],
+    "pixel_from_world_xz": [
+      [
+        20,
+        0,
+        32
+      ],
+      [
+        0,
+        20,
+        32
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ],
+    "download_url": "floorplan.png"
+  },
+  "raw_image": null,
+  "generated_at": "2026-11-23T00:00:00Z"
+}

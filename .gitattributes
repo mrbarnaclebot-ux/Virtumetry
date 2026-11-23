@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Test fixtures are byte-exact data (PLY headers, JSONL): never CRLF on checkout.
+backend/test/fixtures/** text=auto eol=lf
