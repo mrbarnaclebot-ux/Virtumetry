@@ -7,7 +7,7 @@ import { captures, jobs, worlds, type FailureStage, type Job, type World, type W
 import { ProviderError, type ArtifactKind, type ExportKind } from './provider/index.js';
 import { completeJob, enqueue, heartbeatJob, parkJobDead, snoozeJob } from './queue.js';
 import { worldAssetKey } from './storage/index.js';
-import { LeaseLostError, RetryLaterError, type WorkerDeps } from './worker.js';
+import { LeaseLostError, purgePrefix, RetryLaterError, type WorkerDeps } from './worker.js';
 
 // Pipeline job handlers (D-16): pack → submit → track (poll + import). Provider
 // agnostic: everything goes through ReconProvider, so Phase 6 only adds echo3.ts.
@@ -73,7 +73,8 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage, provider } = deps;
   const w = await getWorld(db, job.worldId);
   const cap = await latestCapture(db, job.worldId);
-  if (w?.status !== 'packing') return completeJob(db, job.id);
+  // Soft-deleted (CR-03): stop; purge owns the world's objects now.
+  if (w?.status !== 'packing' || w.deletedAt) return completeJob(db, job.id);
   if (!cap) {
     await failWorld(db, w.id, ['packing'], 'validate', 'CAPTURE_MISSING', 'no capture row');
     return completeJob(db, job.id);
@@ -87,6 +88,12 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
     if (!(err instanceof BundleInvalidError)) throw err; // retryable
     const codes = err.issues.map((i) => i.code);
     await failWorld(db, w.id, ['packing'], 'validate', codes[0] ?? 'BUNDLE_INVALID', codes.join(', '));
+    return completeJob(db, job.id);
+  }
+  // Deleted while we packed: purge may already have listed bundles/, so the
+  // bundle we just wrote is ours to remove (deleted_at commits before purge runs).
+  if ((await getWorld(db, w.id))?.deletedAt) {
+    await storage.deleteObject(res.bundleKey);
     return completeJob(db, job.id);
   }
 
@@ -117,7 +124,7 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
 export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage, provider, config } = deps;
   let w = await getWorld(db, job.worldId);
-  if (w?.status !== 'submitting') return completeJob(db, job.id);
+  if (w?.status !== 'submitting' || w.deletedAt) return completeJob(db, job.id);
   const worldId = w.id;
   const refuse = async (code: string, message: string) => {
     await failWorld(db, worldId, ['submitting'], 'submit', code, message);
@@ -290,6 +297,14 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
     return completeJob(db, job.id);
   }
   const rid = w.providerRequestId;
+  if (w.deletedAt) {
+    // Deleted mid-run (CR-03): stop the provider work, import nothing. The
+    // reservation stays: a cancel late in processing may still be billed.
+    if (w.status === 'processing') {
+      await provider.cancel(rid).catch((e) => console.warn(`[pipeline] cancel ${rid} for deleted world ${w.id} failed: ${String(e)}`));
+    }
+    return completeJob(db, job.id);
+  }
   const snooze = () => snoozeJob(db, job.id, config.TRACK_POLL_SECONDS);
 
   if (w.status === 'processing') {
@@ -355,7 +370,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   }
   const floorplanMeta = metaKey ? (JSON.parse((await storage.getObject(metaKey)).toString('utf8')) as unknown) : null;
 
-  await db
+  const done = await db
     .update(worlds)
     .set({
       ...keys,
@@ -366,6 +381,11 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
       progress: null,
       updatedAt: new Date(),
     })
-    .where(and(eq(worlds.id, w.id), eq(worlds.status, 'importing')));
+    .where(and(eq(worlds.id, w.id), eq(worlds.status, 'importing'), isNull(worlds.deletedAt)))
+    .returning({ id: worlds.id });
+  // Deleted while importing: purge may have run before our writes landed.
+  if (done.length === 0 && (await getWorld(db, w.id))?.deletedAt) {
+    await purgePrefix(storage, `worlds/${w.id}/`);
+  }
   await completeJob(db, job.id);
 }

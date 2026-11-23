@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
+import { runOneJob } from '../../src/worker.js';
 
 // ROADMAP SC2 / D-22: fixture scan → pack → submit → track → import → ready
 // through the mock, outputs re-hosted in OUR storage. Run via
@@ -84,6 +85,77 @@ describe.skipIf(!url)('pipeline end to end (mock provider, real Postgres)', () =
     expect(w.failureCode).toBe('NOT_APPROVED');
     expect(p.provider.calls.submit.length - submitsBefore).toBe(0);
     expect(await ledger(worldId)).toEqual([]);
+  }, 90_000);
+});
+
+describe.skipIf(!url)('CR-03: soft-deleted worlds (real Postgres)', () => {
+  let p: Pipeline;
+  beforeAll(async () => {
+    p = await startPipeline();
+  }, 60_000);
+  afterAll(async () => {
+    await p?.close();
+  });
+
+  const softDelete = (worldId: string) => p.pool.query('UPDATE worlds SET deleted_at = now() WHERE id = $1', [worldId]);
+  /** Run jobs until the world has no live job left. */
+  const settle = async (worldId: string) => {
+    for (let i = 0; i < 500; i++) {
+      const { rows } = await p.pool.query("SELECT 1 FROM jobs WHERE world_id = $1 AND phase IN ('queued','running')", [worldId]);
+      if (rows.length === 0) return p.getWorld(worldId);
+      if (!(await runOneJob(p.deps))) await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error('settle: jobs never finished');
+  };
+
+  it('deleted while packing: the bundle written after the purge is removed, no submit', async () => {
+    const { worldId, captureId } = await p.seedScan();
+    const limits = p.provider.limits.bind(p.provider);
+    p.provider.limits = async () => {
+      await softDelete(worldId); // lands after the handler's start check
+      return limits();
+    };
+    try {
+      await settle(worldId);
+    } finally {
+      p.provider.limits = limits;
+    }
+    expect(await p.storage.list(`bundles/${captureId}/`)).toEqual([]);
+    const { rows } = await p.pool.query("SELECT 1 FROM jobs WHERE world_id = $1 AND kind = 'submit'", [worldId]);
+    expect(rows).toEqual([]);
+  }, 90_000);
+
+  it('deleted while processing: provider request cancelled, nothing imported', async () => {
+    const submitsBefore = p.provider.calls.submit.length;
+    const { worldId } = await p.seedScan();
+    const w0 = await p.drain({ worldId, until: (w) => w.status === 'processing' });
+    expect(p.provider.calls.submit.length - submitsBefore).toBe(1);
+    await softDelete(worldId);
+    const w = await settle(worldId);
+    expect(w.status).toBe('processing');
+    expect((await p.provider.status(w0.providerRequestId!)).status).toBe('CANCELLED');
+    expect(await p.storage.list(`worlds/${worldId}/`)).toEqual([]);
+  }, 90_000);
+
+  it('deleted mid-import: re-hosted outputs are purged and the world never turns ready', async () => {
+    const { worldId } = await p.seedScan();
+    const open = p.provider.open.bind(p.provider);
+    let first = true;
+    p.provider.open = async (a) => {
+      if (first) {
+        first = false;
+        await softDelete(worldId);
+      }
+      return open(a);
+    };
+    try {
+      const w = await settle(worldId);
+      expect(w.status).toBe('importing');
+      expect(w.splatKey).toBeNull();
+    } finally {
+      p.provider.open = open;
+    }
+    expect(await p.storage.list(`worlds/${worldId}/`)).toEqual([]);
   }, 90_000);
 });
 

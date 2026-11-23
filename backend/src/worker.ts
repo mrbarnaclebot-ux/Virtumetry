@@ -72,7 +72,7 @@ export class LeaseLostError extends Error {
 }
 
 /** Delete every object under `prefix` (idempotent, best-effort per key). */
-async function purgePrefix(storage: StorageDriver, prefix: string): Promise<void> {
+export async function purgePrefix(storage: StorageDriver, prefix: string): Promise<void> {
   const p = prefix.endsWith('/') ? prefix : `${prefix}/`;
   const objs = await storage.list(p); // a list failure fails the job (retry), never a silent skip
   for (const o of objs) await storage.deleteObject(o.key).catch(() => undefined);
