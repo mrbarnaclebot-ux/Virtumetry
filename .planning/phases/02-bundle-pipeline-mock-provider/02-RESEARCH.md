@@ -660,12 +660,12 @@ The unique `(submission_key, kind)` index makes a second release a no-op. Remove
 | A7 | Echo-3 status value for cancelled jobs is `CANCELLED` | Status | Treat unknown statuses as non-terminal, so the effect is only delayed handling |
 | A8 | Echo-3 accepts 640×480 bundles (docs) despite the reference validator's 1920 allowlist | Contract | Phase 6 first run fails validation (free, wastes a cycle) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Resolution allowlist (A8).** Docs say long ≤1920 / short ≥360, but the MIT-0 validator only accepts 1920×1440 or 1920×1080. Recommendation: Phase 2 follows the docs (D-04). Before Phase 6, ask SpAItial support, or have the fixture script also emit an **upscaled 1920×1440 variant** (intrinsics ×3) into dev R2 `fixtures/` (not git) for the first paid run.
-2. **Idempotency retention window.** Undocumented. Phase 2 caps submit retries at 4 / ≤15 min (D-17). Confirm before Phase 6.
-3. **`/v1/worlds` routes in Phase 2 (discretion).** Recommendation: minimal. Update status literals so `tsc` passes, make `frames:done` enqueue nothing new (or flip to `packing` + enqueue `pack` if trivial), and leave reshaping to Phase 3/4. Budget a task for adjusting the ~10 affected test files (`frames-done`, `worlds.list`, `worker.progress`, `budget`, `quota.charge`, …). Deleting obsolete World Labs tests is legitimate. Keep the "229 green" bar for *surviving* behaviour, and state the new count.
-4. **`approved_max_credits` source.** No app yet. Tests and `fixture:e2e` seed it. A null value → `failed/submit` `NOT_APPROVED` (never submit unapproved).
+1. **Resolution allowlist (A8).** DEFERRED to Phase 6 (tracked in plan 02-07 README owner items). Docs say long ≤1920 / short ≥360, but the MIT-0 validator only accepts 1920×1440 or 1920×1080. Recommendation: Phase 2 follows the docs (D-04). Before Phase 6, ask SpAItial support, or have the fixture script also emit an **upscaled 1920×1440 variant** (intrinsics ×3) into dev R2 `fixtures/` (not git) for the first paid run.
+2. **Idempotency retention window.** DEFERRED to Phase 6 (STATE.md blocker). Undocumented. Phase 2 caps submit retries at 4 / ≤15 min (D-17). Confirm before Phase 6.
+3. **`/v1/worlds` routes in Phase 2 (discretion).** RESOLVED: minimal change, plan 02-02. Recommendation: minimal. Update status literals so `tsc` passes, make `frames:done` enqueue nothing new (or flip to `packing` + enqueue `pack` if trivial), and leave reshaping to Phase 3/4. Budget a task for adjusting the ~10 affected test files (`frames-done`, `worlds.list`, `worker.progress`, `budget`, `quota.charge`, …). Deleting obsolete World Labs tests is legitimate. Keep the "229 green" bar for *surviving* behaviour, and state the new count.
+4. **`approved_max_credits` source.** RESOLVED: null → NOT_APPROVED, plan 02-05. No app yet. Tests and `fixture:e2e` seed it. A null value → `failed/submit` `NOT_APPROVED` (never submit unapproved).
 
 ## Environment Availability
 
