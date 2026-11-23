@@ -136,7 +136,8 @@ export async function startPipeline(
 
     /** Run jobs until the world is terminal (or `until` holds). */
     async drain(o: { worldId: string; until?: (w: World) => boolean; timeoutMs?: number }): Promise<World> {
-      const deadline = Date.now() + (o.timeoutMs ?? 15_000);
+      // 60 s default: Neon dev round trips make the happy path ~20 s end to end.
+      const deadline = Date.now() + (o.timeoutMs ?? 60_000);
       for (;;) {
         const w = await getWorld(o.worldId);
         if (TERMINAL.has(w.status) || o.until?.(w)) return w;

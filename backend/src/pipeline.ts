@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { BudgetExceededError, releaseCredits, reserveCredits } from './budget.js';
 import { BundleInvalidError, packCapture } from './bundle/pack.js';
 import type { Db } from './db/client.js';
 import { captures, worlds, type FailureStage, type Job, type World, type WorldStatus } from './db/schema.js';
-import { ProviderError } from './provider/index.js';
-import { completeJob, enqueue, heartbeatJob, parkJobDead } from './queue.js';
-import { LeaseLostError, NonRetryableJobError, RetryLaterError, type WorkerDeps } from './worker.js';
+import { ProviderError, type ArtifactKind, type ExportKind } from './provider/index.js';
+import { completeJob, enqueue, heartbeatJob, parkJobDead, snoozeJob } from './queue.js';
+import { worldAssetKey } from './storage/index.js';
+import { LeaseLostError, RetryLaterError, type WorkerDeps } from './worker.js';
 
 // Pipeline job handlers (D-16): pack → submit → track (poll + import). Provider
 // agnostic: everything goes through ReconProvider, so Phase 6 only adds echo3.ts.
@@ -230,8 +231,100 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   await completeJob(db, job.id);
 }
 
-// --- track + import (Task 3) -------------------------------------------------
+// --- track + import -------------------------------------------------------------
 
-export async function handleTrack(_deps: WorkerDeps, job: Job): Promise<void> {
-  throw new NonRetryableJobError(`track not implemented yet (job ${job.id})`);
+const KEY_COLUMN: Partial<Record<ArtifactKind, 'splatKey' | 'colliderKey' | 'floorplanKey' | 'camerasKey'>> = {
+  splat: 'splatKey',
+  collider: 'colliderKey',
+  floorplan: 'floorplanKey',
+  cameras: 'camerasKey',
+};
+const EXPORTS: ExportKind[] = ['mesh-simplified', 'floorplan'];
+const loggedUnknown = new Set<string>();
+
+export async function handleTrack(deps: WorkerDeps, job: Job): Promise<void> {
+  const { db, storage, provider, config } = deps;
+  const w = await getWorld(db, job.worldId);
+  if (!w?.providerRequestId || (w.status !== 'processing' && w.status !== 'importing')) {
+    return completeJob(db, job.id);
+  }
+  const rid = w.providerRequestId;
+  const snooze = () => snoozeJob(db, job.id, config.TRACK_POLL_SECONDS);
+
+  if (w.status === 'processing') {
+    const s = await provider.status(rid);
+    if (s.status === 'FAILED') {
+      const codes = (s.issues ?? []).map((i) => i.code);
+      await failWorld(db, w.id, ['processing'], 'processing', s.error?.code ?? codes[0] ?? 'FAILED', codes.join(', ') || (s.error?.code ?? 'FAILED'));
+      await releaseCredits(db, w.submissionKey!); // FAILED = 0 credits
+      return completeJob(db, job.id);
+    }
+    if (s.status === 'CANCELLED') {
+      await db
+        .update(worlds)
+        .set({ status: 'cancelled', progress: null, updatedAt: new Date() })
+        .where(and(eq(worlds.id, w.id), eq(worlds.status, 'processing')));
+      await releaseCredits(db, w.submissionKey!);
+      return completeJob(db, job.id);
+    }
+    if (s.status !== 'COMPLETED') {
+      // PENDING / PROCESSING / anything unknown (open enum) → keep polling.
+      if (s.status !== 'PENDING' && s.status !== 'PROCESSING' && !loggedUnknown.has(s.status)) {
+        loggedUnknown.add(s.status);
+        console.warn(`[pipeline] unknown provider status '${s.status}' on world ${w.id}; polling on`);
+      }
+      if (s.progress != null) {
+        const pct = Math.max(0, Math.min(100, Math.round(s.progress * 100)));
+        await db.update(worlds).set({ progress: pct, updatedAt: new Date() }).where(eq(worlds.id, w.id));
+      }
+      return snooze();
+    }
+    // Zero rows here means someone else moved it; the re-read below decides.
+    await db
+      .update(worlds)
+      .set({ status: 'importing', progress: null, updatedAt: new Date() })
+      .where(and(eq(worlds.id, w.id), eq(worlds.status, 'processing')));
+    if ((await getWorld(db, w.id))?.status !== 'importing') return completeJob(db, job.id);
+  }
+
+  for (const kind of EXPORTS) {
+    const r = await provider.ensureExport(rid, kind);
+    if (r === 'pending') return snooze();
+    if (r === 'failed') {
+      // Credits were spent: keep the reservation.
+      await failWorld(db, w.id, ['importing'], 'import', 'EXPORT_FAILED', `${kind} export failed`);
+      return completeJob(db, job.id);
+    }
+  }
+
+  // Re-host every output (D-19), resumable artifact by artifact.
+  // ponytail: "object exists" = done; fine for S3 multipart (atomic on complete),
+  // the local driver could leave a partial file on a crash mid-stream (dev only).
+  const beat = heartbeat(deps, job);
+  const keys: Partial<Record<'splatKey' | 'colliderKey' | 'floorplanKey' | 'camerasKey', string>> = {};
+  let metaKey: string | undefined;
+  for (const a of await provider.artifacts(rid)) {
+    const key = worldAssetKey(w.id, w.assetVersion, a.name);
+    const exists = await storage.objectSize(key).then(() => true, () => false);
+    if (!exists) await storage.putStream(key, await provider.open(a), a.contentType).done;
+    await beat();
+    const col = KEY_COLUMN[a.kind];
+    if (col) keys[col] = key;
+    if (a.kind === 'floorplan_meta') metaKey = key;
+  }
+  const floorplanMeta = metaKey ? (JSON.parse((await storage.getObject(metaKey)).toString('utf8')) as unknown) : null;
+
+  await db
+    .update(worlds)
+    .set({
+      ...keys,
+      floorplanMeta,
+      status: 'ready',
+      charged: true,
+      creditsSpent: sql`COALESCE(${worlds.quotedCredits}, 0)`,
+      progress: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(worlds.id, w.id), eq(worlds.status, 'importing')));
+  await completeJob(db, job.id);
 }
