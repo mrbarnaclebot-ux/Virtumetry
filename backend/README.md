@@ -36,6 +36,14 @@ npm run dev               # http://localhost:8080/healthz
 | `test` | `vitest run` (Postgres integration suites skip without `TEST_DATABASE_URL`) |
 | `db:generate` | drizzle-kit: SQL migration from `src/db/schema.ts` (no DB needed) |
 | `db:migrate:prod` | `node dist/migrate.js`: drizzle-orm migrator, advisory-locked; the release step |
+| `db:migrate:dev` | apply migrations to the Neon **dev** branch only (`scripts/migrate-dev.mjs` refuses any other host) |
+| `test:pg` | Postgres integration suites on a throwaway schema in Neon dev (`scripts/test-pg.mjs`; pass a path to run one file) |
+| `test:r2` | gated R2 Range-preflight test against `virtumetry-dev` only |
+| `fixture:e2e` | drive the committed fixture through pack, submit, track and ready on `virtumetry-dev` R2 + Neon dev with the mock provider, then purge (`-- --keep` keeps it) |
+
+The four guarded scripts load `.env` with `node --env-file=.env` and refuse to
+run against anything but the dev resources. `fixture:e2e` also refuses unless
+`STORAGE_DRIVER=s3`, `S3_BUCKET=virtumetry-dev` and `PROVIDER_MODE=mock`.
 
 Never use `drizzle-kit push`.
 
@@ -77,6 +85,99 @@ local driver) that read and write `LOCAL_STORAGE_DIR`, path-traversal-checked.
 
 ## Job queue and worker
 
-Jobs live in Postgres and are claimed with `FOR UPDATE SKIP LOCKED` leases. The
-only job kind today is `purge`; reconstruction kinds arrive with the Echo-3
-provider.
+Jobs live in Postgres and are claimed with `FOR UPDATE SKIP LOCKED` leases.
+Kinds: `pack`, `submit`, `track` (the bundle pipeline below) and `purge`.
+
+## Environment (Phase 2 additions)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PROVIDER_MODE` | `mock` | `live` boots only with `ALLOW_PAID_PROVIDER=1` (and there is no live provider until Phase 6) |
+| `DAILY_CREDIT_BUDGET` | `2000` | credit cap per UTC day, per provider mode |
+| `MONTHLY_CREDIT_BUDGET` | `10000` | credit cap per UTC month, per provider mode. Owner to confirm the real value before Phase 6 |
+| `MOCK_SCENARIO` | `happy` | mock provider script, see below |
+| `MOCK_PROCESSING_SECONDS` | `5` | how long the mock stays `PROCESSING` |
+| `TRACK_POLL_SECONDS` | `60` | status poll interval of the `track` job |
+| `BUNDLE_URL_TTL_SECONDS` | `86400` | lifetime of the presigned bundle URL handed to the provider |
+| `RATE_LIMIT_WEBHOOK_MAX` | `120` | per-IP limit on the webhook route |
+| `SPAITIAL_WEBHOOK_SECRET` | none | HMAC secret for provider webhooks |
+| `SPAITIAL_API_KEY` | none | not read until Phase 6 |
+
+## Capture session format (schema 1)
+
+What the app uploads under `captures/{captureId}/`:
+
+```
+session.json     { sessionId, schema: 1, device, appVersion, imageWidth, imageHeight,
+                   startedAtISO, tzOffset: "±HH:MM", gateConfig }
+frames.jsonl     one line per frame: { i, file, t, wallMs, T_arkit[16], K{fx,fy,cx,cy}, tracking }
+frames/000001.jpg ...
+```
+
+Values are raw ARKit: `T_arkit` is `camera.transform` (world-from-camera,
+column-major simd layout) and `K` is `camera.intrinsics`. The backend converts
+to OpenCV camera-from-world and writes EXIF (`DateTimeOriginal`, sub-seconds,
+offset from `tzOffset`, no rotation tag) at pack time, so a math fix needs no
+app build. `test/fixtures/tiny-session/` is a 30-frame reference session.
+
+## Bundle pipeline
+
+World states:
+`uploading → packing → submitting → processing → importing → ready`, or
+`failed` with `{ failureStage, failureCode, failureMessage }`, or `cancelled`.
+
+- `pack`: validate the session, write `bundles/{cid}/capture_bundle.zip`
+  (stored, not compressed). Invalid input fails at stage `validate`.
+- `submit`: the only step that spends credits. Quote, check against the
+  world's `approvedMaxCredits`, then **persist before spend**: the submission
+  key and the exact submit body are written to the world row once, and every
+  attempt sends what the row holds. A retry never mints a new key. Credits are
+  reserved in the `credit_events` ledger under a Postgres advisory lock
+  (daily + monthly windows), so concurrent scans cannot both pass a cap.
+- `track`: poll status, request exports, re-host every output to
+  `worlds/{wid}/v{n}/`, mark `ready` and `charged`.
+- `purge`: delete a world's storage prefixes (on delete, or frames only for a
+  stale upload).
+
+Failure codes (stage `submit` unless noted): `NOT_APPROVED`,
+`QUOTE_ABOVE_APPROVAL`, `BUNDLE_MISSING`, `BUNDLE_NOT_RANGEABLE`,
+`BUDGET_EXCEEDED`, provider 400/402/403 codes (e.g. `INSUFFICIENT_CREDITS`,
+reservation released), `IDEMPOTENCY_KEY_REUSED` (409: job parked dead,
+reservation kept because it may be billed), `RATE_LIMITED` /
+`PROVIDER_UNAVAILABLE` (429/503 after 4 attempts with the same key, released),
+`SUBMIT_UNCERTAIN` (5xx/timeout after 4 attempts, reservation kept). Stage
+`validate`: bundle validator codes. Stage `processing`: the provider's error
+code (reservation released, 0 credits). Stage `import`: `EXPORT_FAILED`
+(credits spent, kept).
+
+## Webhooks
+
+`POST /v1/webhooks/spaitial`, verified with HMAC-SHA256 over the raw body
+(`x-spaitial-signature`, constant-time compare). Deliveries are deduped on
+`x-spaitial-delivery-id`. A webhook is a **nudge only**: it makes the world's
+`track` job runnable now; state still comes from polling the provider.
+Non-https `PUBLIC_BASE_URL` means no webhook is requested and polling covers it.
+
+## Mock provider scenarios (`MOCK_SCENARIO`)
+
+| Scenario | Behaviour | Expected end state |
+|---|---|---|
+| `happy` | completes after `MOCK_PROCESSING_SECONDS` | `ready` |
+| `failed` | status `FAILED` | `failed` / processing / `WORLD_GENERATION_FAILED` |
+| `402` | submit returns 402 | `failed` / submit / `INSUFFICIENT_CREDITS` |
+| `409` | submit returns 409 | `failed` / submit / `IDEMPOTENCY_KEY_REUSED` |
+| `429`, `503` | first submit fails, retry succeeds | `ready`, two submits with one key and one body |
+| `duplicate_webhooks` | each webhook delivered twice | `ready`, second delivery deduped |
+| `webhook_dropped` | no webhooks | `ready` via polling |
+
+`test/integration/scenarios.pg.test.ts` asserts each of these against real
+Postgres, plus two concurrent scans over the daily cap (one reservation, one
+`BUDGET_EXCEEDED`, zero submits for it).
+
+## Open for Phase 6
+
+- The fixture bundles are 640x480; the reference validator's resolution
+  allowlist is built around 1920-wide frames. Confirm the real API accepts the
+  app's actual capture size before the first paid run.
+- The provider's idempotency-key retention window is undocumented; a resubmit
+  long after the first attempt could be treated as new.
