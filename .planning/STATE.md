@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-11-23T12:52:39.530Z"
-last_activity: 2026-11-23 -- Phase 2 planning complete
+last_updated: "2026-11-23T13:03:38.333Z"
+last_activity: 2026-11-23
 progress:
   total_phases: 9
   completed_phases: 1
   total_plans: 14
-  completed_plans: 7
+  completed_plans: 8
   percent: 11
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-23)
 
 **Core value:** A walk-through scan of a real room comes back as a faithful, walkable 3D world, reliably, without wasting paid processing on bad captures.
-**Current focus:** Phase 2 — bundle pipeline & mock provider
+**Current focus:** Phase 2 — Bundle Pipeline & Mock Provider
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
+Phase: 2 (Bundle Pipeline & Mock Provider) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-11-23 -- Phase 2 planning complete
+Last activity: 2026-11-23
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 2 P01 | 12min | 3 tasks | 52 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - [Roadmap]: First paid Echo-3 run (Phase 6) uses a minimum-frame converted-dataset bundle, only after the full mock loop works
 - [Roadmap]: Apple Developer membership is bought at the start of Phase 7. macOS CI compile check is green before the first EAS build
 - [Roadmap]: Phase 8 target is ≤5 iOS EAS builds (free plan: 15/month)
+- [Phase 2]: 02-01: fixture is TUM fr3/nostructure_texture_far (CC BY 4.0), 30 frames, 1.65 MB
+- [Phase 2]: 02-01: fixture world up = TUM mocap +Z (image-down heuristic wrong for a downward-looking camera)
+- [Phase 2]: 02-01: backend/test/fixtures pinned to eol=lf in .gitattributes
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-23T12:16:12.234Z
+Last session: 2026-11-23T13:02:43.886Z
 Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-bundle-pipeline-mock-provider/02-CONTEXT.md
+Resume file: None

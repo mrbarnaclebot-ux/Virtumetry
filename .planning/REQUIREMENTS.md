@@ -41,7 +41,7 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 - [ ] **PROC-01**: Before spending credits the app runs pre-upload checks (frame count, blur, coverage, tracking gaps) and the backend re-runs the same rules plus semantic checks (pose continuity, forward vector vs motion, intrinsics vs image size)
 - [ ] **PROC-02**: Owner sees the Echo-3 cost quote and must explicitly approve it before processing starts
 - [ ] **PROC-03**: Uploads continue while the phone is locked or the app is suspended or terminated by iOS, and after a force-quit they resume on next launch by re-sending only the frames the server reports missing
-- [ ] **PROC-04**: Backend converts ARKit poses to OpenCV `camera_from_world`, writes intrinsics and EXIF timestamps, and packs a valid Echo-3 capture-bundle ZIP on R2 with a Range-capable presigned URL valid ≥24 h
+- [x] **PROC-04**: Backend converts ARKit poses to OpenCV `camera_from_world`, writes intrinsics and EXIF timestamps, and packs a valid Echo-3 capture-bundle ZIP on R2 with a Range-capable presigned URL valid ≥24 h
 - [ ] **PROC-05**: Backend submits to Echo-3 at most once per approved scan: idempotency key and exact request body are saved before the call; a retry after failure needs a new explicit owner approval
 - [ ] **PROC-06**: Backend tracks status via signed webhooks (HMAC verified, deduplicated on `delivery_id`) with a polling fallback; webhooks only nudge the tracker
 - [ ] **PROC-07**: When processing finishes, backend copies all outputs (SPZ/SOG splat, `mesh-simplified`, floor plan + affine, `cameras.json`) into our own storage before marking the world ready
@@ -145,7 +145,7 @@ Deferred. Tracked, not in the current roadmap.
 | PROC-01 | Phase 4 | Pending |
 | PROC-02 | Phase 4 | Pending |
 | PROC-03 | Phase 4 | Pending |
-| PROC-04 | Phase 2 | Pending |
+| PROC-04 | Phase 2 | Complete |
 | PROC-05 | Phase 6 | Pending |
 | PROC-06 | Phase 2 | Pending |
 | PROC-07 | Phase 2 | Pending |

@@ -80,12 +80,12 @@ Plans:
   4. Scripted mock failures (FAILED, 402, 409, 429, 503, duplicate webhooks) each end in the documented state with no extra submit *(automated scenario tests)*
   5. Two concurrent scans that would together exceed the daily or monthly credit cap result in exactly one reservation. The over-budget scan is refused before any provider call *(automated concurrency test on the atomic conditional reservation)*
 
-**Plans:** 7 plans
+**Plans:** 1/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Session format (zod schema 1), arkitToOpenCV, EXIF writer, D-06 validator, ZIP reader, TUM-derived fixture + mock outputs
+- [x] 02-01-PLAN.md — Session format (zod schema 1), arkitToOpenCV, EXIF writer, D-06 validator, ZIP reader, TUM-derived fixture + mock outputs
 - [ ] 02-02-PLAN.md — D-15 schema + migrations 0001/0002 applied to Neon dev, config vars, snoozeJob, guarded pg test runner
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -224,7 +224,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
-| 2. Bundle Pipeline & Mock Provider | 0/TBD | Not started | - |
+| 2. Bundle Pipeline & Mock Provider | 1/7 | In Progress|  |
 | 3. Owner Account & Scan Library | 0/TBD | Not started | - |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
