@@ -83,11 +83,22 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 02-01-PLAN.md — Session format (zod schema 1), arkitToOpenCV, EXIF writer, D-06 validator, ZIP reader, TUM-derived fixture + mock outputs
 - [ ] 02-02-PLAN.md — D-15 schema + migrations 0001/0002 applied to Neon dev, config vars, snoozeJob, guarded pg test runner
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-03-PLAN.md — Streaming storage, packCapture to store-only bundle ZIP, local Range, R2 Range proof on virtumetry-dev, prefix purge
 - [ ] 02-04-PLAN.md — Atomic daily+monthly credit reservation (concurrency-tested) + ReconProvider contract and scripted mock
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 02-05-PLAN.md — pack → submit → track → import → ready worker pipeline with re-hosted outputs (end-to-end test)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 02-06-PLAN.md — HMAC-verified, deduplicated, nudge-only webhook route + polling fallback tests
 - [ ] 02-07-PLAN.md — Scenario matrix (FAILED/402/409/429/503), concurrent budget refusal, fixture:e2e on dev, README
 
