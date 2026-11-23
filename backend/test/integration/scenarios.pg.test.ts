@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, afterEach } from 'vitest';
 import type { MockScenario } from '../../src/provider/mock.js';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
+import { failWorldForDeadJob } from '../../src/worker.js';
 
 // PROC-10 scenario matrix (ROADMAP SC4) + concurrent over-budget refusal (SC5,
 // PROC-08). Every scripted failure must end in its documented state with no
@@ -122,4 +123,14 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(p.provider.calls.submit).toHaveLength(1);
     expect(p.provider.calls.submit[0]!.key).toBe(ok[0]!.submissionKey);
   }, 180_000);
+
+  it('a pipeline job that goes DEAD fails its world (no stuck in-progress status)', async () => {
+    const pl = await start('happy');
+    const { worldId } = await pl.seedScan(); // world is 'packing'
+    await failWorldForDeadJob(pl.db, { kind: 'submit', worldId }); // wrong stage: no-op
+    expect((await pl.drain({ worldId, until: () => true })).status).toBe('packing');
+    await failWorldForDeadJob(pl.db, { kind: 'pack', worldId });
+    const { rows } = await pl.pool.query('SELECT status, failure_stage, failure_code FROM worlds WHERE id = $1', [worldId]);
+    expect(rows[0]).toEqual({ status: 'failed', failure_stage: 'pack', failure_code: 'JOB_EXHAUSTED' });
+  }, 120_000);
 });

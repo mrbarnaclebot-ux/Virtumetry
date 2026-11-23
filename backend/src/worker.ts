@@ -15,7 +15,23 @@ import {
 import { createStorage, type StorageDriver } from './storage/index.js';
 import { sendPush, type SendPush } from './push.js';
 import { createProvider, type ReconProvider } from './provider/index.js';
-import { handlePack, handleSubmit, handleTrack } from './pipeline.js';
+import { failWorld, handlePack, handleSubmit, handleTrack } from './pipeline.js';
+
+/**
+ * A pipeline job that went DEAD leaves its world in an in-progress status forever
+ * unless we fail it here. Only the status the job owns is touched (conditional
+ * UPDATE), so a world another path already finished/failed is left alone.
+ * Credit reservations are deliberately NOT released: a dead submit may have spent.
+ */
+export async function failWorldForDeadJob(db: Db, job: Pick<Job, 'kind' | 'worldId'>): Promise<void> {
+  const msg = `${job.kind} job exhausted its retries`;
+  if (job.kind === 'pack') await failWorld(db, job.worldId, ['packing'], 'pack', 'JOB_EXHAUSTED', msg);
+  else if (job.kind === 'submit') await failWorld(db, job.worldId, ['submitting'], 'submit', 'JOB_EXHAUSTED', msg);
+  else if (job.kind === 'track') {
+    await failWorld(db, job.worldId, ['processing'], 'processing', 'JOB_EXHAUSTED', msg);
+    await failWorld(db, job.worldId, ['importing'], 'import', 'JOB_EXHAUSTED', msg);
+  }
+}
 
 // Worker loop. Entrypoint: `npm run worker`. Claims the pipeline jobs
 // (pack/submit/track, src/pipeline.ts) and purge, and runs the two reapers
@@ -156,6 +172,7 @@ export async function handleJobError(db: Db, job: Job, err: unknown): Promise<vo
   if (err instanceof NonRetryableJobError) {
     console.error(`[worker] job ${job.id} (${job.kind}) parked DEAD: ${message}`);
     await parkJobDead(db, job.id, message);
+    await failWorldForDeadJob(db, job);
     return;
   }
 
@@ -168,6 +185,7 @@ export async function handleJobError(db: Db, job: Job, err: unknown): Promise<vo
   console.error(`[worker] job ${job.id} (${job.kind}) failed (retryable): ${message}`);
   if ((await failJob(db, job.id, message)) === 'dead') {
     console.error(`[worker] job ${job.id} (${job.kind}) exhausted its retries, now DEAD`);
+    await failWorldForDeadJob(db, job);
   }
 }
 
@@ -183,6 +201,7 @@ export async function reapExhaustedJobs(db: Db): Promise<string[]> {
     console.error(
       `[worker] job ${job.id} (${job.kind}) expired its lease on the last attempt, now DEAD`,
     );
+    await failWorldForDeadJob(db, job);
   }
   return parked.map((j) => j.id);
 }
