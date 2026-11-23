@@ -4,7 +4,10 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { Readable } from 'node:stream';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Config } from '../config.js';
 import type { PresignedUpload, StorageDriver } from './index.js';
@@ -89,6 +92,41 @@ export function createS3Storage(config: Config): StorageDriver {
         throw new Error(`HEAD ${key} returned no ContentLength`);
       }
       return res.ContentLength;
+    },
+
+    putStream(key, body, contentType) {
+      // R2 needs equal part sizes except the last, so partSize is fixed.
+      const upload = new Upload({
+        client,
+        params: { Bucket: bucket, Key: key, Body: body, ContentType: contentType },
+        partSize: 16 * 1024 * 1024,
+        queueSize: 4,
+        leavePartsOnError: false,
+      });
+      return { done: upload.done().then(() => undefined), abort: () => void upload.abort() };
+    },
+
+    async getStream(key): Promise<Readable> {
+      const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      const body = res.Body as unknown;
+      if (body instanceof Readable) return body;
+      if (body && typeof (body as ReadableStream).getReader === 'function') {
+        return Readable.fromWeb(body as import('node:stream/web').ReadableStream);
+      }
+      throw new Error(`Empty object: ${key}`);
+    },
+
+    async list(prefix) {
+      const out: { key: string; size: number }[] = [];
+      let token: string | undefined;
+      do {
+        const res = await client.send(
+          new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }),
+        );
+        for (const o of res.Contents ?? []) if (o.Key) out.push({ key: o.Key, size: o.Size ?? 0 });
+        token = res.IsTruncated ? res.NextContinuationToken : undefined;
+      } while (token);
+      return out;
     },
   };
 }

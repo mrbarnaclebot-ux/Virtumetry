@@ -1,4 +1,5 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { Config } from '../config.js';
@@ -76,6 +77,39 @@ export function createLocalStorage(config: Config): LocalStorage {
       const st = await fs.stat(resolvePath(key));
       return st.size;
     },
+
+    putStream(key, body, _contentType) {
+      const file = resolvePath(key);
+      const done = fs
+        .mkdir(path.dirname(file), { recursive: true })
+        .then(() => pipeline(body, createWriteStream(file)));
+      return { done, abort: (e) => void body.destroy(e instanceof Error ? e : new Error(String(e ?? 'aborted'))) };
+    },
+
+    async getStream(key) {
+      const file = resolvePath(key);
+      await fs.stat(file); // reject (ENOENT) before handing out a stream
+      return createReadStream(file);
+    },
+
+    async list(prefix) {
+      const dir = resolvePath(prefix);
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { recursive: true, withFileTypes: true });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw e;
+      }
+      const out: { key: string; size: number }[] = [];
+      for (const d of entries) {
+        if (!d.isFile()) continue;
+        const full = path.join(d.parentPath, d.name);
+        const key = path.relative(baseDir, full).split(path.sep).join('/');
+        out.push({ key, size: (await fs.stat(full)).size });
+      }
+      return out;
+    },
   };
 }
 
@@ -105,11 +139,27 @@ export function registerDevStorageRoutes(
 
   app.get<{ Params: { '*': string } }>('/dev-storage/*', async (req, reply) => {
     const key = req.params['*'];
+    let bytes: Buffer;
     try {
-      const bytes = await local.getObject(key);
-      return reply.code(200).send(bytes);
+      bytes = await local.getObject(key);
     } catch {
       return reply.code(404).send({ error: 'not_found', key });
     }
+    reply.header('accept-ranges', 'bytes');
+    const range = req.headers.range;
+    if (!range) return reply.code(200).send(bytes);
+    // Single range only (`bytes=a-b` or `bytes=a-`), bounded to the object size.
+    const m = /^bytes=(\d+)-(\d*)$/.exec(range);
+    const total = bytes.length;
+    const start = m ? Number(m[1]) : NaN;
+    const end = m && m[2] ? Math.min(Number(m[2]), total - 1) : total - 1;
+    if (!m || start >= total || start > end) {
+      return reply.code(416).header('content-range', `bytes */${total}`).send();
+    }
+    return reply
+      .code(206)
+      .header('content-range', `bytes ${start}-${end}/${total}`)
+      .header('content-length', end - start + 1)
+      .send(bytes.subarray(start, end + 1));
   });
 }
