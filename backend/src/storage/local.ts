@@ -80,6 +80,8 @@ export function createLocalStorage(config: Config): LocalStorage {
 
     putStream(key, body, _contentType) {
       const file = resolvePath(key);
+      // pipeline attaches only after mkdir; an abort before that would emit 'error' with no listener.
+      body.on('error', () => undefined);
       const done = fs
         .mkdir(path.dirname(file), { recursive: true })
         .then(() => pipeline(body, createWriteStream(file)));
