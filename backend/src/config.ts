@@ -21,6 +21,18 @@ const numberFromEnv = (def: number) =>
     .transform((v) => (v === undefined || v === '' ? def : Number(v)))
     .pipe(z.number().int().nonnegative());
 
+// Scripted mock-provider behaviours (D-13); tests pick one per provider instance.
+export const MOCK_SCENARIOS = [
+  'happy',
+  'failed',
+  '402',
+  '409',
+  '429',
+  '503',
+  'duplicate_webhooks',
+  'webhook_dropped',
+] as const;
+
 const baseSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   // Direct (non-pooler) Neon host for src/migrate.ts only: its session-scoped
@@ -51,14 +63,25 @@ const baseSchema = z.object({
   // Every real reconstruction costs money: PROVIDER_MODE=live boots only with
   // this set to exactly '1' (D-12).
   ALLOW_PAID_PROVIDER: z.string().optional(),
-  // Stored for later phases, unused today (D-10, D-11).
+  // Live Echo-3 key: unread until Phase 6 (the mock never needs it).
   SPAITIAL_API_KEY: z.string().optional(),
+  // HMAC secret for the provider webhook route (Phase 2: mock-signed webhooks).
   SPAITIAL_WEBHOOK_SECRET: z.string().optional(),
+  // Mock provider: scenario for manual/dev runs and time-to-complete (D-13).
+  MOCK_SCENARIO: z.enum(MOCK_SCENARIOS).default('happy'),
+  MOCK_PROCESSING_SECONDS: numberFromEnv(5),
+  // How long the track job snoozes between provider status polls (D-16).
+  TRACK_POLL_SECONDS: numberFromEnv(60),
+  // Presigned GET TTL for the capture bundle handed to the provider (D-08: 24 h).
+  BUNDLE_URL_TTL_SECONDS: numberFromEnv(86400),
   CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
   CLOUDFLARE_API_TOKEN: z.string().optional(),
 
   // Daily spend cap enforced by the worker's reserveCredits guard.
   DAILY_CREDIT_BUDGET: numberFromEnv(2000),
+  // Monthly (UTC) spend cap, checked alongside the daily one (D-18).
+  // Default is an auto-mode resolution; owner to confirm before Phase 6.
+  MONTHLY_CREDIT_BUDGET: numberFromEnv(10000),
   DAILY_SCAN_QUOTA: numberFromEnv(10),
 
   // Worker loop poll interval (ms) between empty claim attempts.
@@ -78,6 +101,8 @@ const baseSchema = z.object({
   RATE_LIMIT_CREATE_MAX: numberFromEnv(12),
   // FAILED authentications per IP per window before that IP is refused outright.
   AUTH_FAIL_MAX: numberFromEnv(20),
+  // Per IP on the provider webhook route (unauthenticated until HMAC verifies).
+  RATE_LIMIT_WEBHOOK_MAX: numberFromEnv(120),
   // Reverse-proxy hops in front of the API. req.ip — the key for the per-IP
   // buckets above — is taken that many hops from the right of X-Forwarded-For.
   // A hop count, not `true`: trusting the whole header lets a client pick its

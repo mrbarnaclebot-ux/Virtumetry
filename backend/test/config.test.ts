@@ -57,6 +57,21 @@ describe('loadConfig', () => {
     expect(cfg.PUBLIC_BASE_URL).toBe('http://localhost:8080');
   });
 
+  it('applies Phase 2 defaults', () => {
+    const cfg = loadConfig(env(base));
+    expect(cfg.MONTHLY_CREDIT_BUDGET).toBe(10000);
+    expect(cfg.MOCK_SCENARIO).toBe('happy');
+    expect(cfg.MOCK_PROCESSING_SECONDS).toBe(5);
+    expect(cfg.TRACK_POLL_SECONDS).toBe(60);
+    expect(cfg.BUNDLE_URL_TTL_SECONDS).toBe(86400);
+    expect(cfg.RATE_LIMIT_WEBHOOK_MAX).toBe(120);
+  });
+
+  it('accepts every mock scenario and rejects unknown ones', () => {
+    expect(loadConfig(env({ ...base, MOCK_SCENARIO: '429' })).MOCK_SCENARIO).toBe('429');
+    expect(() => loadConfig(env({ ...base, MOCK_SCENARIO: 'explode' }))).toThrow(/MOCK_SCENARIO/);
+  });
+
   it('coerces numeric env vars', () => {
     const cfg = loadConfig(env({ ...base, PORT: '9090', DAILY_SCAN_QUOTA: '3' }));
     expect(cfg.PORT).toBe(9090);
