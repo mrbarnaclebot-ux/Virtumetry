@@ -1,0 +1,14 @@
+# Keep Railway uploads lean — backend only
+VirtSpace/
+tools/
+.claude/
+video-example.mp4
+*.mp4
+.git/
+backend/node_modules/
+backend/data/
+node_modules/
+
+# Secrets never upload
+.env
+.env.*

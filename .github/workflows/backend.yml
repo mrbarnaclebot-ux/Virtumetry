@@ -1,0 +1,48 @@
+# Backend CI (spec §10 R26): typecheck + unit tests + stitcher tests.
+# Backend only; iOS CI runs on demand (macOS minutes bill 10x).
+# Integration suites (test/integration/*.pg.test.ts) skip without a database.
+name: backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # Same interpreter line as the image (trixie python 3.13, cp313 wheels).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/stitcher/requirements.txt
+
+      - run: pip install -r stitcher/requirements.txt
+      # The stitcher suites skipIf cv2/numpy are missing; fail loudly instead.
+      - run: python -c "import cv2, numpy"
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+        env:
+          STITCHER_TEST_PYTHON: ${{ env.pythonLocation }}/bin/python

@@ -1,0 +1,30 @@
+# Root context — only backend/ matters to the image
+VirtSpace/
+tools/
+.claude/
+*.mp4
+node_modules
+.railwayignore
+spec-doc.md
+CLAUDE.md
+
+# Rebuilt inside the image — never copy the host's.
+backend/node_modules
+backend/dist
+
+# Local storage + env secrets never belong in the image.
+backend/data
+.env
+.env.*
+
+# Dev noise.
+.git
+*.log
+backend/test
+backend/coverage
+.vitest
+
+# Python venv / caches (image builds its own venv).
+backend/stitcher/venv
+**/__pycache__
+*.pyc

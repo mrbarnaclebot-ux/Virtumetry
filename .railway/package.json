@@ -1,0 +1,8 @@
+{
+  "name": "virtspace-railway-iac",
+  "private": true,
+  "description": "Railway Infrastructure as Code tooling only; not part of the app image.",
+  "devDependencies": {
+    "railway": "^3.16.0"
+  }
+}

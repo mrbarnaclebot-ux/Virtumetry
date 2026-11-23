@@ -1,0 +1,2 @@
+ALTER TABLE "worlds" ADD COLUMN "client_request_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "worlds_owner_client_request_idx" ON "worlds" USING btree ("owner_id","client_request_id");

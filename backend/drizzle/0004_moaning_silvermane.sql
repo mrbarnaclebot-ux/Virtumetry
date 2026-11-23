@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "captures_world_created_idx" ON "captures" USING btree ("world_id","created_at");
