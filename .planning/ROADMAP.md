@@ -13,7 +13,7 @@ v1 proves the scan-to-3D-room loop for one owner on one iPhone. The roadmap buil
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards
+- [x] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards (completed 2026-11-23)
 - [ ] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0
 - [ ] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state
 - [ ] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
@@ -38,7 +38,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The server refuses to boot the Echo-3 provider without `ALLOW_PAID_PROVIDER=1`, and refuses to boot in production when `DEV_AUTH_TOKEN` is set *(automated boot-guard tests)*
   4. A deploy runs pending migrations automatically over the direct (non-pooler) Neon host *(automated test asserting the migration URL is non-pooler + Railway deploy log check)*
 
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 **Wave 1**
@@ -64,7 +64,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 01-07-PLAN.md — backend.yml + app.yml, push to origin main, both workflows green (wave 6)
+- [x] 01-07-PLAN.md — backend.yml + app.yml, push to origin main, both workflows green (wave 6)
 
 ### Phase 2: Bundle Pipeline & Mock Provider
 
@@ -203,7 +203,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Isolated Backend Fork | 6/7 | In Progress|  |
+| 1. Isolated Backend Fork | 7/7 | Complete   | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 0/TBD | Not started | - |
 | 3. Owner Account & Scan Library | 0/TBD | Not started | - |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
