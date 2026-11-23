@@ -189,6 +189,20 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
   }, 120_000);
 
+  it('WR-01: a resumed submit is not re-quoted, so a changed quote cannot orphan the request', async () => {
+    const pl = await start('503');
+    const { worldId, frameCount } = await pl.seedScan();
+    const quote = pl.provider.quote.bind(pl.provider);
+    let quotes = 0;
+    pl.provider.quote = async (n) => (quotes++ === 0 ? quote(n) : { credits: 999_999, available: Infinity });
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('ready');
+    expect(quotes).toBe(1);
+    expect(w.quotedCredits).toBe(900 + frameCount);
+    expect(w.creditsSpent).toBe(900 + frameCount);
+    expect(pl.provider.calls.submit).toHaveLength(2);
+  }, 120_000);
+
   it('a pipeline job that goes DEAD fails its world (no stuck in-progress status)', async () => {
     const pl = await start('happy');
     const { worldId } = await pl.seedScan(); // world is 'packing'

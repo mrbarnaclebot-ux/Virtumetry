@@ -135,11 +135,16 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   const cap = await latestCapture(db, worldId);
   if (!cap?.bundleKey) return refuse('BUNDLE_MISSING', 'capture has no packed bundle');
 
-  const quote = await provider.quote(cap.frameCount);
-  if (quote.credits > w.approvedMaxCredits) {
-    return refuse('QUOTE_ABOVE_APPROVAL', `quote ${quote.credits} > approved ${w.approvedMaxCredits}`);
+  // Quote + approval only until the body is persisted (WR-01): after that a send
+  // may have happened, so a resume goes straight to reserve/submit and the
+  // quote that the reservation was made for is never rewritten.
+  if (w.submitBody == null) {
+    const quote = await provider.quote(cap.frameCount);
+    if (quote.credits > w.approvedMaxCredits) {
+      return refuse('QUOTE_ABOVE_APPROVAL', `quote ${quote.credits} > approved ${w.approvedMaxCredits}`);
+    }
+    await db.update(worlds).set({ quotedCredits: quote.credits }).where(eq(worlds.id, worldId));
   }
-  await db.update(worlds).set({ quotedCredits: quote.credits }).where(eq(worlds.id, worldId));
 
   // Persist-before-spend (D-17): the key is minted once, ever; a retry reuses it.
   await db
