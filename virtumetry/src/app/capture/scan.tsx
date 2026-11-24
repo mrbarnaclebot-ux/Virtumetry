@@ -73,6 +73,12 @@ export default function ScanScreen() {
     return () => sub.remove();
   }, [src]);
 
+  // The fixture source is a singleton that outlives this screen: sync it to what the UI
+  // shows on mount too, not only on a tap (CR-04).
+  useEffect(() => {
+    if (isFixtureSource(src)) src.setScenario(scenario);
+  }, [src, scenario]);
+
   useEffect(() => {
     if (phase !== 'recording') return;
     const started = Date.now();
@@ -86,10 +92,7 @@ export default function ScanScreen() {
   const recording = phase === 'recording';
   const busy = phase === 'starting' || phase === 'stopping';
 
-  const pickScenario = (s: FixtureScenario) => {
-    setScenario(s);
-    if (isFixtureSource(src)) src.setScenario(s);
-  };
+  const pickScenario = setScenario;
 
   async function start() {
     setPhase('starting');

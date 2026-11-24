@@ -86,6 +86,15 @@ it('Too few replays 8 frames and stays red', async () => {
   expect(screen.getByText('Keep scanning')).toBeTruthy();
 });
 
+it('a fresh mount replays the scenario the UI shows, not the last one picked (CR-04)', async () => {
+  await renderScan();
+  await fireEvent.press(screen.getByRole('button', { name: 'Too few scenario' }));
+  await screen.unmount();
+  await renderScan(); // shows Good selected
+  await runToEnd();
+  expect(screen.getByText('30 frames')).toBeTruthy();
+});
+
 it('Cancel with frames confirms before deleting the scan', async () => {
   const { Alert } = jest.requireActual('react-native');
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
