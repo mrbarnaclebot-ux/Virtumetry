@@ -25,6 +25,9 @@ COPY --from=build --chown=node:node /app/dist ./dist
 # migrate.ts applies ../drizzle (committed migration SQL); drizzle-kit is a
 # pruned devDependency, so preDeploy runs dist/migrate.js against this folder.
 COPY --chown=node:node backend/drizzle ./drizzle
+# The mock provider's import step reads ../../test/fixtures/mock-outputs from
+# dist/provider/mock.js (dev only, ~25 KB synthetic files, no user data).
+COPY --chown=node:node backend/test/fixtures/mock-outputs ./test/fixtures/mock-outputs
 USER node
 ENV NODE_ENV=production
 # exec: node replaces sh as PID 1 and receives Railway's SIGTERM directly.

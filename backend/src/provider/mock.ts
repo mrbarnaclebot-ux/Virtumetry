@@ -23,7 +23,7 @@ export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 type Issue = { code: string; message: string };
 
 // ponytail: the mock is dev/test only; its outputs are the committed test
-// fixtures, which are not in the Docker image. Pass outputsDir if that changes.
+// fixtures, which the Dockerfile copies to /app/test/fixtures/mock-outputs.
 const DEFAULT_OUTPUTS_DIR = fileURLToPath(
   new URL('../../test/fixtures/mock-outputs/', import.meta.url),
 );
