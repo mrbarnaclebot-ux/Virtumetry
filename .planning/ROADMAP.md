@@ -116,7 +116,7 @@ Plans:
   4. The owner can rename a scan, and deleting it removes it from the database and R2 and sends a deletion request to the provider (mock) *(automated deletion-cascade test + manual Expo Go check)*
   5. Each app build profile points only to its own API URL, and the dev profile refuses a production URL *(automated config test)*
 
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 
 Plans:
 **Wave 1**
@@ -131,7 +131,7 @@ Plans:
 - [x] 03-06-PLAN.md — App library list: display-state mapper, conditional polling, all data states
 **Wave 5**
 - [x] 03-07-PLAN.md — App rename modal + optimistic delete with rollback
-- [ ] 03-08-PLAN.md — Railway dev environment + production session-auth redeploy
+- [x] 03-08-PLAN.md — Railway dev environment + production session-auth redeploy
 **Wave 6**
 - [ ] 03-09-PLAN.md — Build profiles, .env.development, SC5 test, owner phone checklist (checkpoint)
 **UI hint**: yes
@@ -242,7 +242,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
-| 3. Owner Account & Scan Library | 7/9 | In Progress|  |
+| 3. Owner Account & Scan Library | 8/9 | In Progress|  |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
