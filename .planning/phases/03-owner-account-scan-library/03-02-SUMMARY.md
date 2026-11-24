@@ -68,6 +68,7 @@ RED evidence (Task 1): `Error: Failed to load url ../../src/auth/better-auth.js 
 - `npx tsc --noEmit` clean.
 - `npx vitest run`: 33 files passed, 307 tests passed (pg suites skipped without TEST_DATABASE_URL).
 - `npm run test:pg -- test/integration/auth-session.pg.test.ts`: 10/10 passed in a throwaway schema.
+- Full `npm run test:pg` (all integration suites, 0003 included via createTestSchema): 7 files passed, 57 tests passed, 1 skipped (r2-range, needs test:r2).
 - `npm run db:migrate:dev` exit 0; `user`, `session`, `account`, `verification` confirmed on the Neon dev branch. 0003 contains only CREATE TABLE / FK / INDEX for the four new tables.
 - No real emails in backend (`git grep` check empty); test passwords are `crypto.randomBytes` per run.
 
