@@ -202,6 +202,9 @@ describe('delete', () => {
     const calls = mutateCalls('DELETE');
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toBe('https://api.test.invalid/v1/worlds/w2');
+    // CR-01: a bodiless DELETE must carry no JSON content type (Fastify 400s an empty JSON body).
+    // backend/test/integration/ownership.pg.test.ts injects exactly these headers.
+    expect(calls[0][1].headers).toEqual({ Cookie: 'better-auth.session_token=abc' });
 
     server = server.filter((x) => x.id !== 'w2');
     await act(async () => resolve(ok({ ok: true, job_id: 'j1' })));

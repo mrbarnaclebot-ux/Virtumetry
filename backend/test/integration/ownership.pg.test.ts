@@ -133,6 +133,30 @@ describe.skipIf(!url)('library ownership + rename (real Postgres)', () => {
     expect(r.rows[0]).toEqual({ title: 'a'.repeat(80), status: 'ready' });
   });
 
+  it("CR-01: DELETE with the app's exact headers (Cookie only, no content type) is 200", async () => {
+    // Same headers apiFetch sends for a bodiless DELETE (asserted in the app's library-actions test).
+    const victim = await insertWorld(userA, 'Doomed');
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/worlds/${victim}`,
+      remoteAddress: '10.9.9.9',
+      headers: { Cookie: cookieA },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((await row(victim)).deleted_at).not.toBeNull();
+    // The old header set (JSON content type, no body) is what broke it: Fastify 400s the empty body.
+    const old = await app.inject({
+      method: 'DELETE',
+      url: `/v1/worlds/${worldA}`,
+      remoteAddress: '10.9.9.9',
+      headers: { Cookie: cookieA, 'content-type': 'application/json' },
+    });
+    expect(old.statusCode).toBe(400);
+    // Keep the AUTH-05 row count below to worldA + worldB.
+    await schema.pool.query('DELETE FROM jobs WHERE world_id = $1', [victim]);
+    await schema.pool.query('DELETE FROM worlds WHERE id = $1', [victim]);
+  });
+
   it('PATCH without a cookie is 401', async () => {
     expect((await call('PATCH', `/v1/worlds/${worldA}`, undefined, { title: 'x' })).statusCode).toBe(401);
   });

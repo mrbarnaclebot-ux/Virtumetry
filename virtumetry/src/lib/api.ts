@@ -23,7 +23,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: 'omit',
-    headers: { ...(init.headers as Record<string, string>), Cookie: await authClient.getCookie(), 'content-type': 'application/json' },
+    // JSON content type only with a body: Fastify rejects an empty JSON body (CR-01, bodiless DELETE).
+    headers: {
+      ...(init.body != null ? { 'content-type': 'application/json' } : {}),
+      ...(init.headers as Record<string, string>),
+      Cookie: await authClient.getCookie(),
+    },
   });
   if (res.status === 401) {
     await endSession({ notice: true });
