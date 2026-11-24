@@ -103,6 +103,36 @@ Kinds: `pack`, `submit`, `track` (the bundle pipeline below) and `purge`.
 | `SPAITIAL_WEBHOOK_SECRET` | none | HMAC secret for provider webhooks |
 | `SPAITIAL_API_KEY` | none | not read until Phase 6 |
 
+## Auth (Phase 3)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AUTH_MODE` | `dev` | `dev` (bearer `DEV_AUTH_TOKEN`, refused in production), `session` (Better Auth, what both Railway environments run), `apple` (legacy) |
+| `BETTER_AUTH_SECRET` | none | required for `session`, at least 32 characters, a different value per environment |
+| `BETTER_AUTH_URL` | none | required for `session`: the public base URL of the api (https in production) |
+| `OWNER_ALLOWLIST` | empty | comma-separated emails allowed to sign in. Fail-closed: empty means nobody can sign in. Sign-up is always disabled |
+| `AUTH_RATE_LIMIT` | on | `0` disables the auth rate limiter for tests only; refused in production |
+
+Owner scripts (owner-run, Neon dev branch only, they refuse any other host):
+
+- `npm run owner:create` creates the owner account or resets its password. Reads `OWNER_EMAIL` / `OWNER_PASSWORD` from env or prompts; the email must be in the local `OWNER_ALLOWLIST`.
+- `npm run seed:library` fills the owner's dev library with one scan per state (`-- --reset` removes the seeds only). Needs `OWNER_EMAIL` and an existing account.
+
+## Railway environments
+
+One project, `virtumetry` (`162ef8a1-afac-4a01-8253-4e3f75d8b3b3`), two environments, each with `api` + `worker` from the root `Dockerfile`. Deploy with `railway up -s <svc> -e <env> --ci` from the repo root.
+
+| | production | dev |
+|---|---|---|
+| API URL | https://api-production-adfc8f68.up.railway.app | https://api-dev-d164ec0a.up.railway.app |
+| Neon endpoint | `ep-cold-bread-arwg787p` (production branch) | `ep-mute-fog-arwonnkz` (dev branch) |
+| Bucket | `virtumetry-prod` | `virtumetry-dev` |
+| `NODE_ENV` | `production` (image default) | `development` (Railway variable, so `exp://` stays trusted) |
+| `AUTH_MODE` | `session`, own secret, `OWNER_ALLOWLIST` empty (closed until the owner opens it) | `session`, own secret, `OWNER_ALLOWLIST` set by the owner |
+| `PROVIDER_MODE` | `mock` | `mock` (`ALLOW_PAID_PROVIDER`, `SPAITIAL_API_KEY`, `DEV_AUTH_TOKEN` never set) |
+
+`DATABASE_URL` is the pooler host on both services; `MIGRATE_DATABASE_URL` (direct host) is on `api` only, used by the preDeploy `node dist/migrate.js`. Auth variables live on both services because the worker boots through the same config check. `OWNER_ALLOWLIST` is read by the api only.
+
 ## Capture session format (schema 1)
 
 What the app uploads under `captures/{captureId}/`:
