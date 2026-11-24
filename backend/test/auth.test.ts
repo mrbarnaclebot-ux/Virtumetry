@@ -68,6 +68,12 @@ describe('parseDevAuth', () => {
     if (!res.ok) expect(res.status).toBe(401);
   });
 
+  it("rejects a Better Auth 'ba:' subject (WR-04)", () => {
+    const res = parseDevAuth({ authorization: `Bearer ${TOKEN}`, 'x-dev-user': 'ba:owner-id' }, TOKEN);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.status).toBe(401);
+  });
+
   it('errors 500 when no dev token is configured', () => {
     const res = parseDevAuth({ authorization: 'Bearer x' }, undefined);
     expect(res.ok).toBe(false);

@@ -57,6 +57,10 @@ export function parseDevAuth(
   if (!subject) {
     return { ok: false, status: 401, message: 'missing x-dev-user header' };
   }
+  // 'ba:' subjects are Better Auth identities (D-04): the dev token must never claim one (WR-04).
+  if (subject.startsWith('ba:')) {
+    return { ok: false, status: 401, message: 'reserved x-dev-user prefix' };
+  }
   return { ok: true, subject, displayName: subject };
 }
 
