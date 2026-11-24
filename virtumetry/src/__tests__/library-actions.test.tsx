@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { Alert, type AlertButton } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
-import { __setLocalScansForTest } from '@/capture/store';
+import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -261,6 +261,26 @@ describe('delete', () => {
     await press('Discard');
     await waitFor(() => expect(screen.queryByText('Hallway')).toBeNull());
     expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('an uploading local scan offers Delete (not Discard); success drops the local copy too (CR-03)', async () => {
+    __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState: 'uploading', serverWorldId: 'w9' }]);
+    mutate.mockResolvedValue(ok({ ok: true, job_id: 'j1' }));
+    await renderLibrary();
+    await openMenu('Hallway');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Delete', 'Cancel']);
+    await press('Delete');
+    await press('Delete');
+    await waitFor(() => expect(screen.queryByText('Hallway')).toBeNull());
+    expect(mutateCalls('DELETE')[0][0]).toBe('https://api.test.invalid/v1/worlds/w9');
+    expect(getLocalScans()).toEqual([]);
+  });
+
+  it('an approved local scan without a server id offers neither Discard nor Delete', async () => {
+    __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState: 'approved' }]);
+    await renderLibrary();
+    await openMenu('Hallway');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Cancel']);
   });
 
   it('Cancel in the confirmation keeps the row and sends nothing', async () => {

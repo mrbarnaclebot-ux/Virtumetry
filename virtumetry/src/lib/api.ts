@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 
+import { discardLocalScan, getLocalScans } from '@/capture/store';
 import { API_URL } from '@/config/api';
 import { pollInterval, type LibraryItem, type LocalScan } from '@/library/display-state';
 import { authClient } from '@/lib/auth-client';
@@ -78,7 +79,12 @@ export const deleteWorld = (id: string) => apiFetch<{ ok: true; job_id: string }
 export function useDeleteWorld() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: deleteWorld,
+    // Already gone (404) counts as deleted, so a stale local row can still be cleared.
+    mutationFn: (id: string) =>
+      deleteWorld(id).catch((e) => {
+        if (e instanceof ApiError && e.status === 404) return;
+        throw e;
+      }),
     onMutate: async (id: string) => {
       await qc.cancelQueries({ queryKey: ['worlds'] });
       const snapshot = qc.getQueryData<WorldsPage>(['worlds']);
@@ -90,6 +96,16 @@ export function useDeleteWorld() {
       Alert.alert("Couldn't delete", 'The scan is back in your library. Check your connection and try again.', [
         { text: 'Back to Library' },
       ]);
+    },
+    // "This removes it from your phone": drop the local copy of that world too (CR-03, WR-07).
+    onSuccess: (_res, id) => {
+      for (const s of getLocalScans().filter((x) => x.serverWorldId === id)) {
+        try {
+          discardLocalScan(s.id);
+        } catch {
+          // Entry kept; reconcile marks it failed (world gone) and the owner can Discard it.
+        }
+      }
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['worlds'] }),
   });

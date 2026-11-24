@@ -43,9 +43,37 @@ async function applyServerState(scan: LocalScan, world: ScanWorld, local: LocalS
   return null;
 }
 
+const statusOf = (e: unknown) => (e as { status?: unknown } | null)?.status;
+
+type Deps = { api: ScansApi; uploader: Uploader; local: LocalStore; batchSize?: number };
+
+/**
+ * The server world is gone (deleted, or its key was used by a deleted world): terminal, never
+ * retried (CR-03). Files are kept so the owner can still Discard the local row.
+ */
+export const WORLD_GONE = 'WORLD_DELETED';
+
 export async function reconcile(
   scan: LocalScan,
-  deps: { api: ScansApi; uploader: Uploader; local: LocalStore; batchSize?: number },
+  deps: Deps,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<ReconcileResult> {
+  const gone = (): ReconcileResult => {
+    deps.local.update(scan.id, { uploadState: 'failed', failureCode: WORLD_GONE });
+    return { kind: 'failed' };
+  };
+  try {
+    return await reconcileOnce(scan, deps, onProgress);
+  } catch (e) {
+    // 404 on any :id route = deleted or not ours; 409 on create = idempotency_key_world_deleted.
+    if (statusOf(e) === 404 || (statusOf(e) === 409 && !scan.serverWorldId)) return gone();
+    throw e;
+  }
+}
+
+async function reconcileOnce(
+  scan: LocalScan,
+  deps: Deps,
   onProgress?: (p: UploadProgress) => void,
 ): Promise<ReconcileResult> {
   const { api, uploader, local, batchSize = 200 } = deps;

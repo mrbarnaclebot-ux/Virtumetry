@@ -1,6 +1,6 @@
 import type { LocalScan } from '@/library/display-state';
 import type { MissingReport, PresignedPut, ScanWorld } from '@/lib/api';
-import { reconcile, type ScansApi, type Uploader } from '@/upload/reconcile';
+import { reconcile, WORLD_GONE, type ScansApi, type Uploader } from '@/upload/reconcile';
 
 const pad6 = (i: number) => String(i).padStart(6, '0');
 const framePath = (i: number) => `frames/${pad6(i)}.jpg`;
@@ -262,5 +262,23 @@ describe('reconcile', () => {
     expect(progress).toHaveBeenNthCalledWith(1, { uploaded: 2, total: 6 });
     expect(progress).toHaveBeenCalledWith({ uploaded: 4, total: 6 });
     expect(progress).toHaveBeenLastCalledWith({ uploaded: 6, total: 6 });
+  });
+
+  it('a deleted world (404) or deleted key (409 on create) is terminal: failed, files kept (CR-03)', async () => {
+    const httpError = (status: number) => Object.assign(new Error(`API error ${status}`), { status });
+    const server = fakeServer(3);
+    server.api.getMissing.mockRejectedValueOnce(httpError(404));
+    const local = fakeLocal();
+    const res = await reconcile(localScan({ serverWorldId: 'w-1' }), { api: server.api, uploader: okUploader(server), local });
+    expect(res.kind).toBe('failed');
+    expect(local.update).toHaveBeenCalledWith('sess-1', { uploadState: 'failed', failureCode: WORLD_GONE });
+    expect(local.deleteFiles).not.toHaveBeenCalled();
+
+    server.api.createScan.mockRejectedValueOnce(httpError(409));
+    expect((await reconcile(localScan(), { api: server.api, uploader: okUploader(server), local })).kind).toBe('failed');
+
+    // Other errors still propagate (retried next pass).
+    server.api.getMissing.mockRejectedValueOnce(httpError(500));
+    await expect(reconcile(localScan({ serverWorldId: 'w-1' }), { api: server.api, uploader: okUploader(server), local })).rejects.toThrow('500');
   });
 });

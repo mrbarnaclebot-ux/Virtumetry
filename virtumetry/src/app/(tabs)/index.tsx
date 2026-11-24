@@ -52,12 +52,19 @@ export default function LibraryScreen() {
       params: { id: scan.id, step: scan.uploadState === 'saved' ? 'review' : 'upload' },
     });
 
-  // Row action menu (D-21). Local scans have no server id: Discard only (UI-SPEC §2).
+  // Row action menu (D-21). Local scans: Discard only while nothing is on the server side
+  // (saved/blocked/failed); once uploading has a server world, Delete removes both (CR-03).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
     const title = state.displayTitle;
     if ('local' in item) {
+      const discardable = item.uploadState === 'saved' || item.uploadState === 'blocked' || item.uploadState === 'failed';
+      const serverId = item.serverWorldId;
       Alert.alert(title, undefined, [
-        { text: 'Discard', style: 'destructive', onPress: () => confirmDiscard(item.id, item.frameCount) },
+        ...(discardable
+          ? [{ text: 'Discard', style: 'destructive' as const, onPress: () => confirmDiscard(item.id, item.frameCount) }]
+          : serverId
+            ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => confirmDelete(serverId, title) }]
+            : []),
         { text: 'Cancel', style: 'cancel' },
       ]);
       return;
