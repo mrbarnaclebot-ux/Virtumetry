@@ -49,12 +49,12 @@ describe('local scan store', () => {
     expect(getLocalScans()).toEqual([s]);
   });
 
-  it('updateLocalScan merges and persists; useLocalScan re-renders', () => {
+  it('updateLocalScan merges and persists; useLocalScan re-renders', async () => {
     const s = scan();
     addLocalScan(s);
-    const { result } = renderHook(() => useLocalScan(s.id));
+    const { result } = await renderHook(() => useLocalScan(s.id));
     expect(result.current?.uploadState).toBe('saved');
-    act(() => updateLocalScan(s.id, { uploadState: 'approved', approvedMaxCredits: 930 }));
+    await act(async () => updateLocalScan(s.id, { uploadState: 'approved', approvedMaxCredits: 930 }));
     expect(result.current).toMatchObject({ uploadState: 'approved', approvedMaxCredits: 930, frameCount: 30 });
     __reloadForTest();
     expect(getLocalScan(s.id)?.approvedMaxCredits).toBe(930);

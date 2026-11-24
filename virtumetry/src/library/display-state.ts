@@ -1,3 +1,6 @@
+import type { PrecheckIssue } from '@/capture/precheck';
+import type { Readiness } from '@/capture/readiness';
+
 /** Server item from GET /v1/worlds (03-03). */
 export type LibraryItem = {
   id: string;
@@ -17,8 +20,30 @@ export type LibraryItem = {
   assets: { thumbnail_url?: string };
 };
 
-/** Scan saved on the phone but not uploaded yet (Phase 4 capture adds these). */
-export type LocalScan = { id: string; title: string | null; createdAt: string };
+
+export type LocalUploadState = 'saved' | 'approved' | 'uploading' | 'paused' | 'done' | 'blocked' | 'failed';
+
+/** Scan saved on the phone first (D-13); persisted by src/capture/store.ts. */
+export type LocalScan = {
+  /** = sessionId */
+  id: string;
+  sessionId: string;
+  title: string | null;
+  createdAt: string;
+  /** Session dir uri (Paths.document/sessions/<sessionId>). */
+  dir: string;
+  frameCount: number;
+  durationS: number;
+  imageW: number;
+  imageH: number;
+  readiness: Readiness['level'];
+  precheckIssues: PrecheckIssue[];
+  approvedMaxCredits?: number;
+  serverWorldId?: string;
+  uploadState: LocalUploadState;
+  failureCode?: string | null;
+  progress?: { uploaded: number; total: number };
+};
 
 export type DisplayState = {
   kind: 'saved_on_phone' | 'uploading' | 'processing' | 'ready' | 'failed' | 'cancelled';

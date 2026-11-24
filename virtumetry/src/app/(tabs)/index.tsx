@@ -8,8 +8,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useLocalScans } from '@/capture/store';
 import type { DisplayState } from '@/library/display-state';
-import { useLocalScans } from '@/library/local-scans';
 import { useDeleteWorld, useWorlds } from '@/lib/api';
 
 export default function LibraryScreen() {
@@ -20,32 +20,47 @@ export default function LibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
 
-  // Row action menu (D-21). Local scans have no server id, so they get Delete only.
+  // Row action menu (D-21). Local scans have no server id: Discard only (UI-SPEC §2).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
     const title = state.displayTitle;
+    if ('local' in item) {
+      Alert.alert(title, undefined, [
+        { text: 'Discard', style: 'destructive', onPress: () => confirmDiscard(item.id, item.frameCount) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+      return;
+    }
     Alert.alert(title, undefined, [
-      ...('local' in item ? [] : [{ text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) }]),
-      { text: 'Delete', style: 'destructive' as const, onPress: () => confirmDelete(item, title) },
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(item.id, title) },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
-  const confirmDelete = (item: RowItem, title: string) => {
-    const local = 'local' in item;
-    Alert.alert(
-      `Delete "${title}"?`,
-      local
-        ? "This removes it from your phone. You can't undo this."
-        : "This removes it from your phone, our servers and SpAItial. You can't undo this.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => (local ? removeLocal(item.id) : deleteWorld.mutate(item.id)),
+  const confirmDiscard = (id: string, n: number) => {
+    Alert.alert('Discard this scan?', `This deletes its ${n} photos from your phone. You can't undo this.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => {
+          try {
+            removeLocal(id);
+          } catch {
+            Alert.alert("Couldn't discard", 'Try again. If it keeps failing, restart the app.', [
+              { text: 'Back to Review' },
+            ]);
+          }
         },
-      ],
-    );
+      },
+    ]);
+  };
+
+  const confirmDelete = (id: string, title: string) => {
+    Alert.alert(`Delete "${title}"?`, "This removes it from your phone, our servers and SpAItial. You can't undo this.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteWorld.mutate(id) },
+    ]);
   };
 
   // Only a user-started refresh shows the spinner; background polling never does.
@@ -55,11 +70,17 @@ export default function LibraryScreen() {
     setRefreshing(false);
   };
 
+  // Once the server row is past uploading it replaces the local row (Pitfall 10).
+  const serverStatus = new Map((data?.worlds ?? []).map((w) => [w.id, w.status]));
+  const shownScans = scans.filter((s) => {
+    const status = s.serverWorldId ? serverStatus.get(s.serverWorldId) : undefined;
+    return status === undefined || status === 'uploading';
+  });
   const items: RowItem[] = [
-    ...scans.map((s) => ({ ...s, local: true as const })),
+    ...shownScans.map((s) => ({ ...s, local: true as const })),
     ...(data?.worlds ?? []),
   ];
-  const noCache = !data && scans.length === 0;
+  const noCache = !data && shownScans.length === 0;
 
   const header = (
     <>

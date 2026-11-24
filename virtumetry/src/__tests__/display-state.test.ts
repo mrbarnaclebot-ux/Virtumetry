@@ -4,6 +4,7 @@ import {
   STALLED_MS,
   toDisplayState,
   type LibraryItem,
+  type LocalScan,
 } from '@/library/display-state';
 
 const NOW = new Date('2026-11-24T12:00:00.000Z');
@@ -175,7 +176,7 @@ describe('toDisplayState: terminal states', () => {
 
 describe('toDisplayState: local and titles', () => {
   it('local saved_on_phone item', () => {
-    const s = toDisplayState({ local: true, id: 'l1', title: 'Hall', createdAt: CREATED }, NOW);
+    const s = toDisplayState({ local: true, id: 'l1', title: 'Hall', createdAt: CREATED } as LocalScan & { local: true }, NOW);
     expect(s.kind).toBe('saved_on_phone');
     expect(s.statusLine).toBe('Saved on phone · Not uploaded');
     expect(s.secondaryLine).toBe(date(CREATED));
