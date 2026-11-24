@@ -8,7 +8,6 @@ import { FixtureCaptureSource } from '@/capture/fixture-source';
 import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import type { FrameLine, KeyframeEvent, PoseEvent, TrackingEvent } from '@/capture/types';
 
-const FS_MOCK = require('expo-file-system/mocks/FileSystem') as { __resetMockFileSystem?: () => void };
 const NOW0 = 1_800_000_000_000;
 const FRAMES = framesJson as FrameLine[];
 
@@ -40,7 +39,6 @@ const readLines = (sid: string) =>
     .map((l) => JSON.parse(l) as FrameLine);
 
 beforeEach(() => {
-  FS_MOCK.__resetMockFileSystem?.();
   jest.useFakeTimers();
 });
 afterEach(() => jest.useRealTimers());
