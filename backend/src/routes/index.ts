@@ -77,7 +77,7 @@ export async function registerRoutes(
     authed.addHook('onRequest', makeAuthPreHandler(config, authFailures, deps.auth));
     worldsRoutes(authed, deps);
     devicesRoutes(authed);
-    accountRoutes(authed);
+    accountRoutes(authed, deps.auth);
     meRoutes(authed, deps);
   });
 }

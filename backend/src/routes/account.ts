@@ -1,5 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import type { Auth } from '../auth/better-auth.js';
 import { getDb } from '../db/client.js';
 import { devices, users, worlds } from '../db/schema.js';
 import { enqueue } from '../queue.js';
@@ -8,7 +9,7 @@ import { enqueue } from '../queue.js';
 // Soft-deletes the user's worlds and enqueues a purge for each, deletes the
 // user's device tokens, and marks the user deleted. Provider-side deletion is
 // handled by the purge worker (Stage 2).
-export function accountRoutes(app: FastifyInstance): void {
+export function accountRoutes(app: FastifyInstance, auth?: Auth): void {
   app.delete('/v1/account', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'unauthenticated' });
     const userId = req.userId;
@@ -30,7 +31,18 @@ export function accountRoutes(app: FastifyInstance): void {
     }
 
     await db.delete(devices).where(eq(devices.userId, userId));
-    await db.update(users).set({ deletedAt: now }).where(eq(users.id, userId));
+    const [user] = await db
+      .update(users)
+      .set({ deletedAt: now })
+      .where(eq(users.id, userId))
+      .returning({ sub: users.appleSub });
+
+    // Session mode (WR-02): drop the Better Auth user too; its session and
+    // account (password hash, IP history) rows cascade. A later owner:create
+    // then mints a new BA id, so it maps to a fresh users row, not this one.
+    if (auth && user?.sub?.startsWith('ba:')) {
+      await (await auth.$context).internalAdapter.deleteUser(user.sub.slice(3));
+    }
 
     return reply.send({ ok: true, worlds_purged: live.length });
   });

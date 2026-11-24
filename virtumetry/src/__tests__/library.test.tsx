@@ -148,6 +148,12 @@ describe('library screen', () => {
     await waitFor(() => expect(endSession).toHaveBeenCalledWith({ notice: true }));
   });
 
+  it('ends the session on 403 account_deleted (WR-02)', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: 'account_deleted' }) } as Response);
+    await renderLibrary();
+    await waitFor(() => expect(endSession).toHaveBeenCalledWith({ notice: true }));
+  });
+
   it('labels rows, the more button and the progress bar', async () => {
     fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'uploading', progress: 40 }), w('Attic', { status: 'cancelled' })]));
     await renderLibrary();

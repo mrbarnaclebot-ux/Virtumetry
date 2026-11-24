@@ -175,4 +175,24 @@ describe.skipIf(!url)('session auth (Better Auth, real Postgres)', () => {
     const noDev = await app.inject({ method: 'GET', url: '/v1/worlds', remoteAddress: nextIp(), headers: bearer });
     expect(noDev.statusCode).toBe(401);
   });
+
+  // Last: it deletes owner-b's credential. WR-02.
+  it('DELETE /v1/account removes the BA user, sessions and credential; owner:create then works again', async () => {
+    const r = await signIn(app, 'owner-b@example.com', pwB, { remoteAddress: nextIp() });
+    expect((await worlds(r.cookie)).statusCode).toBe(200);
+    const baId = (await schema.pool.query(`SELECT id FROM "user" WHERE email = 'owner-b@example.com'`)).rows[0].id;
+    const del = await app.inject({ method: 'DELETE', url: '/v1/account', remoteAddress: nextIp(), headers: { cookie: r.cookie } });
+    expect(del.statusCode).toBe(200);
+
+    for (const q of ['SELECT 1 FROM "user" WHERE id = $1', 'SELECT 1 FROM session WHERE user_id = $1', 'SELECT 1 FROM account WHERE user_id = $1']) {
+      expect((await schema.pool.query(q, [baId])).rowCount).toBe(0);
+    }
+    expect((await worlds(r.cookie)).statusCode).toBe(401);
+
+    // Re-provisioning mints a new BA id, so it maps to a fresh users row (no permanent 403).
+    const pw = await seedOwner(s.auth, 'owner-b@example.com');
+    const again = await signIn(app, 'owner-b@example.com', pw, { remoteAddress: nextIp() });
+    expect(again.status).toBe(200);
+    expect((await worlds(again.cookie)).statusCode).toBe(200);
+  });
 });

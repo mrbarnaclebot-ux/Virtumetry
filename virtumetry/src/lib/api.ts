@@ -30,7 +30,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       Cookie: await authClient.getCookie(),
     },
   });
-  if (res.status === 401) {
+  // A deleted account is 403 account_deleted on every call: sign out like a 401 (WR-02).
+  const deleted = res.status === 403 && (await res.json().catch(() => null))?.error === 'account_deleted';
+  if (res.status === 401 || deleted) {
     await endSession({ notice: true });
     throw new UnauthorizedError();
   }
