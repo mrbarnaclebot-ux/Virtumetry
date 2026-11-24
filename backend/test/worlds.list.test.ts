@@ -65,6 +65,28 @@ describe('serializeWorldListItem', () => {
     expect(item.status).toBe('ready');
   });
 
+  it('carries failure fields, charged and eta_seconds (null) beside heartbeat_at (D-15a)', async () => {
+    const item = await serializeWorldListItem(
+      fakeWorld({
+        status: 'failed',
+        failureStage: 'processing',
+        failureCode: 'provider_failed',
+        failureMessage: 'boom',
+        charged: true,
+      } as Partial<World>),
+      mockStorage(),
+    );
+    expect(item).toMatchObject({
+      failure_stage: 'processing',
+      failure_code: 'provider_failed',
+      failure_message: 'boom',
+      charged: true,
+      eta_seconds: null,
+      heartbeat_at: new Date('2026-07-12T11:00:00Z'),
+      assets: {},
+    });
+  });
+
   it('has an empty assets object (no thumbnail_url key) when unset', async () => {
     const storage = mockStorage();
     const item = await serializeWorldListItem(fakeWorld(), storage);
