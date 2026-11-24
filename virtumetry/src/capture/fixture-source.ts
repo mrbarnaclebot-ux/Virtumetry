@@ -90,6 +90,7 @@ export class FixtureCaptureSource implements CaptureSource {
 
   async start(gateConfig: GateConfig): Promise<{ sessionId: string }> {
     this.clearTimer();
+    this.dir = null; // nothing for cancel() to delete until this start creates its own dir
     const gen = ++this.gen;
     const frames = applyScenario(this.frames, this.scenario);
     // Pre-resolve before the timer runs (Pitfall 7).
@@ -149,7 +150,9 @@ export class FixtureCaptureSource implements CaptureSource {
   async stop() {
     this.gen++;
     this.clearTimer();
-    return { sessionId: this.sessionId, frameCount: this.emitted, dir: this.dir?.uri ?? '' };
+    const r = { sessionId: this.sessionId, frameCount: this.emitted, dir: this.dir?.uri ?? '' };
+    this.dir = null; // a stopped session belongs to the store now; cancel() must never delete it
+    return r;
   }
 
   async cancel() {

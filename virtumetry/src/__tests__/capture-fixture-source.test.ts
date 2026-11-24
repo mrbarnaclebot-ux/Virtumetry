@@ -151,6 +151,18 @@ describe('FixtureCaptureSource', () => {
     expect(sessions().exists ? sessions().list().length : 0).toBe(before);
   });
 
+  it('cancel() during a second start never deletes the previous, saved session (iter-2 CR-01)', async () => {
+    const { src } = setup();
+    const a = await src.start({});
+    jest.advanceTimersByTime(10_000);
+    await src.stop();
+    expect(sessionDir(a.sessionId).exists).toBe(true);
+    const pending = src.start({});
+    await src.cancel();
+    await expect(pending).rejects.toThrow('capture cancelled');
+    expect(sessionDir(a.sessionId).exists).toBe(true);
+  });
+
   it('each start gets a fresh session id', async () => {
     const { src } = setup();
     const a = await src.start({});
