@@ -6,6 +6,7 @@ import { getDb } from '../db/client.js';
 import { captures, worlds, type World } from '../db/schema.js';
 import { chargeScanQuota, releaseScanQuota } from '../quota.js';
 import { BundleInvalidError, MANIFEST_MAX_BYTES, validateStored } from '../bundle/pack.js';
+import { MAX_LONG_EDGE } from '../bundle/validate.js';
 import { PRICING, captureConfig } from '../capture-config.js';
 import { spentCredits, wouldExceedBudget } from '../budget.js';
 import { failWorld } from '../pipeline.js';
@@ -36,9 +37,10 @@ const createBody = z
   .object({
     title: z.string().min(1).max(80).optional(),
     frame_count: z.number().int().min(1),
-    image_w: z.number().int().positive(),
-    image_h: z.number().int().positive(),
-    approved_max_credits: z.number().int(),
+    image_w: z.number().int().min(1).max(MAX_LONG_EDGE),
+    image_h: z.number().int().min(1).max(MAX_LONG_EDGE),
+    // Postgres integer column: anything above int4 would 500 at insert.
+    approved_max_credits: z.number().int().max(2_000_000_000),
   })
   .strict();
 

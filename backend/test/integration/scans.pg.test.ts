@@ -175,6 +175,12 @@ describe.skipIf(!url)('scans upload path (real Postgres)', () => {
     const low = await create({ approved: 900 + FRAMES - 1 });
     expect(low.statusCode).toBe(400);
     expect(JSON.parse(low.body).error).toBe('approval_below_quote');
+    // Out-of-int4 / oversized values are a 400, not a 500 after charging (WR-06).
+    expect((await create({ approved: 2 ** 31 })).statusCode).toBe(400);
+    const wide = await call('POST', '/v1/scans', cookieA,
+      { frame_count: FRAMES, image_w: 5000, image_h: 480, approved_max_credits: 2000 },
+      { 'idempotency-key': randomUUID() });
+    expect(JSON.parse(wide.body).error).toBe('invalid_body');
 
     const id = await createId({ approved: 2000 });
     const row = (await schema.pool.query('SELECT approved_max_credits FROM worlds WHERE id = $1', [id])).rows[0];
