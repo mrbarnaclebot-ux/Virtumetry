@@ -1,5 +1,5 @@
 import { useCameraPermissions } from 'expo-camera';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -29,7 +29,7 @@ export default function LibraryScreen() {
   const newScan = () => {
     const { skip, askedOnce } = getPrepFlags();
     const ready = camera?.granted || (isFixtureSource(getCaptureSource()) && askedOnce);
-    router.push(skip && ready ? ('/capture/scan' as Href) : '/capture/prep');
+    router.push(skip && ready ? '/capture/scan' : '/capture/prep');
   };
 
   const newScanButton = (style: 'pill' | 'button') => (

@@ -1,5 +1,5 @@
 import { useCameraPermissions } from 'expo-camera';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import {
@@ -37,7 +37,7 @@ const CHECKLIST: { icon: SymbolViewProps['name']; title: string; body: string }[
 const DENIED_HEADING = 'Camera access is off';
 
 const close = () => router.back();
-const goScan = () => router.replace('/capture/scan' as Href);
+const goScan = () => router.replace('/capture/scan');
 
 export default function PrepScreen() {
   const theme = useTheme();
