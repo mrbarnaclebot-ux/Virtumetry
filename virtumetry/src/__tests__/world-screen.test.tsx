@@ -1,18 +1,23 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import WorldScreen from '@/app/world/[id]/index';
 import type { LibraryItem } from '@/library/display-state';
 import type { ViewerProps } from '@/viewer/types';
 
 const viewerProps: { current: ViewerProps | null } = { current: null };
+const mockMounts: ViewerProps[] = [];
 
 jest.mock('@/viewer/world-viewer', () => {
   const { View } = jest.requireActual('react-native');
   return {
     __esModule: true,
-    default: (p: ViewerProps) => {
+    default: function MockViewer(p: ViewerProps) {
+      const { useEffect } = jest.requireActual('react');
       viewerProps.current = p;
+      useEffect(() => {
+        mockMounts.push(p);
+      }, []); // eslint-disable-line react-hooks/exhaustive-deps
       return <View testID="world-viewer" />;
     },
   };
@@ -62,6 +67,7 @@ const fail = (status: number, error: string) => ({ ok: false, status, json: asyn
 let fetchMock: jest.Mock;
 beforeEach(() => {
   viewerProps.current = null;
+  mockMounts.length = 0;
   fetchMock = jest.fn();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
@@ -140,4 +146,66 @@ it('network failure: retried twice, then Try again refetches', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
   await screen.findByTestId('world-viewer');
   expect(fetchMock).toHaveBeenCalledTimes(4);
+});
+
+describe('crash recovery (D-13b)', () => {
+  const POSE = { position: [0.5, 1.6, -1] as [number, number, number], quaternion: [0, 0, 0, 1] as [number, number, number, number] };
+  const v = () => viewerProps.current!;
+  type Dom = { onContentProcessDidTerminate: () => void; onRenderProcessGone: () => void };
+  const dom = () => v().dom as unknown as Dom;
+
+  async function open() {
+    fetchMock.mockResolvedValue(ok({ world: world(), assets: ASSETS }));
+    await render(ui(newClient()));
+    await screen.findByTestId('world-viewer');
+    await act(async () => {
+      await v().onReady!();
+      await v().onPose!(POSE);
+    });
+  }
+
+  it('a WebView termination remounts at the last pose, reconnecting until ready', async () => {
+    await open();
+    expect(typeof dom().onContentProcessDidTerminate).toBe('function');
+    expect(typeof dom().onRenderProcessGone).toBe('function');
+    expect(mockMounts).toHaveLength(1);
+    expect(v().startPose ?? null).toBeNull();
+
+    await act(async () => dom().onContentProcessDidTerminate());
+    expect(mockMounts).toHaveLength(2);
+    expect(v().startPose).toEqual(POSE);
+    expect(screen.getByText('Reconnecting viewer…')).toBeTruthy();
+
+    await act(async () => v().onReady!());
+    expect(screen.queryByText('Reconnecting viewer…')).toBeNull();
+
+    await act(async () => dom().onRenderProcessGone());
+    expect(mockMounts).toHaveLength(3);
+  });
+
+  it('caps after 3 crashes in 60 s; Reload viewer remounts at the saved pose', async () => {
+    await open();
+    for (let i = 0; i < 3; i++) await act(async () => dom().onContentProcessDidTerminate());
+    expect(mockMounts).toHaveLength(4);
+    expect(screen.queryByText('The viewer stopped working')).toBeNull();
+
+    await act(async () => dom().onContentProcessDidTerminate());
+    expect(screen.getByText('The viewer stopped working')).toBeTruthy();
+    expect(screen.getByText('This can happen when the phone is low on memory. Reload to try again.')).toBeTruthy();
+    expect(screen.queryByTestId('world-viewer')).toBeNull();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Reload viewer' }));
+    expect(screen.queryByText('The viewer stopped working')).toBeNull();
+    expect(mockMounts).toHaveLength(5);
+    expect(v().startPose).toEqual(POSE);
+  });
+
+  it('onError context_lost counts as a crash; other errors do not', async () => {
+    await open();
+    await act(async () => v().onError!({ code: 'load_failed' }));
+    expect(mockMounts).toHaveLength(1);
+    await act(async () => v().onError!({ code: 'context_lost' }));
+    expect(mockMounts).toHaveLength(2);
+    expect(v().startPose).toEqual(POSE);
+  });
 });
