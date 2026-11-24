@@ -85,6 +85,8 @@ export default function WorldScreen() {
   const world = data?.world;
   const title = world?.title?.trim() || 'Untitled scan';
   const splatUrl = data?.assets.splat_url;
+  // D-18: sharing only exists for a ready room.
+  const ready = world?.status === 'ready';
 
   let content;
   if (isPending) {
@@ -174,9 +176,18 @@ export default function WorldScreen() {
             numberOfLines={1}
             ellipsizeMode="tail"
             maxFontSizeMultiplier={CHROME}
-            style={styles.title}>
+            style={[styles.title, !ready && styles.titlePad]}>
             {title}
           </Text>
+        )}
+        {ready && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share this room"
+            onPress={() => router.push({ pathname: '/world/[id]/share', params: { id } })}
+            style={({ pressed }) => [styles.share, pressed && { backgroundColor: VT.surfaceSelected }]}>
+            <SymbolView name="square.and.arrow.up" size={20} tintColor={VT.text} />
+          </Pressable>
         )}
       </View>
     </View>
@@ -207,7 +218,9 @@ const styles = StyleSheet.create({
     borderRadius: VT.radius.sm,
   },
   backLabel: { color: VT.text, fontSize: VT.font.body },
-  title: { flex: 1, color: VT.text, fontSize: VT.font.body, fontWeight: '600', marginRight: 44 },
+  title: { flex: 1, color: VT.text, fontSize: VT.font.body, fontWeight: '600' },
+  titlePad: { marginRight: 44 }, // balances Back when Share is hidden
+  share: { width: 44, height: TOP_BAR, alignItems: 'center', justifyContent: 'center', borderRadius: VT.radius.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.lg },
   heading: { color: VT.text, fontSize: VT.font.heading, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
   body: {
