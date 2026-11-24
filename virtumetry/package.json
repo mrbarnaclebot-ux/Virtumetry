@@ -9,12 +9,14 @@
     "better-auth": "1.7.27",
     "expo": "~58.0.26",
     "expo-asset": "~58.0.21",
+    "expo-camera": "~58.0.14",
     "expo-constants": "~58.0.16",
     "expo-device": "~58.0.5",
     "expo-file-system": "~58.0.14",
     "expo-font": "~58.0.12",
     "expo-glass-effect": "~58.0.5",
     "expo-image": "~58.0.18",
+    "expo-keep-awake": "~58.0.4",
     "expo-linking": "~58.0.17",
     "expo-network": "~58.0.5",
     "expo-router": "~58.0.32",
@@ -31,6 +33,7 @@
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.11.1",
     "react-native-screens": "~4.30.1",
+    "react-native-svg": "15.16.0",
     "react-native-web": "~0.21.4",
     "react-native-worklets": "0.13.0"
   },
@@ -60,7 +63,7 @@
       "<rootDir>/jest.setup.ts"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|better-auth|@better-auth/.*|better-call|nanostores|@nanostores/.*|@better-fetch/.*)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|better-auth|@better-auth/.*|better-call|nanostores|@nanostores/.*|@better-fetch/.*|standard-navigation)"
     ],
     "transform": {
       "\\.mjs$": "<rootDir>/jest.mjs-transformer.js"

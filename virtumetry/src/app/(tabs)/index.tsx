@@ -1,3 +1,5 @@
+import { useCameraPermissions } from 'expo-camera';
+import { router, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -8,6 +10,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { getPrepFlags } from '@/capture/prep-flags';
+import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import { useLocalScans } from '@/capture/store';
 import type { DisplayState } from '@/library/display-state';
 import { useDeleteWorld, useWorlds } from '@/lib/api';
@@ -19,6 +23,27 @@ export default function LibraryScreen() {
   const deleteWorld = useDeleteWorld();
   const [refreshing, setRefreshing] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const [camera] = useCameraPermissions();
+
+  // D-11: skip prep when "Don't show again" is set and the camera is ready (or the fixture needs none).
+  const newScan = () => {
+    const { skip, askedOnce } = getPrepFlags();
+    const ready = camera?.granted || (isFixtureSource(getCaptureSource()) && askedOnce);
+    router.push(skip && ready ? ('/capture/scan' as Href) : '/capture/prep');
+  };
+
+  const newScanButton = (style: 'pill' | 'button') => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="New scan"
+      onPress={newScan}
+      style={({ pressed }) => [styles[style], { backgroundColor: theme.accent }, pressed && styles.pressed]}>
+      {style === 'pill' && <SymbolView name="plus" size={16} tintColor={theme.onAccent} />}
+      <ThemedText type="smallBold" themeColor="onAccent" maxFontSizeMultiplier={1.6}>
+        New scan
+      </ThemedText>
+    </Pressable>
+  );
 
   // Row action menu (D-21). Local scans have no server id: Discard only (UI-SPEC §2).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
@@ -84,9 +109,12 @@ export default function LibraryScreen() {
 
   const header = (
     <>
-      <ThemedText type="title" accessibilityRole="header" style={styles.title}>
-        Library
-      </ThemedText>
+      <View style={styles.headerRow}>
+        <ThemedText type="title" accessibilityRole="header">
+          Library
+        </ThemedText>
+        {newScanButton('pill')}
+      </View>
       {error && data && (
         <ThemedText type="small" themeColor="destructive" style={styles.refreshError}>
           {"Couldn't refresh. Showing your last saved list."}
@@ -133,8 +161,9 @@ export default function LibraryScreen() {
           No scans yet
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.textCenter}>
-          Scans you capture show up here, with their progress and status. Pull down to refresh.
+          Walk slowly around a room with your phone, and it comes back here in 3D.
         </ThemedText>
+        {newScanButton('button')}
       </View>
     );
   }
@@ -170,7 +199,30 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
   },
-  title: { marginTop: Spacing.three, marginBottom: Spacing.four },
+  headerRow: {
+    marginTop: Spacing.three,
+    marginBottom: Spacing.four,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pill: {
+    height: 44,
+    borderRadius: 22,
+    paddingHorizontal: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  button: {
+    marginTop: Spacing.four,
+    height: 52,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: { opacity: 0.8 },
   refreshError: { marginBottom: Spacing.three },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: Spacing.six },
   heading: { marginTop: Spacing.three, marginBottom: Spacing.two, textAlign: 'center' },

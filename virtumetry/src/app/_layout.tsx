@@ -31,6 +31,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Protected guard={!!data}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="capture" options={{ presentation: 'fullScreenModal' }} />
           </Stack.Protected>
           <Stack.Protected guard={!data}>
             <Stack.Screen name="sign-in" />

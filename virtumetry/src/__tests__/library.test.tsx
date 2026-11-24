@@ -123,7 +123,7 @@ describe('library screen', () => {
     await renderLibrary();
     await screen.findByText('No scans yet');
     expect(
-      screen.getByText('Scans you capture show up here, with their progress and status. Pull down to refresh.'),
+      screen.getByText('Walk slowly around a room with your phone, and it comes back here in 3D.'),
     ).toBeTruthy();
   });
 
