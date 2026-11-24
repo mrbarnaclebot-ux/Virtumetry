@@ -25,7 +25,7 @@ export const TEST_WEBHOOK_SECRET = 'test-webhook-secret';
 export const DEV_CAPTURE_CONFIG_JSON =
   '{"readiness":{"minFramesGreen":25,"minFramesAmber":15,"minSectorsGreen":1,"minSectorsAmber":1},"precheck":{"minFrames":20,"minCoverageSectors":1}}';
 
-async function readFixture(): Promise<Map<string, Buffer>> {
+export async function readFixture(): Promise<Map<string, Buffer>> {
   const files = new Map<string, Buffer>();
   for (const rel of ['session.json', 'frames.jsonl']) {
     files.set(rel, await fs.readFile(path.join(FIXTURE_DIR, rel)));
