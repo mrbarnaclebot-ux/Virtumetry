@@ -34,6 +34,9 @@ export const MOCK_SCENARIOS = [
   'webhook_dropped',
 ] as const;
 
+// Which committed fixture directory the mock serves (D-02). Fixed list: no env path is ever joined.
+export const MOCK_OUTPUTS_SETS = ['default', 'demo-room'] as const;
+
 const baseSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   // Direct (non-pooler) Neon host for src/migrate.ts only: its session-scoped
@@ -80,6 +83,7 @@ const baseSchema = z.object({
   SPAITIAL_WEBHOOK_SECRET: z.string().optional(),
   // Mock provider: scenario for manual/dev runs and time-to-complete (D-13).
   MOCK_SCENARIO: z.enum(MOCK_SCENARIOS).default('happy'),
+  MOCK_OUTPUTS_SET: z.enum(MOCK_OUTPUTS_SETS).default('default'),
   MOCK_PROCESSING_SECONDS: numberFromEnv(5),
   // How long the track job snoozes between provider status polls (D-16).
   TRACK_POLL_SECONDS: numberFromEnv(60),

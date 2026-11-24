@@ -280,11 +280,12 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
 
 // --- track + import -------------------------------------------------------------
 
-const KEY_COLUMN: Partial<Record<ArtifactKind, 'splatKey' | 'colliderKey' | 'floorplanKey' | 'camerasKey'>> = {
+const KEY_COLUMN: Partial<Record<ArtifactKind, 'splatKey' | 'colliderKey' | 'floorplanKey' | 'camerasKey' | 'thumbnailKey'>> = {
   splat: 'splatKey',
   collider: 'colliderKey',
   floorplan: 'floorplanKey',
   cameras: 'camerasKey',
+  thumbnail: 'thumbnailKey',
 };
 const EXPORTS: ExportKind[] = ['mesh-simplified', 'floorplan'];
 const loggedUnknown = new Set<string>();
@@ -383,7 +384,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   // ponytail: "object exists" = done; fine for S3 multipart (atomic on complete),
   // the local driver could leave a partial file on a crash mid-stream (dev only).
   const beat = heartbeat(deps, job);
-  const keys: Partial<Record<'splatKey' | 'colliderKey' | 'floorplanKey' | 'camerasKey', string>> = {};
+  const keys: Partial<Record<'splatKey' | 'colliderKey' | 'floorplanKey' | 'camerasKey' | 'thumbnailKey', string>> = {};
   let metaKey: string | undefined;
   for (const a of await provider.artifacts(rid)) {
     const key = worldAssetKey(w.id, w.assetVersion, a.name);

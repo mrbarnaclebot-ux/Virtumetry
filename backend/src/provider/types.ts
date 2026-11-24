@@ -26,7 +26,7 @@ export interface ProviderStatus {
 }
 
 export type ExportKind = 'mesh-simplified' | 'floorplan';
-export type ArtifactKind = 'splat' | 'collider' | 'floorplan' | 'floorplan_meta' | 'cameras';
+export type ArtifactKind = 'splat' | 'collider' | 'floorplan' | 'floorplan_meta' | 'cameras' | 'thumbnail';
 
 export interface Artifact {
   kind: ArtifactKind;

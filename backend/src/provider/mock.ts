@@ -23,9 +23,13 @@ export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 type Issue = { code: string; message: string };
 
 // ponytail: the mock is dev/test only; its outputs are the committed test
-// fixtures, which the Dockerfile copies to /app/test/fixtures/mock-outputs.
+// fixtures (mock-outputs = tiny default, demo-room = MOCK_OUTPUTS_SET=demo-room),
+// which the Dockerfile copies to /app/test/fixtures/{mock-outputs,demo-room}.
 const DEFAULT_OUTPUTS_DIR = fileURLToPath(
   new URL('../../test/fixtures/mock-outputs/', import.meta.url),
+);
+export const DEMO_ROOM_OUTPUTS_DIR = fileURLToPath(
+  new URL('../../test/fixtures/demo-room/', import.meta.url),
 );
 
 const OUTPUTS: { kind: ArtifactKind; name: string; contentType: string }[] = [
@@ -34,6 +38,7 @@ const OUTPUTS: { kind: ArtifactKind; name: string; contentType: string }[] = [
   { kind: 'floorplan', name: 'floorplan.png', contentType: 'image/png' },
   { kind: 'floorplan_meta', name: 'floorplan.json', contentType: 'application/json' },
   { kind: 'cameras', name: 'cameras.json', contentType: 'application/json' },
+  { kind: 'thumbnail', name: 'thumbnail.jpg', contentType: 'image/jpeg' },
 ];
 const OUTPUT_NAMES = new Set(OUTPUTS.map((o) => o.name));
 

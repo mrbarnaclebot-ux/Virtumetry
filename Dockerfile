@@ -28,6 +28,8 @@ COPY --chown=node:node backend/drizzle ./drizzle
 # The mock provider's import step reads ../../test/fixtures/mock-outputs from
 # dist/provider/mock.js (dev only, ~25 KB synthetic files, no user data).
 COPY --chown=node:node backend/test/fixtures/mock-outputs ./test/fixtures/mock-outputs
+# Dev-only synthetic demo room (~4 MB) served when MOCK_OUTPUTS_SET=demo-room.
+COPY --chown=node:node backend/test/fixtures/demo-room ./test/fixtures/demo-room
 USER node
 ENV NODE_ENV=production
 # exec: node replaces sh as PID 1 and receives Railway's SIGTERM directly.

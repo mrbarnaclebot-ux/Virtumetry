@@ -22,9 +22,22 @@ describe('Docker image ships mock outputs', () => {
     expect(include).toBeGreaterThan(exclude);
   });
 
-  it('every output mock.ts serves exists', () => {
-    for (const name of ['splat.ply', 'collider.ply', 'floorplan.png', 'floorplan.json', 'cameras.json']) {
-      expect(existsSync(`${ROOT}backend/test/fixtures/mock-outputs/${name}`), name).toBe(true);
+  it('Dockerfile copies the demo room to /app/test/fixtures/demo-room', () => {
+    expect(read('Dockerfile')).toMatch(
+      /^COPY --chown=node:node backend\/test\/fixtures\/demo-room \.\/test\/fixtures\/demo-room$/m,
+    );
+  });
+
+  it('.dockerignore re-includes the demo room after excluding backend/test', () => {
+    const lines = read('.dockerignore').split(/\r?\n/);
+    expect(lines.indexOf('!backend/test/fixtures/demo-room')).toBeGreaterThan(lines.indexOf('backend/test'));
+  });
+
+  it('every output mock.ts serves exists in both sets', () => {
+    for (const dir of ['mock-outputs', 'demo-room']) {
+      for (const name of ['splat.ply', 'collider.ply', 'floorplan.png', 'floorplan.json', 'cameras.json', 'thumbnail.jpg']) {
+        expect(existsSync(`${ROOT}backend/test/fixtures/${dir}/${name}`), `${dir}/${name}`).toBe(true);
+      }
     }
   });
 });

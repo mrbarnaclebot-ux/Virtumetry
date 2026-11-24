@@ -67,6 +67,12 @@ describe('loadConfig', () => {
     expect(cfg.RATE_LIMIT_WEBHOOK_MAX).toBe(120);
   });
 
+  it('MOCK_OUTPUTS_SET defaults to default, accepts demo-room, rejects unknown sets', () => {
+    expect(loadConfig(env(base)).MOCK_OUTPUTS_SET).toBe('default');
+    expect(loadConfig(env({ ...base, MOCK_OUTPUTS_SET: 'demo-room' })).MOCK_OUTPUTS_SET).toBe('demo-room');
+    expect(() => loadConfig(env({ ...base, MOCK_OUTPUTS_SET: 'nope' }))).toThrow(/MOCK_OUTPUTS_SET/);
+  });
+
   it('accepts every mock scenario and rejects unknown ones', () => {
     expect(loadConfig(env({ ...base, MOCK_SCENARIO: '429' })).MOCK_SCENARIO).toBe('429');
     expect(() => loadConfig(env({ ...base, MOCK_SCENARIO: 'explode' }))).toThrow(/MOCK_SCENARIO/);

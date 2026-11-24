@@ -17,6 +17,7 @@ backend/coverage
 backend/test
 # ...except the mock provider's outputs (dev scans reach 'ready'; README excluded by *.md).
 !backend/test/fixtures/mock-outputs
+!backend/test/fixtures/demo-room
 .vitest
 
 # Local storage + env secrets never belong in the image.

@@ -188,7 +188,7 @@ describe('exports and artifacts', () => {
     const { requestId } = await p.submit(body(), 'k');
     const arts = await p.artifacts(requestId);
     expect(arts.map((a) => a.name).sort()).toEqual(
-      ['cameras.json', 'collider.ply', 'floorplan.json', 'floorplan.png', 'splat.ply'].sort(),
+      ['cameras.json', 'collider.ply', 'floorplan.json', 'floorplan.png', 'splat.ply', 'thumbnail.jpg'].sort(),
     );
     const by = new Map(arts.map((a) => [a.name, a]));
     expect((await readAll(await p.open(by.get('splat.ply')!))).subarray(0, 3).toString()).toBe('ply');

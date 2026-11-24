@@ -46,12 +46,13 @@ describe.skipIf(!url)('pipeline end to end (mock provider, real Postgres)', () =
 
     const prefix = `worlds/${worldId}/v1/`;
     const names = (await p.storage.list(prefix)).map((o) => o.key.slice(prefix.length)).sort();
-    expect(names).toEqual(['cameras.json', 'collider.ply', 'floorplan.json', 'floorplan.png', 'splat.ply']);
+    expect(names).toEqual(['cameras.json', 'collider.ply', 'floorplan.json', 'floorplan.png', 'splat.ply', 'thumbnail.jpg']);
     expect((w.floorplanMeta as { version?: number }).version).toBe(1);
     expect(w.splatKey).toBe(`${prefix}splat.ply`);
     expect(w.colliderKey).toBe(`${prefix}collider.ply`);
     expect(w.floorplanKey).toBe(`${prefix}floorplan.png`);
     expect(w.camerasKey).toBe(`${prefix}cameras.json`);
+    expect(w.thumbnailKey).toBe(`${prefix}thumbnail.jpg`);
 
     expect(p.provider.calls.submit.length - submitsBefore).toBe(1);
     const events = await ledger(worldId);

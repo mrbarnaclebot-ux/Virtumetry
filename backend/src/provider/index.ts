@@ -1,5 +1,5 @@
 import type { Config } from '../config.js';
-import { createMockProvider } from './mock.js';
+import { createMockProvider, DEMO_ROOM_OUTPUTS_DIR } from './mock.js';
 import type { ReconProvider } from './types.js';
 
 export * from './types.js';
@@ -14,6 +14,7 @@ export function createProvider(config: Config): ReconProvider {
       scenario: config.MOCK_SCENARIO,
       processingSeconds: config.MOCK_PROCESSING_SECONDS,
       webhookSecret: config.SPAITIAL_WEBHOOK_SECRET,
+      outputsDir: config.MOCK_OUTPUTS_SET === 'demo-room' ? DEMO_ROOM_OUTPUTS_DIR : undefined,
     });
   }
   throw new Error('no live provider in this build (Phase 6)');

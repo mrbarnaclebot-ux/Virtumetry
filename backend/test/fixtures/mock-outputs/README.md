@@ -10,3 +10,4 @@ but they are not a reconstruction.
   (`spaitial-world-v1`, 0.05 m/px).
 - `cameras.json`: `spaitial.capture_cameras.v1`, where `camera_from_splat = arkitToOpenCV(T_arkit)`
   for each fixture frame.
+- `thumbnail.jpg`: a copy of `../demo-room/thumbnail.jpg`, so the default set also gives Library rows an image.
