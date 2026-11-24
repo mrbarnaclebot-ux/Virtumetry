@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { FastifyReply, FastifyRequest, onRequestHookHandler } from 'fastify';
+import { fromNodeHeaders } from 'better-auth/node';
+import { parseAllowlist, type Auth } from './auth/better-auth.js';
 import type { Config } from './config.js';
 import { getDb } from './db/client.js';
 import { upsertUserBySub } from './db/users.js';
@@ -107,7 +109,9 @@ function bearerFrom(req: FastifyRequest): string | undefined {
 export function makeAuthPreHandler(
   config: Config,
   throttle?: FailureThrottle,
+  auth?: Auth,
 ): onRequestHookHandler {
+  const allow = parseAllowlist(config.OWNER_ALLOWLIST);
   return async (req: FastifyRequest, reply: FastifyReply) => {
     const ip = req.ip;
 
@@ -126,7 +130,27 @@ export function makeAuthPreHandler(
       return reply.code(status).send({ error });
     };
 
-    if (config.AUTH_MODE === 'dev') {
+    // Session mode (D-04/D-05): the dev bearer stays usable for tests/scripts
+    // only while DEV_AUTH_TOKEN is set (refine() refuses it in production).
+    const devBearer =
+      config.AUTH_MODE === 'session' && !!config.DEV_AUTH_TOKEN && !!req.headers['authorization'];
+
+    if (config.AUTH_MODE === 'session' && !devBearer) {
+      if (!auth) return reply.code(500).send({ error: 'auth not configured' });
+      const s = await auth.api
+        .getSession({ headers: fromNodeHeaders(req.headers) })
+        .catch(() => null);
+      if (!s) return fail(401, 'unauthenticated');
+      // Second allowlist gate (D-03): a live session whose email left the list.
+      if (!allow.has(s.user.email.toLowerCase())) return fail(401, 'unauthenticated');
+      const user = await upsertUserBySub(getDb(), `ba:${s.user.id}`, s.user.email);
+      if (user.deletedAt) return replyAccountDeleted(reply);
+      throttle?.reset(ip);
+      req.userId = user.id;
+      return;
+    }
+
+    if (config.AUTH_MODE === 'dev' || devBearer) {
       const res = parseDevAuth(req.headers, config.DEV_AUTH_TOKEN);
       // A 500 here is OUR misconfiguration (no DEV_AUTH_TOKEN), not a failed
       // credential — charging the caller's IP for it would be wrong.

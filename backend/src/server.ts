@@ -1,7 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import { getConfig } from './config.js';
-import { closeDb } from './db/client.js';
+import { closeDb, getDb } from './db/client.js';
+import { createAuth } from './auth/better-auth.js';
 import { createStorage } from './storage/index.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -25,7 +26,9 @@ export async function buildServer(config = getConfig()): Promise<FastifyInstance
   const app = Fastify({ logger: true, trustProxy: (_addr: string, i: number) => i < hops });
   installErrorHandler(app);
   const storage = createStorage(config);
-  await registerRoutes(app, { config, storage });
+  // getDb() only builds a Pool (no connect), so boot without a DB still works.
+  const auth = config.AUTH_MODE === 'session' ? createAuth({ db: getDb(), config }) : undefined;
+  await registerRoutes(app, { config, storage, auth });
   return app;
 }
 

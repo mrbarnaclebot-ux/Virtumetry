@@ -44,9 +44,16 @@ const baseSchema = z.object({
   // anything else is treated as a non-production run.
   NODE_ENV: z.string().optional(),
 
-  AUTH_MODE: z.enum(['dev', 'apple']).default('dev'),
+  AUTH_MODE: z.enum(['dev', 'session', 'apple']).default('dev'),
   DEV_AUTH_TOKEN: z.string().optional(),
   APPLE_BUNDLE_ID: z.string().optional(),
+  // Better Auth (AUTH_MODE=session, D-01/D-05). Secret >= 32 chars per env.
+  BETTER_AUTH_SECRET: z.string().optional(),
+  BETTER_AUTH_URL: z.string().optional(),
+  // Comma-separated emails allowed to sign in (D-03). Empty = nobody.
+  OWNER_ALLOWLIST: z.string().optional(),
+  // '0' disables Better Auth's own limiter — tests only, refused in production.
+  AUTH_RATE_LIMIT: z.string().optional(),
 
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   LOCAL_STORAGE_DIR: z.string().default('./data'),
@@ -184,12 +191,20 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
   if (cfg.AUTH_MODE === 'dev' && !cfg.DEV_AUTH_TOKEN) {
     throw new Error('AUTH_MODE=dev requires DEV_AUTH_TOKEN');
   }
+  if (cfg.AUTH_MODE === 'session') {
+    if (!cfg.BETTER_AUTH_SECRET || cfg.BETTER_AUTH_SECRET.length < 32) {
+      throw new Error('AUTH_MODE=session requires BETTER_AUTH_SECRET (at least 32 characters)');
+    }
+    if (!cfg.BETTER_AUTH_URL || !URL.canParse(cfg.BETTER_AUTH_URL)) {
+      throw new Error('AUTH_MODE=session requires BETTER_AUTH_URL (a valid URL)');
+    }
+  }
 
   if (isProd) {
     // Dev auth in production (D-12). AUTH_MODE defaults to 'dev', so a dropped
     // env var must never serve shared-token auth. No escape hatch.
     if (cfg.AUTH_MODE === 'dev') {
-      throw new Error('AUTH_MODE=dev refused under NODE_ENV=production: set AUTH_MODE=apple');
+      throw new Error('AUTH_MODE=dev refused under NODE_ENV=production: set AUTH_MODE=session');
     }
     if (cfg.DEV_AUTH_TOKEN) {
       throw new Error('DEV_AUTH_TOKEN refused under NODE_ENV=production: unset it');

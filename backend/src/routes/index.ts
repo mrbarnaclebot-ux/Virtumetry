@@ -9,6 +9,7 @@ import { devicesRoutes } from './devices.js';
 import { accountRoutes } from './account.js';
 import { meRoutes } from './me.js';
 import { webhookRoutes } from './webhooks.js';
+import { authHandlerRoutes } from './auth-handler.js';
 import type { RouteDeps } from './deps.js';
 
 /**
@@ -60,6 +61,8 @@ export async function registerRoutes(
   registerDevStorageRoutes(app, deps.storage);
   // Provider webhook: its HMAC is its auth, so it lives outside the authed scope.
   await webhookRoutes(app, deps);
+  // Better Auth: its own credentials are its auth, so also outside the scope.
+  if (deps.auth) await authHandlerRoutes(app, { auth: deps.auth, config });
 
   // Failed-auth throttle, shared by every authenticated route. Auth failures
   // never reach the limiter above (the auth hook short-circuits first), and they
@@ -71,7 +74,7 @@ export async function registerRoutes(
 
   // Authenticated scope — auth applies to everything registered here.
   await app.register(async (authed) => {
-    authed.addHook('onRequest', makeAuthPreHandler(config, authFailures));
+    authed.addHook('onRequest', makeAuthPreHandler(config, authFailures, deps.auth));
     worldsRoutes(authed, deps);
     devicesRoutes(authed);
     accountRoutes(authed);

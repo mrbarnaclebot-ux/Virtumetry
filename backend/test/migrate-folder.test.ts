@@ -15,11 +15,12 @@ describe('drizzle migrations folder', () => {
     }
   });
 
-  it('history is 0000_init then the split Phase 2 add/drop migrations', () => {
+  it('history is 0000_init then the split Phase 2 add/drop migrations, then Better Auth', () => {
     expect(journal.entries.map((e) => e.tag)).toEqual([
       expect.stringMatching(/^0000_init/),
       '0001_phase2_add',
       '0002_phase2_drop',
+      '0003_better_auth',
     ]);
   });
 });
