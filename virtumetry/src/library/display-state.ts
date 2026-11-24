@@ -1,0 +1,155 @@
+/** Server item from GET /v1/worlds (03-03). */
+export type LibraryItem = {
+  id: string;
+  title: string | null;
+  caption: string | null;
+  status: string;
+  phase: string | null;
+  progress: number | null;
+  heartbeat_at: string;
+  created_at: string;
+  failure_stage: string | null;
+  failure_code: string | null;
+  failure_message: string | null; // never rendered (T-03-28)
+  charged?: boolean | null;
+  eta_seconds: number | null;
+  credits_spent: number | null;
+  assets: { thumbnail_url?: string };
+};
+
+/** Scan saved on the phone but not uploaded yet (Phase 4 capture adds these). */
+export type LocalScan = { id: string; title: string | null; createdAt: string };
+
+export type DisplayState = {
+  kind: 'saved_on_phone' | 'uploading' | 'processing' | 'ready' | 'failed' | 'cancelled';
+  displayTitle: string;
+  statusLine: string;
+  secondaryLine: string | null;
+  secondaryTone: 'muted' | 'warning';
+  tone: 'muted' | 'accent' | 'destructive';
+  progress: number | null;
+  rowOpacity: 1 | 0.6;
+  icon: 'iphone' | 'exclamationmark.triangle.fill' | null;
+};
+
+export const STALLED_MS = 15 * 60 * 1000;
+const TERMINAL = new Set(['ready', 'failed', 'cancelled']);
+
+export const isTerminal = (status: string) => TERMINAL.has(status);
+
+export function pollInterval(items?: { status: string }[]): number | false {
+  return items?.some((i) => !isTerminal(i.status)) ? 5000 : false;
+}
+
+const PROCESSING_LINES: Record<string, string> = {
+  packing: 'Processing · Preparing upload',
+  submitting: 'Processing · Sending for processing',
+  processing: 'Processing · Building your 3D room',
+  importing: 'Processing · Finishing up',
+};
+
+const UPLOAD = "Upload didn't finish";
+const REJECTED = "The scan couldn't be turned into a room";
+const TIMEOUT = 'Processing took too long';
+const LIMIT = 'Stopped by your spending limit';
+const UNKNOWN = 'Something went wrong while processing';
+
+const REJECTED_CODES = new Set(['INVALID_INPUT', 'VALIDATION_FAILED', 'CAPTURE_FRAME_LIMIT_EXCEEDED', 'WORLD_GENERATION_FAILED']);
+const LIMIT_CODES = new Set(['BUDGET_EXCEEDED', 'INSUFFICIENT_CREDITS', 'QUOTE_ABOVE_APPROVAL', 'NOT_APPROVED']);
+const UPLOAD_CODE = /^(UPLOAD_STALE|BUNDLE_NOT_RANGEABLE|MANIFEST_|ZIP_|IMAGES_MISSING|IMAGE_|EXIF_|CAMERA_FILE_INVALID_JSON|PER_FRAME_INTRINSICS_)/;
+
+function failureText(code: string | null, stage: string | null): string {
+  const c = code ?? '';
+  if (UPLOAD_CODE.test(c)) return UPLOAD;
+  if (REJECTED_CODES.has(c)) return REJECTED;
+  if (c.includes('TIMEOUT')) return TIMEOUT;
+  if (LIMIT_CODES.has(c)) return LIMIT;
+  if (stage === 'upload' || stage === 'pack') return UPLOAD;
+  return UNKNOWN;
+}
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+function estimate(eta: number | null): string {
+  if (eta == null) return 'Usually 30 min – 2 h';
+  const min = Math.ceil(eta / 60);
+  return eta < 60 ? 'Almost done' : `About ${min} min left`;
+}
+
+/** Stalled hint when the heartbeat is older than 15 min, else null. */
+function stalled(heartbeatAt: string, now: Date): string | null {
+  const age = now.getTime() - new Date(heartbeatAt).getTime();
+  if (!(age > STALLED_MS)) return null;
+  const min = Math.floor(age / 60_000);
+  const span = min >= 60 ? `${Math.floor(min / 60)} h` : `${min} min`;
+  return `Stalled? No update for ${span}. Pull down to refresh.`;
+}
+
+const base = {
+  secondaryTone: 'muted',
+  tone: 'muted',
+  progress: null,
+  rowOpacity: 1,
+  icon: null,
+} as const;
+
+export function toDisplayState(item: LibraryItem | (LocalScan & { local: true }), now: Date): DisplayState {
+  const displayTitle = item.title?.trim() || 'Untitled scan';
+
+  if ('local' in item) {
+    return {
+      ...base,
+      kind: 'saved_on_phone',
+      displayTitle,
+      statusLine: 'Saved on phone · Not uploaded',
+      secondaryLine: formatDate(item.createdAt),
+      icon: 'iphone',
+    };
+  }
+
+  const date = formatDate(item.created_at);
+  switch (item.status) {
+    case 'ready':
+      return { ...base, kind: 'ready', displayTitle, statusLine: 'Ready', secondaryLine: date, tone: 'accent' };
+    case 'cancelled':
+      return { ...base, kind: 'cancelled', displayTitle, statusLine: 'Cancelled', secondaryLine: date, rowOpacity: 0.6 };
+    case 'failed': {
+      const charge =
+        item.charged === true ? 'Charged for this run' : item.charged === false ? 'Not charged' : 'Charge unknown';
+      return {
+        ...base,
+        kind: 'failed',
+        displayTitle,
+        statusLine: `Failed · ${failureText(item.failure_code, item.failure_stage)}`,
+        secondaryLine: `${charge} · ${date}`,
+        tone: 'destructive',
+        icon: 'exclamationmark.triangle.fill',
+      };
+    }
+  }
+
+  const stall = stalled(item.heartbeat_at, now);
+  const stallTone = stall ? ('warning' as const) : ('muted' as const);
+  if (item.status === 'uploading') {
+    const known = item.progress != null;
+    return {
+      ...base,
+      kind: 'uploading',
+      displayTitle,
+      statusLine: known ? `Uploading · ${Math.round(item.progress!)}%` : 'Uploading…',
+      progress: known ? item.progress : null,
+      secondaryLine: stall,
+      secondaryTone: stallTone,
+    };
+  }
+  return {
+    ...base,
+    kind: 'processing',
+    displayTitle,
+    statusLine: PROCESSING_LINES[item.status] ?? 'Processing',
+    progress: item.progress,
+    secondaryLine: stall ?? estimate(item.eta_seconds),
+    secondaryTone: stallTone,
+  };
+}
