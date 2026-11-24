@@ -18,6 +18,9 @@ import {
 const CAMERAS = JSON.parse(
   readFileSync(join(__dirname, '../../../backend/test/fixtures/mock-outputs/cameras.json'), 'utf8'),
 ) as { frames: { camera_from_splat: number[][] }[] };
+const demo = (f: string) => JSON.parse(readFileSync(join(__dirname, `../../../backend/test/fixtures/demo-room/${f}`), 'utf8'));
+const DEMO_CAMERAS = demo('cameras.json') as { frames: { camera_from_splat: number[][] }[] };
+const DEMO_BOUNDS = (demo('floorplan.json') as { scene_bounds: { min: number[]; max: number[] } }).scene_bounds;
 
 const I: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const det3 = (m: Mat4) =>
@@ -89,5 +92,18 @@ describe('coords (D-08)', () => {
   it('splatFrameFor: raw SPZ is RDF, everything else Y-up', () => {
     expect(splatFrameFor('spz')).toBe('rdf');
     expect(splatFrameFor('ply')).toBe('yup');
+  });
+
+  it('demo-room first camera is inside the room at y ≈ 1.5, looking inward (D-03/D-07 cross-check)', () => {
+    const { position, quaternion } = matToPose(cameraToThree(DEMO_CAMERAS.frames[0].camera_from_splat));
+    const { min, max } = DEMO_BOUNDS;
+    for (let i = 0; i < 3; i++) {
+      expect(position[i]).toBeGreaterThan(min[i]);
+      expect(position[i]).toBeLessThan(max[i]);
+    }
+    expect(position[1]).toBeCloseTo(1.5, 1);
+    const fwd = rotate(quaternion, [0, 0, -1]);
+    const toCentre = [(min[0] + max[0]) / 2 - position[0], (min[2] + max[2]) / 2 - position[2]];
+    expect(fwd[0] * toCentre[0] + fwd[2] * toCentre[1]).toBeGreaterThan(0);
   });
 });
