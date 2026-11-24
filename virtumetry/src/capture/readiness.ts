@@ -7,7 +7,7 @@ export type Signal = 'tracking' | 'blur' | 'frames' | 'coverage';
 export type Readiness = { level: Level | 'idle'; signal: Signal | null; label: string; reason: string };
 
 const RANK: Record<Level, number> = { green: 0, amber: 1, red: 2 };
-const LABEL: Record<Level, string> = { green: 'Good to finish', amber: 'Almost there', red: 'Keep scanning' };
+export const LABEL: Record<Level, string> = { green: 'Good to finish', amber: 'Almost there', red: 'Keep scanning' };
 
 const atLeast = (v: number, green: number, amber: number): Level => (v >= green ? 'green' : v >= amber ? 'amber' : 'red');
 const atMost = (v: number, green: number, amber: number): Level => (v <= green ? 'green' : v <= amber ? 'amber' : 'red');

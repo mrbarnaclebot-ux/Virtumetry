@@ -1,5 +1,5 @@
 import { useCameraPermissions } from 'expo-camera';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -50,7 +50,7 @@ export default function LibraryScreen() {
     router.push({
       pathname: '/capture/[id]',
       params: { id: scan.id, step: scan.uploadState === 'saved' ? 'review' : 'upload' },
-    } as unknown as Href);
+    });
 
   // Row action menu (D-21). Local scans have no server id: Discard only (UI-SPEC §2).
   const openRowMenu = (item: RowItem, state: DisplayState) => {

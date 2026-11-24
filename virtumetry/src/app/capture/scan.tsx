@@ -110,7 +110,7 @@ export default function ScanScreen() {
     close();
   }
 
-  // D-13: Stop saves on the phone first, then closes back to the Library (plan 08 re-points this to review).
+  // D-12/D-13: Stop saves on the phone first, then replaces into review.
   async function stop() {
     setPhase('stopping');
     const r = await src.stop();
@@ -125,10 +125,11 @@ export default function ScanScreen() {
       durationS: frames.length ? frames[frames.length - 1].t - frames[0].t : 0,
       ...(dir.current ? imageSize(dir.current) : { imageW: 640, imageH: 480 }),
       readiness: ready.level,
+      readinessReason: ready.reason,
       precheckIssues: precheck(frames, cov.seenCount, { ...cfg.precheck, maxFrames: cfg.limits.maxFrames }),
       uploadState: 'saved',
     });
-    close();
+    router.replace({ pathname: '/capture/[id]', params: { id: r.sessionId, step: 'review' } });
   }
 
   function cancel() {

@@ -74,7 +74,8 @@ it('a good fixture run updates the HUD per keyframe and Stop saves on the phone'
   expect(scan).toMatchObject({ frameCount: 30, uploadState: 'saved', readiness: 'red', imageW: 640, imageH: 480 });
   expect(scan.durationS).toBeCloseTo(7.78, 1);
   expect(scan.precheckIssues.map((i) => i.code)).toContain('FRAME_COUNT_OUT_OF_RANGE');
-  expect(router.back).toHaveBeenCalled();
+  expect(scan.readinessReason).toBeTruthy();
+  expect(router.replace).toHaveBeenCalledWith({ pathname: '/capture/[id]', params: { id: scan.id, step: 'review' } });
 });
 
 it('Too few replays 8 frames and stays red', async () => {
