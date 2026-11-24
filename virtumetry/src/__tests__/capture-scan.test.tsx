@@ -95,6 +95,19 @@ it('a fresh mount replays the scenario the UI shows, not the last one picked (CR
   expect(screen.getByText('30 frames')).toBeTruthy();
 });
 
+it('unmounting mid-recording discards the unsaved capture (WR-05)', async () => {
+  const { getCaptureSource } = jest.requireActual('@/capture/source');
+  const cancel = jest.spyOn(getCaptureSource(), 'cancel');
+  await renderScan();
+  await fireEvent.press(screen.getByRole('button', { name: 'Start scan' }));
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(1_000);
+  });
+  await screen.unmount();
+  expect(cancel).toHaveBeenCalledTimes(1);
+  cancel.mockRestore();
+});
+
 it('Cancel with frames confirms before deleting the scan', async () => {
   const { Alert } = jest.requireActual('react-native');
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});

@@ -63,6 +63,16 @@ export default function ScanScreen() {
   const [scenario, setScenario] = useState<FixtureScenario>('good');
   const [elapsed, setElapsed] = useState(0);
   const dir = useRef<Directory | null>(null);
+  /** A capture is running and not yet saved or discarded. */
+  const live = useRef(false);
+
+  // Leaving the screen any other way (unmount, reload, back) discards an unsaved capture (WR-05).
+  useEffect(
+    () => () => {
+      if (live.current) void src.cancel();
+    },
+    [src],
+  );
 
   // D-01: the HUD is fed by source events only.
   useEffect(() => {
@@ -99,16 +109,19 @@ export default function ScanScreen() {
     setFrames([]);
     setPreview(null);
     setElapsed(0);
+    live.current = true;
     try {
       const { sessionId } = await src.start({});
       dir.current = new Directory(Paths.document, 'sessions', sessionId);
       setPhase('recording');
     } catch {
+      live.current = false;
       setPhase('idle');
     }
   }
 
   async function discardAndClose() {
+    live.current = false;
     await src.cancel();
     close();
   }
@@ -118,6 +131,7 @@ export default function ScanScreen() {
     setPhase('stopping');
     const r = await src.stop();
     if (r.frameCount === 0) return discardAndClose();
+    live.current = false;
     addLocalScan({
       id: r.sessionId,
       sessionId: r.sessionId,

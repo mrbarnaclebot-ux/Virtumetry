@@ -30,6 +30,7 @@ function setup(scenario?: 'good' | 'too-few' | 'tracking-gap' | 'pose-jump') {
   return { src, keyframes, poses, tracking };
 }
 
+const sessions = () => new Directory(Paths.document, 'sessions');
 const sessionDir = (sid: string) => new Directory(Paths.document, 'sessions', sid);
 const readLines = (sid: string) =>
   new File(sessionDir(sid), 'frames.jsonl')
@@ -137,6 +138,17 @@ describe('FixtureCaptureSource', () => {
     jest.advanceTimersByTime(1000);
     await src.cancel();
     expect(sessionDir(sessionId).exists).toBe(false);
+  });
+
+  it('cancel() while start is still resolving assets abandons it: no dir, no frames (WR-05)', async () => {
+    const { src, keyframes } = setup();
+    const before = sessions().exists ? sessions().list().length : 0;
+    const started = src.start({});
+    await src.cancel();
+    await expect(started).rejects.toThrow('capture cancelled');
+    jest.advanceTimersByTime(10_000);
+    expect(keyframes).toHaveLength(0);
+    expect(sessions().exists ? sessions().list().length : 0).toBe(before);
   });
 
   it('each start gets a fresh session id', async () => {

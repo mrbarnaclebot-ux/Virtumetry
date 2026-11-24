@@ -56,6 +56,8 @@ export class FixtureCaptureSource implements CaptureSource {
   private sessionId = '';
   private dir: Directory | null = null;
   private emitted = 0;
+  /** Bumped by start/stop/cancel: a start still resolving assets when it changes is abandoned (WR-05). */
+  private gen = 0;
   private readonly resolveFrame: (k: number) => Promise<string>;
   private readonly now: () => number;
   private readonly speed: number;
@@ -88,9 +90,11 @@ export class FixtureCaptureSource implements CaptureSource {
 
   async start(gateConfig: GateConfig): Promise<{ sessionId: string }> {
     this.clearTimer();
+    const gen = ++this.gen;
     const frames = applyScenario(this.frames, this.scenario);
     // Pre-resolve before the timer runs (Pitfall 7).
     const uris = await Promise.all(frames.map((_, k) => this.resolveFrame(k)));
+    if (gen !== this.gen) throw new Error('capture cancelled');
 
     const now0 = this.now();
     const sessionId = uuid.v4();
@@ -143,11 +147,13 @@ export class FixtureCaptureSource implements CaptureSource {
   }
 
   async stop() {
+    this.gen++;
     this.clearTimer();
     return { sessionId: this.sessionId, frameCount: this.emitted, dir: this.dir?.uri ?? '' };
   }
 
   async cancel() {
+    this.gen++;
     this.clearTimer();
     if (this.dir?.exists) this.dir.delete();
     this.dir = null;
