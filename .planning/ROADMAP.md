@@ -116,7 +116,24 @@ Plans:
   4. The owner can rename a scan, and deleting it removes it from the database and R2 and sends a deletion request to the provider (mock) *(automated deletion-cascade test + manual Expo Go check)*
   5. Each app build profile points only to its own API URL, and the dev profile refuses a production URL *(automated config test)*
 
-**Plans**: TBD
+**Plans:** 9 plans
+
+Plans:
+**Wave 1**
+- [ ] 03-01-PLAN.md — Package legitimacy gate for all Phase 3 installs (owner checkpoint)
+**Wave 2**
+- [ ] 03-02-PLAN.md — Backend sign-in slice: Better Auth + migration 0003 + session mode + auth guards
+- [ ] 03-05-PLAN.md — App sign-in slice: jest infra, resolveApiUrl, auth client, session gate, sign-in, Settings log out
+**Wave 3**
+- [ ] 03-03-PLAN.md — Library API: list fields, PATCH rename, two-account 404s, owner:create script
+**Wave 4**
+- [ ] 03-04-PLAN.md — Delete cascade (provider deleteWorld + hard delete) and seed:library
+- [ ] 03-06-PLAN.md — App library list: display-state mapper, conditional polling, all data states
+**Wave 5**
+- [ ] 03-07-PLAN.md — App rename modal + optimistic delete with rollback
+- [ ] 03-08-PLAN.md — Railway dev environment + production session-auth redeploy
+**Wave 6**
+- [ ] 03-09-PLAN.md — Build profiles, .env.development, SC5 test, owner phone checklist (checkpoint)
 **UI hint**: yes
 
 ### Phase 4: $0 Capture-to-World Loop
