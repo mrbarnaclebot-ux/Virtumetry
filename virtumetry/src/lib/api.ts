@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 
 import { API_URL } from '@/config/api';
-import { pollInterval, type LibraryItem } from '@/library/display-state';
+import { pollInterval, type LibraryItem, type LocalScan } from '@/library/display-state';
 import { authClient } from '@/lib/auth-client';
 import { endSession } from '@/lib/session';
 
@@ -94,3 +94,53 @@ export function useDeleteWorld() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['worlds'] }),
   });
 }
+
+// --- Scans (04-02/03 contract). Presigned R2 PUTs never go through apiFetch (T-04-26). ---
+
+export type ScanWorld = LibraryItem;
+export type PresignedPut = { path: string; url: string; method: 'PUT'; headers: Record<string, string> };
+export type MissingReport = {
+  world: ScanWorld;
+  missingFrames: string[];
+  manifestPresent: boolean;
+  uploadedFrames: number;
+  totalFrames: number;
+};
+export type Quote = {
+  credits: number;
+  usd: number;
+  budgetRemaining: number;
+  budgetWindow: 'daily' | 'monthly';
+  withinBudget: boolean;
+};
+
+/** Idempotent create: Idempotency-Key = sessionId, so a retry replays the same world (T-04-29). */
+export const createScan = (scan: LocalScan) =>
+  apiFetch<{ world: ScanWorld }>('/v1/scans', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': scan.sessionId },
+    body: JSON.stringify({
+      ...(scan.title ? { title: scan.title } : {}),
+      frame_count: scan.frameCount,
+      image_w: scan.imageW,
+      image_h: scan.imageH,
+      approved_max_credits: scan.approvedMaxCredits,
+    }),
+  });
+
+export const presignUploads = (id: string, files: { path: string; bytes: number }[]) =>
+  apiFetch<{ uploads: PresignedPut[] }>(`/v1/scans/${id}/uploads`, { method: 'POST', body: JSON.stringify({ files }) });
+
+export const getMissing = (id: string) => apiFetch<MissingReport>(`/v1/scans/${id}/uploads:missing`);
+
+/** 409 upload_incomplete comes back as { incomplete: true }; the next pass re-asks what is missing. */
+export async function completeScan(id: string): Promise<{ world: ScanWorld; issues?: string[] } | { incomplete: true }> {
+  try {
+    return await apiFetch<{ world: ScanWorld; issues?: string[] }>(`/v1/scans/${id}:complete`, { method: 'POST' });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) return { incomplete: true };
+    throw e;
+  }
+}
+
+export const getQuote = (frames: number) => apiFetch<Quote>(`/v1/quote?frames=${frames}`);
