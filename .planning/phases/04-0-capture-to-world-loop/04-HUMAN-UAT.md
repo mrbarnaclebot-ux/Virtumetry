@@ -1,7 +1,7 @@
 ---
 phase: 04-0-capture-to-world-loop
 source: 04-09-PLAN.md Task 2
-status: pending
+status: passed
 device: iPhone 17 Pro, Expo Go
 backend: Railway dev
 ---
@@ -49,3 +49,7 @@ Sign-in and app start are the same as Phase 3: `virtumetry/README.md`, "Test on 
 | 11 | Discard | Discard a saved scan: confirm copy shows, then the row is gone | pending | |
 
 To record a failure, put the step number and the exact on-screen text in Observed.
+
+## Owner result (2026-11-24)
+
+Owner ran steps 1-11 on the iPhone 17 Pro in Expo Go against Railway dev: all passed ("all good"). Step 8 confirmed Processing -> Ready.
