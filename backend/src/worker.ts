@@ -168,6 +168,18 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
 
   if (!hardDelete) return void (await completeJob(db, job.id, job.lockedBy));
 
+  // WR-01: a held (never released) reservation with no request id means a send
+  // may have been billed. submission_key + submit_body are the only handles that
+  // can find that provider copy, so keep the soft-deleted row and park for review.
+  if (world.submissionKey && !world.providerRequestId) {
+    const held = await db.execute(sql`
+      SELECT 1 FROM credit_events r WHERE r.submission_key = ${world.submissionKey} AND r.kind = 'reserve'
+        AND NOT EXISTS (SELECT 1 FROM credit_events x WHERE x.submission_key = r.submission_key AND x.kind = 'release')`);
+    if ((held as unknown as { rows: unknown[] }).rows.length > 0) {
+      throw new NonRetryableJobError('purge: submit outcome unknown, provider copy unreconciled');
+    }
+  }
+
   // jobs.world_id is a NOT NULL FK without ON DELETE, so this running purge
   // job's own row goes too — no completeJob afterwards (the row is gone).
   await db.transaction(async (tx) => {

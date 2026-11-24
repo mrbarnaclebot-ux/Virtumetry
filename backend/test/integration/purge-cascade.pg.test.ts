@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
-import { captures, shareSlugs, users, worlds } from '../../src/db/schema.js';
+import { captures, creditEvents, shareSlugs, users, worlds } from '../../src/db/schema.js';
+import { releaseCredits } from '../../src/budget.js';
 import { enqueue } from '../../src/queue.js';
 import { reapStaleUploads, runOneJob } from '../../src/worker.js';
 
@@ -113,6 +114,36 @@ describe.skipIf(!url)('purge cascade (mock provider, real Postgres)', () => {
     expect(p.provider.calls.deleteWorld.slice(before)).toEqual([rid, rid]);
     for (const t of ['worlds', 'captures', 'jobs']) expect(await count(t, worldId)).toBe(0);
   }, 90_000);
+
+  /** A world mid-submit: key minted, reservation held, no request id (5xx/timeout snooze). */
+  const unknownSubmit = async (o: { released: boolean }) => {
+    const b = await bareWorld({ status: 'submitting' });
+    const key = randomUUID();
+    await p.db.update(worlds).set({ submissionKey: key, submitBody: { model: 'echo-3' } }).where(eq(worlds.id, b.worldId));
+    await p.db.insert(creditEvents).values({ amount: 100, worldId: b.worldId, submissionKey: key, kind: 'reserve' });
+    if (o.released) await releaseCredits(p.db, key);
+    return b;
+  };
+
+  it('WR-01: unknown submit outcome: frames purged, row + key kept, purge parked dead', async () => {
+    const { worldId, captureId } = await unknownSubmit({ released: false });
+    await deleteScan(worldId);
+    await runAll();
+    const [row] = await p.db.select().from(worlds).where(eq(worlds.id, worldId));
+    expect(row?.submissionKey).toBeTruthy();
+    expect(row?.submitBody).toBeTruthy();
+    expect(row?.deletedAt).not.toBeNull();
+    expect(await p.storage.list(`captures/${captureId}/`)).toEqual([]);
+    const job = await p.pool.query("SELECT phase FROM jobs WHERE world_id = $1 AND kind = 'purge'", [worldId]);
+    expect(job.rows).toEqual([{ phase: 'dead' }]);
+  }, 60_000);
+
+  it('WR-01: released reservation (known not billed): hard delete proceeds', async () => {
+    const { worldId } = await unknownSubmit({ released: true });
+    await deleteScan(worldId);
+    await runAll();
+    for (const t of ['worlds', 'captures', 'jobs']) expect(await count(t, worldId)).toBe(0);
+  }, 60_000);
 
   it('never-submitted world: no provider call, rows and frames gone', async () => {
     const { worldId, captureId } = await bareWorld();
