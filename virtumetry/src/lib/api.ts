@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_URL } from '@/config/api';
 import { pollInterval, type LibraryItem } from '@/library/display-state';
@@ -44,5 +44,22 @@ export function useWorlds() {
     queryKey: ['worlds'],
     queryFn: listWorlds,
     refetchInterval: (q) => pollInterval(q.state.data?.worlds),
+  });
+}
+
+export const renameWorld = (id: string, title: string) =>
+  apiFetch<LibraryItem>(`/v1/worlds/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
+
+/** Rename is not optimistic: the row shows the server's title once it answers (UI-SPEC Interaction Timing). */
+export function useRenameWorld() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => renameWorld(id, title),
+    onSuccess: (world) => {
+      qc.setQueryData<WorldsPage>(['worlds'], (old) =>
+        old && { ...old, worlds: old.worlds.map((x) => (x.id === world.id ? { ...x, ...world } : x)) },
+      );
+      qc.invalidateQueries({ queryKey: ['worlds'] });
+    },
   });
 }

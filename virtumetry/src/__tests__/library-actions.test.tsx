@@ -22,7 +22,7 @@ function w(id: string, title: string): LibraryItem {
     status: 'ready',
     phase: null,
     progress: null,
-    heartbeat_at: null,
+    heartbeat_at: CREATED,
     created_at: CREATED,
     failure_stage: null,
     failure_code: null,

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { LibraryRow, type RowItem } from '@/components/library-row';
+import { RenameModal } from '@/components/rename-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -11,16 +12,22 @@ import type { DisplayState } from '@/library/display-state';
 import { useLocalScans } from '@/library/local-scans';
 import { useWorlds } from '@/lib/api';
 
-// Row action menu. 03-07 adds Rename and Delete here.
-function openRowMenu(_item: RowItem, state: DisplayState) {
-  Alert.alert(state.displayTitle, undefined, [{ text: 'Cancel', style: 'cancel' }]);
-}
-
 export default function LibraryScreen() {
   const theme = useTheme();
   const { data, error, isPending, refetch } = useWorlds();
   const { scans } = useLocalScans();
   const [refreshing, setRefreshing] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+
+  // Row action menu (D-21). Local scans have no server id, so they get Delete only.
+  const openRowMenu = (item: RowItem, state: DisplayState) => {
+    const title = state.displayTitle;
+    Alert.alert(title, undefined, [
+      ...('local' in item ? [] : [{ text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) }]),
+      { text: 'Delete', style: 'destructive' as const },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
 
   // Only a user-started refresh shows the spinner; background polling never does.
   const onRefresh = async () => {
@@ -109,6 +116,7 @@ export default function LibraryScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />
         }
       />
+      {renaming && <RenameModal key={renaming.id} {...renaming} onClose={() => setRenaming(null)} />}
     </ThemedView>
   );
 }
