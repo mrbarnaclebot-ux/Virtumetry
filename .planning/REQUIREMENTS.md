@@ -18,7 +18,7 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 ### Account (AUTH)
 
 - [x] **AUTH-01**: Owner can log in with email and password; sign-up is disabled and only allowlisted emails can log in
-- [ ] **AUTH-02**: Owner stays logged in across app restarts (session stored in SecureStore)
+- [x] **AUTH-02**: Owner stays logged in across app restarts (session stored in SecureStore)
 - [x] **AUTH-03**: Owner can log out from Settings
 - [ ] **AUTH-04**: Owner can sign in with Apple (added once the native dev build exists)
 - [x] **AUTH-05**: Every scan and world belongs to one account; no shared or anonymous library
@@ -128,7 +128,7 @@ Deferred. Tracked, not in the current roadmap.
 | FND-04 | Phase 1 | Complete |
 | FND-05 | Phase 1 | Complete |
 | AUTH-01 | Phase 3 | Complete |
-| AUTH-02 | Phase 3 | Pending |
+| AUTH-02 | Phase 3 | Complete |
 | AUTH-03 | Phase 3 | Complete |
 | AUTH-04 | Phase 8 | Pending |
 | AUTH-05 | Phase 3 | Complete |
