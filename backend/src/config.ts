@@ -209,6 +209,14 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
     if (cfg.DEV_AUTH_TOKEN) {
       throw new Error('DEV_AUTH_TOKEN refused under NODE_ENV=production: unset it');
     }
+    // Better Auth's sign-in limiter is the brute-force guard (D-06).
+    if (cfg.AUTH_RATE_LIMIT === '0') {
+      throw new Error('AUTH_RATE_LIMIT=0 refused under NODE_ENV=production: unset it');
+    }
+    // Session cookies must only ever travel over TLS.
+    if (cfg.AUTH_MODE === 'session' && !cfg.BETTER_AUTH_URL?.startsWith('https://')) {
+      throw new Error('BETTER_AUTH_URL must be https under NODE_ENV=production');
+    }
     // The local driver's /dev-storage route serves objects unauthenticated.
     if (cfg.STORAGE_DRIVER === 'local') {
       throw new Error('STORAGE_DRIVER=local refused under NODE_ENV=production: set STORAGE_DRIVER=s3');

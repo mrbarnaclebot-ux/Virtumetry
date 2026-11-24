@@ -45,7 +45,12 @@ export function createAuth({ db, config }: { db: Db; config: Config }) {
       customRules: { '/sign-in/email': { window: 60, max: 5 } },
     }, // ponytail: memory store, correct only while the api is a single replica
     // Set by our Fastify bridge from req.ip (hop-trusted), never by the client.
-    advanced: { ipAddress: { ipAddressHeaders: ['x-vm-client-ip'] } },
+    advanced: {
+      ipAddress: { ipAddressHeaders: ['x-vm-client-ip'] },
+      // Explicit: Better Auth silently skips origin/CSRF checks when it detects a
+      // test runner (isTest()), which would make the D-06 origin test vacuous.
+      disableOriginCheck: false,
+    },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== '/sign-in/email') return;

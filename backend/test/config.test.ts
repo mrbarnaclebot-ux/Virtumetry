@@ -256,3 +256,76 @@ describe('loadConfig', () => {
     });
   });
 });
+
+describe('AUTH_MODE=session (D-05)', () => {
+  const SECRET = 'x'.repeat(32);
+  const session = {
+    DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+    AUTH_MODE: 'session',
+    BETTER_AUTH_SECRET: SECRET,
+    BETTER_AUTH_URL: 'http://localhost:8080',
+  };
+  const prodSession = {
+    ...prodBase,
+    AUTH_MODE: 'session',
+    APPLE_BUNDLE_ID: undefined,
+    BETTER_AUTH_SECRET: SECRET,
+    BETTER_AUTH_URL: 'https://api.example.com',
+  };
+
+  it('loads outside production with secret + URL, no DEV_AUTH_TOKEN needed', () => {
+    expect(loadConfig(env(session)).AUTH_MODE).toBe('session');
+  });
+
+  it('requires BETTER_AUTH_SECRET, at least 32 chars, without echoing it', () => {
+    expect(() => loadConfig(env({ ...session, BETTER_AUTH_SECRET: undefined }))).toThrow(
+      /BETTER_AUTH_SECRET/,
+    );
+    const short = 'y'.repeat(31);
+    let msg = '';
+    try {
+      loadConfig(env({ ...session, BETTER_AUTH_SECRET: short }));
+    } catch (e) {
+      msg = (e as Error).message;
+    }
+    expect(msg).toMatch(/BETTER_AUTH_SECRET/);
+    expect(msg).not.toContain(short);
+  });
+
+  it('requires a parseable BETTER_AUTH_URL', () => {
+    expect(() => loadConfig(env({ ...session, BETTER_AUTH_URL: undefined }))).toThrow(
+      /BETTER_AUTH_URL/,
+    );
+    expect(() => loadConfig(env({ ...session, BETTER_AUTH_URL: 'not a url' }))).toThrow(
+      /BETTER_AUTH_URL/,
+    );
+  });
+
+  it('loads in production with secret + https URL + s3', () => {
+    expect(loadConfig(env(prodSession)).AUTH_MODE).toBe('session');
+  });
+
+  it('production refuses dev mode and points at AUTH_MODE=session', () => {
+    expect(() =>
+      loadConfig(env({ ...prodSession, AUTH_MODE: 'dev', DEV_AUTH_TOKEN: 't' })),
+    ).toThrow(/AUTH_MODE=session/);
+  });
+
+  it('production refuses DEV_AUTH_TOKEN in session mode', () => {
+    expect(() => loadConfig(env({ ...prodSession, DEV_AUTH_TOKEN: 't' }))).toThrow(
+      /DEV_AUTH_TOKEN/,
+    );
+  });
+
+  it("production refuses AUTH_RATE_LIMIT='0'", () => {
+    expect(() => loadConfig(env({ ...prodSession, AUTH_RATE_LIMIT: '0' }))).toThrow(
+      /AUTH_RATE_LIMIT/,
+    );
+  });
+
+  it('production refuses a non-https BETTER_AUTH_URL', () => {
+    expect(() =>
+      loadConfig(env({ ...prodSession, BETTER_AUTH_URL: 'http://api.example.com' })),
+    ).toThrow(/BETTER_AUTH_URL/);
+  });
+});
