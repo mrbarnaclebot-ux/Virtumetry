@@ -67,6 +67,15 @@ Phase 4 runs a fixture scan in Expo Go (no real camera capture, mock processing,
 3. Work through the 11 checks in that file and fill in Status and Observed.
 4. If the dev budget runs out: `cd backend && npm run budget:reset-dev` (clears only today's mock spend on the dev database).
 
+## Test on your iPhone (Phase 5)
+
+Phase 5 opens a Ready room in the viewer (orbit, walk, floor plan, measure) and shares it through a public link that opens in any browser. Mock processing, $0.
+
+1. Sign in and start the app as in Phase 3, steps 1, 2, 5 and 6 (use `<your-email>`, never commit it). Reload the project in Expo Go.
+2. The web share page is hosted at `https://virtumetry--dev.expo.app` (EAS Hosting dev alias). To redeploy it: `npm run web:export:dev`, then `npx eas-cli@latest deploy --alias dev --environment development`. Never use `--prod` for dev.
+3. The dev backend variables, the R2 CORS setup and the 13 checks are in `.planning/phases/05-viewer-floor-plan-measure-share/05-HUMAN-UAT.md`. Work through them and fill in Status and Observed.
+4. Share links come from the app (viewer → Share → Create link). They look like `https://api-dev-d164ec0a.up.railway.app/s/<slug>`. Only share fixture/demo-room scans.
+
 ## Get a fresh project
 
 When you're ready, run:
