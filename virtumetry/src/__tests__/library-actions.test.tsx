@@ -197,7 +197,8 @@ describe('delete', () => {
     await confirmDeleteOf('Bedroom');
     await press('Delete');
 
-    expect(screen.queryByText('Bedroom')).toBeNull();
+    // DELETE is still pending here; onMutate awaits cancelQueries before removing the row.
+    await waitFor(() => expect(screen.queryByText('Bedroom')).toBeNull());
     const calls = mutateCalls('DELETE');
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toBe('https://api.test.invalid/v1/worlds/w2');
