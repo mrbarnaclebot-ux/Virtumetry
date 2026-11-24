@@ -302,4 +302,74 @@ describe.skipIf(!url)('share links (real Postgres)', () => {
       expect((await open(slug, { password: 'x', extra: 1 })).statusCode).toBe(400);
     });
   });
+
+  describe('landing /s/:slug (D-20)', () => {
+    const land = (slug: string, target: FastifyInstance = app) =>
+      target.inject({ method: 'GET', url: `/s/${slug}`, remoteAddress: '10.2.2.2' });
+    const noindex = (res: { headers: Record<string, unknown>; body: string }) => {
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toContain('<meta name="robots" content="noindex,nofollow">');
+    };
+
+    it('live link: OG preview + redirect, never counts an open', async () => {
+      const { json } = await create(worldA);
+      const slug = json.slug as string;
+      for (let i = 0; i < 3; i++) {
+        const res = await land(slug);
+        expect(res.statusCode).toBe(200);
+        expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
+        noindex(res);
+        expect(res.body).toContain('<meta property="og:title" content="Kitchen">');
+        expect(res.body).toContain(
+          '<meta property="og:description" content="A 3D room you can walk through, shared with Virtumetry.">',
+        );
+        expect(res.body).toContain(`<meta property="og:url" content="${BASE}/s/${slug}">`);
+        expect(res.body).toMatch(/<meta property="og:image" content="[^"]*thumb\.jpg">/);
+        expect(res.body).toContain('<meta name="twitter:card" content="summary_large_image">');
+        expect(res.body).toContain(`<meta http-equiv="refresh" content="0;url=${SHARE_ORIGIN}/r/${slug}">`);
+        expect(res.body).toContain(`href="${SHARE_ORIGIN}/r/${slug}"`);
+        expect(res.body).toContain('Open the room');
+      }
+      expect((await shareRow(json.id as string)).open_count).toBe(0);
+    });
+
+    it('password link: no og:image, summary card, private description', async () => {
+      const { json } = await create(worldA, { password: 'abcd' });
+      const res = await land(json.slug as string);
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain('og:image');
+      expect(res.body).toContain('<meta name="twitter:card" content="summary">');
+      expect(res.body).toContain('A password-protected 3D room, shared with Virtumetry.');
+    });
+
+    it('escapes the title everywhere', async () => {
+      const evil = `<script>alert(1)</script>"&'`;
+      const w = await insertWorld(userA, 'Evil');
+      await schema.pool.query('UPDATE worlds SET title = $2 WHERE id = $1', [w, evil]);
+      const { json } = await create(w);
+      const res = await land(json.slug as string);
+      expect(res.body).not.toContain('<script>alert');
+      expect(res.body).toContain('&lt;script&gt;alert(1)&lt;/script&gt;&quot;&amp;&#39;');
+    });
+
+    it('revoked / unknown → noindex 404 page without og:image', async () => {
+      const { json } = await create(worldA);
+      await call('DELETE', `/v1/worlds/${worldA}/shares/${json.id}`, cookieA);
+      for (const slug of [json.slug as string, 'C'.repeat(22), 'bad!slug']) {
+        const res = await land(slug);
+        expect(res.statusCode).toBe(404);
+        noindex(res);
+        expect(res.body).toContain('This link is no longer available');
+        expect(res.body).not.toContain('og:image');
+      }
+    });
+
+    it('without WEB_SHARE_ORIGIN → 503 share_unavailable, still noindex', async () => {
+      const res = await land('D'.repeat(22), bare);
+      expect(res.statusCode).toBe(503);
+      expect(JSON.parse(res.body)).toEqual({ error: 'share_unavailable' });
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+    });
+  });
 });
