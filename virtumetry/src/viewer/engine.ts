@@ -355,14 +355,17 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
       // WR-02: the web page remounts the engine in the same document; free Spark's GPU targets/workers and the context.
       if (splat) scene.remove(splat);
       scene.remove(spark);
-      try {
-        splat?.dispose();
-        spark.dispose();
-        renderer.dispose();
-        renderer.forceContextLoss();
-      } catch {
-        // A lost context may refuse to dispose; it is garbage either way.
-      }
+      // One try per step: a throw from Spark must not skip freeing the context (review-2 IN-01).
+      // A lost context may refuse to dispose; it is garbage either way.
+      const safely = (f: () => void) => {
+        try {
+          f();
+        } catch {}
+      };
+      safely(() => splat?.dispose());
+      safely(() => spark.dispose());
+      safely(() => renderer.dispose());
+      safely(() => renderer.forceContextLoss());
       splat = null;
       bytes = null;
     },
