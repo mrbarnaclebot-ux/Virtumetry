@@ -46,17 +46,22 @@ export async function resolveStartPose(
 }
 
 export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { reducedMotion: boolean }) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // 3x iPhone → 2x: ~2.25x fewer pixels
+  function makeRenderer() {
+    const r = new THREE.WebGLRenderer({ canvas, antialias: false });
+    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); // 3x iPhone → 2x: ~2.25x fewer pixels
+    return r;
+  }
+  let renderer = makeRenderer();
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 1000);
-  scene.add(new SparkRenderer({ renderer, lodSplatCount: LOD_SPLAT_COUNT }));
+  let spark = new SparkRenderer({ renderer, lodSplatCount: LOD_SPLAT_COUNT });
+  scene.add(spark);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
 
   let disposed = false;
   let splat: SplatMesh | null = null;
-  let bytes: Uint8Array | null = null; // kept for context-loss rebuild (05-05)
+  let bytes: Uint8Array | null = null; // kept for context-loss rebuild (D-13a, no re-download)
   let startPose: Pose | null = null;
   let mode: Mode = 'orbit';
   let tween: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; t0: number } | null = null;
@@ -128,6 +133,21 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
     camera.quaternion.setFromEuler(new THREE.Euler(walk.pitch, walk.yaw, 0, 'YXZ'));
   }
 
+  async function makeSplat(fileBytes: Uint8Array) {
+    const type = getSplatFileType(fileBytes);
+    const mesh = new SplatMesh({ fileBytes, fileType: type, lod: true });
+    if (splatFrameFor(type ?? '') === 'rdf') mesh.rotation.x = Math.PI; // RDF → Y-up (Pitfall 9)
+    await mesh.initialized;
+    return mesh;
+  }
+
+  function getPose(): Pose {
+    return {
+      position: camera.position.toArray() as Pose['position'],
+      quaternion: camera.quaternion.toArray() as Pose['quaternion'],
+    };
+  }
+
   let raf = 0;
   function frame(now: number) {
     if (disposed) return;
@@ -156,12 +176,10 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
   raf = requestAnimationFrame(frame);
 
   return {
-    async loadSplat(fileBytes: Uint8Array) {
+    /** `initialPose` (crash remount, D-13b) wins over the start pose on load; Reset still goes to the start pose. */
+    async loadSplat(fileBytes: Uint8Array, initialPose?: Pose | null) {
       bytes = fileBytes;
-      const type = getSplatFileType(fileBytes);
-      const mesh = new SplatMesh({ fileBytes, fileType: type, lod: true });
-      if (splatFrameFor(type ?? '') === 'rdf') mesh.rotation.x = Math.PI; // RDF → Y-up (Pitfall 9)
-      await mesh.initialized;
+      const mesh = await makeSplat(fileBytes);
       if (disposed) {
         mesh.dispose();
         return;
@@ -175,7 +193,7 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
           ? { position: [0, 1.6, 3], quaternion: [0, 0, 0, 1] }
           : fallbackPose({ min: box.min.toArray(), max: box.max.toArray() });
       }
-      applyPose(startPose);
+      applyPose(initialPose ?? startPose);
       pendingFirstFrame = true;
     },
     /** Collider PLY (mesh-simplified). Throws on a bad file; caller treats that as orbit-only (UI-SPEC B9). */
@@ -228,6 +246,65 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
       return () => {
         frameListeners.delete(cb);
       };
+    },
+    getPose,
+    /** Camera forward on the floor plane: [x, z]. */
+    getHeading(): [number, number] {
+      const f = forward();
+      return [f.x, f.z];
+    },
+    /**
+     * Floor-plan tap (D-11, B6): stand at (x, z) at eye height, pushed out of the collider.
+     * With a collider this switches to Walk (returns 'walk'); without one it moves the orbit camera there and stays in Orbit.
+     */
+    teleport(x: number, z: number, bounds?: Bounds): Mode {
+      tween = null;
+      walk.input = NO_INPUT;
+      const box = bvh?.getBoundingBox(new THREE.Box3());
+      const floor = (bvh && box && floorYAt(bvh, x, z, box.min.y + EYE_HEIGHT)) ?? (sceneBounds ?? bounds)?.min[1] ?? 0;
+      if (bvh) {
+        if (mode !== 'walk') {
+          walk.yaw = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ').y;
+          walk.pitch = 0;
+        }
+        mode = 'walk';
+        controls.enabled = false;
+        walk.floorY = floor;
+        camera.position.copy(resolveCapsule(bvh, new THREE.Vector3(x, floor + EYE_HEIGHT, z), floor, 3));
+        camera.quaternion.setFromEuler(new THREE.Euler(walk.pitch, walk.yaw, 0, 'YXZ'));
+      } else {
+        camera.position.set(x, floor + EYE_HEIGHT, z);
+        orbitAhead();
+      }
+      return mode;
+    },
+    /**
+     * WebGL context restored (D-13a): new renderer + SparkRenderer + SplatMesh from the cached bytes (no re-download).
+     * The camera, controls and collider BVH are plain JS and survive the loss as-is.
+     */
+    async rebuild() {
+      scene.remove(spark);
+      try {
+        spark.dispose();
+        splat?.dispose();
+        renderer.dispose();
+      } catch {
+        // GPU objects of a lost context may refuse to dispose; they are garbage either way.
+      }
+      if (splat) scene.remove(splat);
+      splat = null;
+      renderer = makeRenderer();
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+      spark = new SparkRenderer({ renderer, lodSplatCount: LOD_SPLAT_COUNT });
+      scene.add(spark);
+      if (!bytes) return;
+      const mesh = await makeSplat(bytes);
+      if (disposed) {
+        mesh.dispose();
+        return;
+      }
+      splat = mesh;
+      scene.add(mesh);
     },
     setStartPose(pose: Pose) {
       startPose = pose;

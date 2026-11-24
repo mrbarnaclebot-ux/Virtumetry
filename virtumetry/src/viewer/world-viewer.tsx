@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { createEngine, resolveStartPose, type Engine, type Mode } from './engine';
+import { hasFloorplan, headingAngle, pixelFromWorld, tapToPixel, worldFromPixel } from './floorplan';
 import { announceDistance, distance, formatDistance, isTap, type Vec3 } from './measure';
 import { fetchWithProgress } from './progress';
 import { VT } from './tokens';
@@ -46,6 +47,8 @@ type Hint = { text: string; ms: number | null } | null;
 type Joy = { x: number; y: number; kx: number; ky: number } | null;
 type Ptr = { kind: 'joy' | 'look'; x0: number; y0: number; x: number; y: number };
 const PROGRESS_MS = 100; // UI-SPEC: percent text and onProgress at most 10 Hz
+const POSE_MS = 500; // T-05-23: onPose at most 2 Hz, only on change
+const LOST_MS = 5000; // D-13a: context not restored in 5 s -> native/web layer takes over
 
 const media = (q: string) => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches;
 
@@ -82,6 +85,13 @@ export default function WorldViewer(props: ViewerProps) {
   const [joy, setJoy] = useState<Joy>(null);
   const ptrs = useRef(new Map<number, Ptr>());
   const keys = useRef(new Set<Dir>());
+  // Floor plan (D-11) and WebGL context loss (D-13a)
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planFailed, setPlanFailed] = useState(false);
+  const planImgRef = useRef<HTMLDivElement>(null);
+  const youRef = useRef<HTMLDivElement>(null);
+  const planTap = useRef<{ id: number; x: number; y: number; t: number } | null>(null);
+  const [lost, setLost] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -100,14 +110,48 @@ export default function WorldViewer(props: ViewerProps) {
       call(propsRef.current.onProgress, { stage: 'download' as const, percent });
     };
 
+    // T-05-23: pose to the native side (crash remount, D-13b), only once the real pose is applied.
+    let poseAt = 0;
+    let lastPose = '';
+    const emitPose = () => {
+      const now = performance.now();
+      if (now - poseAt < POSE_MS) return;
+      poseAt = now;
+      const pose = engine.getPose();
+      const key = [...pose.position, ...pose.quaternion].map((v) => v.toFixed(3)).join();
+      if (key === lastPose) return;
+      lastPose = key;
+      call(propsRef.current.onPose, pose);
+    };
+
+    // D-13a: keep the context restorable, rebuild from cached bytes, give up after 5 s.
+    let lostTimer: ReturnType<typeof setTimeout> | undefined;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      setLost(true);
+      clearTimeout(lostTimer);
+      lostTimer = setTimeout(() => call(propsRef.current.onError, { code: 'context_lost' }), LOST_MS);
+    };
+    const onRestored = () => {
+      clearTimeout(lostTimer);
+      engine
+        .rebuild()
+        .then(() => setLost(false))
+        .catch(() => call(propsRef.current.onError, { code: 'context_lost' }));
+    };
+    canvas.addEventListener('webglcontextlost', onLost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
+
     setLoad({ stage: 'download', percent: null });
     setHasCollider(false);
     setMode('orbit');
+    setLost(false);
     (async () => {
       try {
+        // The start pose is always the computed one (Reset target); a saved crash pose only applies on load.
         const [bytes, pose] = await Promise.all([
           fetchWithProgress(splatUrl, onPct, ac.signal),
-          resolveStartPose(propsRef.current, ac.signal),
+          resolveStartPose({ ...propsRef.current, startPose: null }, ac.signal),
         ]);
         if (ac.signal.aborted) return;
         setLoad({ stage: 'prepare' });
@@ -117,8 +161,9 @@ export default function WorldViewer(props: ViewerProps) {
           setLoad({ stage: 'ready' });
           setHint({ text: ORBIT_HINT[coarse ? 0 : 1], ms: HINT_MS });
           call(propsRef.current.onReady, undefined);
+          engine.onFrame(emitPose);
         });
-        await engine.loadSplat(bytes);
+        await engine.loadSplat(bytes, propsRef.current.startPose);
       } catch {
         if (ac.signal.aborted) return;
         setLoad({ stage: 'error' });
@@ -142,6 +187,9 @@ export default function WorldViewer(props: ViewerProps) {
 
     return () => {
       ac.abort();
+      clearTimeout(lostTimer);
+      canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
       engine.dispose();
       engineRef.current = null;
     };
@@ -184,6 +232,33 @@ export default function WorldViewer(props: ViewerProps) {
       }
     });
   }, [pointCount, dist, mode]);
+
+  // You-are-here dot + heading wedge, every frame while the plan is open (B6).
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !planOpen || load.stage !== 'ready') return;
+    return engine.onFrame(() => {
+      const meta = propsRef.current.floorplanMeta;
+      const img = planImgRef.current;
+      const you = youRef.current;
+      if (!img || !you || !hasFloorplan(meta)) return;
+      const { position } = engine.getPose();
+      const [px, py] = pixelFromWorld(meta, position[0], position[2]);
+      const [fx, fz] = engine.getHeading();
+      const x = (px * img.clientWidth) / meta.image.width_px;
+      const y = (py * img.clientHeight) / meta.image.height_px;
+      you.style.transform = `translate(${x}px, ${y}px) rotate(${headingAngle(meta, fx, fz)}rad)`;
+    });
+  }, [planOpen, load.stage]);
+
+  useEffect(() => {
+    if (!planOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPlanOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [planOpen]);
 
   // Desktop walk keys (B5); never while typing in an input (T-05-09).
   useEffect(() => {
@@ -274,6 +349,28 @@ export default function WorldViewer(props: ViewerProps) {
     }
   }
 
+  function onPlanDown(e: ReactPointerEvent<HTMLDivElement>) {
+    planTap.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp };
+  }
+
+  function onPlanUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const tap = planTap.current;
+    planTap.current = null;
+    const engine = engineRef.current;
+    const meta = props.floorplanMeta;
+    if (!tap || tap.id !== e.pointerId || !engine || !hasFloorplan(meta)) return;
+    if (!isTap(e.clientX - tap.x, e.clientY - tap.y, e.timeStamp - tap.t)) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const [px, py] = tapToPixel(e.clientX - r.left, e.clientY - r.top, r.width, r.height, meta);
+    const [x, z] = worldFromPixel(meta, px, py);
+    const next = engine.teleport(x, z, meta.scene_bounds);
+    if (next === 'walk') seenWalk.current = true;
+    setMode(next);
+    clearMeasure();
+    leaveWalkInput();
+    setHint({ text: "You're here now", ms: HINT_MS });
+  }
+
   function onCanvasDown(e: ReactPointerEvent) {
     downCount.current += 1;
     if (mode === 'orbit') setHint(null);
@@ -333,6 +430,7 @@ export default function WorldViewer(props: ViewerProps) {
   }
 
   const ready = load.stage === 'ready';
+  const showPlan = !!props.floorplanUrl && hasFloorplan(props.floorplanMeta) && !planFailed;
   const barBottom = insets.bottom + VT.space.md;
   const aboveBar = barBottom + 44 + VT.space.sm;
 
@@ -385,6 +483,64 @@ export default function WorldViewer(props: ViewerProps) {
               <div style={{ ...S.joyKnob, transform: `translate(${joy.kx}px, ${joy.ky}px)` }} />
             </div>
           )}
+        </div>
+      )}
+
+      {ready && showPlan && planOpen && (
+        <div
+          role="dialog"
+          aria-label="Floor plan"
+          style={{ ...S.panel, top: insets.top + VT.space.sm, width: `min(${coarse ? 280 : 320}px, calc(100vw - 32px))` }}>
+          <div style={S.panelHeader}>
+            <span style={S.panelTitle}>Floor plan</span>
+            <button
+              type="button"
+              className="vm-btn"
+              aria-label="Close floor plan"
+              style={S.close}
+              onClick={() => setPlanOpen(false)}>
+              <svg width={16} height={16} viewBox="0 0 16 16" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
+          </div>
+          <div
+            ref={planImgRef}
+            role="button"
+            aria-label="Floor plan. Tap a spot to move there."
+            style={S.planImage}
+            onPointerDown={onPlanDown}
+            onPointerUp={onPlanUp}
+            onPointerCancel={() => {
+              planTap.current = null;
+            }}>
+            <img
+              src={props.floorplanUrl}
+              alt=""
+              draggable={false}
+              style={S.planImg}
+              onError={() => {
+                setPlanFailed(true);
+                setPlanOpen(false);
+              }}
+            />
+            <div ref={youRef} aria-hidden style={S.you}>
+              <svg width={48} height={48} viewBox="0 0 48 48" style={S.wedge}>
+                <path d="M24 24 L44.78 12 A24 24 0 0 1 44.78 36 Z" fill={VT.accent} fillOpacity={0.4} />
+              </svg>
+              <div style={S.youDot} />
+            </div>
+          </div>
+          <span style={S.planHint}>Tap to jump there</span>
+        </div>
+      )}
+
+      {lost && (
+        <div style={S.overlay}>
+          <div style={S.column} role="status" aria-live="polite">
+            <div className="vm-spinner" />
+            <span style={S.reconnecting}>Reconnecting viewer…</span>
+          </div>
         </div>
       )}
 
@@ -473,6 +629,20 @@ export default function WorldViewer(props: ViewerProps) {
                 <path d="M4 3.5v4h4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+            {showPlan && (
+              <button
+                type="button"
+                className="vm-btn"
+                aria-label="Floor plan"
+                aria-pressed={planOpen}
+                style={{ ...S.round, ...(planOpen ? { background: VT.surfaceSelected } : null) }}
+                onClick={() => setPlanOpen((o) => !o)}>
+                <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <rect x={3} y={3} width={14} height={14} rx={2} />
+                  <path d="M10 3v14M3 10h14" />
+                </svg>
+              </button>
+            )}
           </div>
 
           <div role="radiogroup" aria-label="View mode" style={{ ...S.modeBar, bottom: barBottom }}>
@@ -656,5 +826,51 @@ const S: Record<string, CSSProperties> = {
     fontSize: VT.font.label,
     fontWeight: VT.weight.regular,
   },
+  panel: {
+    position: 'absolute',
+    left: VT.space.md,
+    boxSizing: 'border-box',
+    padding: VT.space.sm,
+    borderRadius: VT.radius.lg,
+    background: VT.scrim,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  panelHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  panelTitle: { fontSize: VT.font.label, fontWeight: VT.weight.semibold, paddingLeft: VT.space.xs },
+  close: {
+    width: 44,
+    height: 44,
+    border: 'none',
+    background: 'transparent',
+    color: VT.text,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  },
+  planImage: {
+    position: 'relative',
+    borderRadius: VT.radius.sm,
+    background: VT.surface,
+    overflow: 'hidden',
+    touchAction: 'none',
+    cursor: 'crosshair',
+  },
+  planImg: { display: 'block', width: '100%', height: 'auto', userSelect: 'none', pointerEvents: 'none' },
+  you: { position: 'absolute', left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none' },
+  wedge: { position: 'absolute', left: -24, top: -24 },
+  youDot: {
+    position: 'absolute',
+    left: -8,
+    top: -8,
+    width: 12,
+    height: 12,
+    borderRadius: 8,
+    border: '2px solid #FFFFFF',
+    background: VT.accent,
+  },
+  planHint: { marginTop: VT.space.sm, fontSize: VT.font.label, lineHeight: '20px', color: VT.textSecondary },
+  reconnecting: { fontSize: VT.font.label, lineHeight: '20px', color: VT.text },
   selected: { background: VT.surfaceSelected, color: VT.text, fontWeight: VT.weight.semibold },
 };
