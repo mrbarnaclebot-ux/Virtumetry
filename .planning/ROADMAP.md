@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards (completed 2026-11-23)
 - [x] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0 (completed 2026-11-23)
 - [x] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md) (completed 2026-11-24)
-- [ ] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
+- [x] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go (completed 2026-11-24)
 - [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
 - [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
@@ -150,7 +150,7 @@ Plans:
   4. Processing starts only after the owner explicitly approves the displayed quote. The approved scan then reaches "ready" in the library via the mock provider *(automated end-to-end test against the mock backend + manual Expo Go run)*
   5. After a force-quit mid-upload, the next launch asks the server which frames are missing, re-sends only those, and uploads the manifest last *(automated upload-manager reconciliation tests + manual Expo Go force-quit check)*
 
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 **Wave 1**
@@ -181,7 +181,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 04-09-PLAN.md — Dockerfile ships mock outputs, guarded budget:reset-dev, Railway dev env values, owner Expo Go UAT checklist, full gate
+- [x] 04-09-PLAN.md — Dockerfile ships mock outputs, guarded budget:reset-dev, Railway dev env values, owner Expo Go UAT checklist, full gate
 **UI hint**: yes
 
 ### Phase 5: Viewer, Floor Plan, Measure & Share
@@ -274,7 +274,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
 | 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
-| 4. $0 Capture-to-World Loop | 8/9 | In Progress|  |
+| 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
 | 7. Native Build Readiness | 0/TBD | Not started | - |

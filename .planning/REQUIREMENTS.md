@@ -25,16 +25,16 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 
 ### Capture (CAP)
 
-- [ ] **CAP-01**: Owner sees a short prep checklist (lights on, doors open, avoid mirrors) and camera-permission priming before the first scan
+- [x] **CAP-01**: Owner sees a short prep checklist (lights on, doors open, avoid mirrors) and camera-permission priming before the first scan
 - [ ] **CAP-02**: Owner can scan a room by walking it with the iPhone camera; the app keeps only Echo-3-ready keyframes (≥0.12 s and ≥7 cm or 10° apart, predicted blur ≤64 px, 1920x1440, no resize/rotation)
 - [ ] **CAP-03**: Owner gets one live coaching prompt at a time (slow down, more light, look at the floor/ceiling line, turn around)
 - [ ] **CAP-04**: When ARKit tracking is lost, capture pauses automatically, tells the owner how to recover, and resumes only after tracking has been normal for a short warm-up
-- [ ] **CAP-05**: Owner sees a readiness meter (green/amber/red) combining frame count, coverage, blur and tracking quality, with thresholds that can be tuned without an app build
+- [x] **CAP-05**: Owner sees a readiness meter (green/amber/red) combining frame count, coverage, blur and tracking quality, with thresholds that can be tuned without an app build
 - [x] **CAP-06**: Owner sees a live cost meter showing the current Echo-3 cost (900 + frames credits, in $) while scanning
-- [ ] **CAP-07**: Owner sees a top-down coverage mini-map of the path walked and directions looked
+- [x] **CAP-07**: Owner sees a top-down coverage mini-map of the path walked and directions looked
 - [ ] **CAP-08**: Capture enforces Echo-3 min/max frame limits and warns about heat or low storage before and during a scan
 - [x] **CAP-09**: A finished scan is saved on the phone first; owner can review it (frame count, duration, cost, readiness) and choose upload or discard
-- [ ] **CAP-10**: In Expo Go and tests, a fixture capture source replays a recorded scan through the same interface as the native module
+- [x] **CAP-10**: In Expo Go and tests, a fixture capture source replays a recorded scan through the same interface as the native module
 
 ### Upload & Processing (PROC)
 
@@ -132,16 +132,16 @@ Deferred. Tracked, not in the current roadmap.
 | AUTH-03 | Phase 3 | Complete |
 | AUTH-04 | Phase 8 | Pending |
 | AUTH-05 | Phase 3 | Complete |
-| CAP-01 | Phase 4 | Pending |
+| CAP-01 | Phase 4 | Complete |
 | CAP-02 | Phase 8 | Pending |
 | CAP-03 | Phase 8 | Pending |
 | CAP-04 | Phase 8 | Pending |
-| CAP-05 | Phase 4 | Pending |
+| CAP-05 | Phase 4 | Complete |
 | CAP-06 | Phase 4 | Complete |
-| CAP-07 | Phase 4 | Pending |
+| CAP-07 | Phase 4 | Complete |
 | CAP-08 | Phase 8 | Pending |
 | CAP-09 | Phase 4 | Complete |
-| CAP-10 | Phase 4 | Pending |
+| CAP-10 | Phase 4 | Complete |
 | PROC-01 | Phase 4 | Complete |
 | PROC-02 | Phase 4 | Complete |
 | PROC-03 | Phase 4 | Pending |
