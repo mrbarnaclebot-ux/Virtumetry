@@ -67,7 +67,7 @@
       "<rootDir>/jest.setup.ts"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|better-auth|@better-auth/.*|better-call|nanostores|@nanostores/.*|@better-fetch/.*|standard-navigation)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|better-auth|@better-auth/.*|better-call|nanostores|@nanostores/.*|@better-fetch/.*|standard-navigation|three|three-mesh-bvh)"
     ],
     "transform": {
       "\\.mjs$": "<rootDir>/jest.mjs-transformer.js"
