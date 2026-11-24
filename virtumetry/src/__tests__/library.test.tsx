@@ -6,6 +6,7 @@ import { Alert } from 'react-native';
 import LibraryScreen from '@/app/(tabs)/index';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
+import { apiFetch } from '@/lib/api';
 import { endSession } from '@/lib/session';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -170,6 +171,13 @@ describe('library screen', () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: 'account_deleted' }) } as Response);
     await renderLibrary();
     await waitFor(() => expect(endSession).toHaveBeenCalledWith({ notice: true }));
+  });
+
+  it('ApiError carries the server error code, and none for a non-JSON proxy body (iter-2 WR-01)', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ error: 'world_not_found' }) } as Response);
+    await expect(apiFetch('/v1/scans/x/uploads:missing')).rejects.toMatchObject({ status: 404, code: 'world_not_found' });
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, json: async (): Promise<unknown> => { throw new SyntaxError('html'); } } as Response);
+    await expect(apiFetch('/v1/scans/x/uploads:missing')).rejects.toMatchObject({ status: 404, code: undefined });
   });
 
   it('labels rows, the more button and the progress bar', async () => {

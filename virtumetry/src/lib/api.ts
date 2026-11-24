@@ -7,9 +7,13 @@ import { pollInterval, type LibraryItem, type LocalScan } from '@/library/displa
 import { authClient } from '@/lib/auth-client';
 import { endSession } from '@/lib/session';
 
+/** `code` is the server body's `error` field: a bare status cannot tell our 404 from a proxy's (WR-01). */
 export class ApiError extends Error {
-  constructor(public status: number) {
-    super(`API error ${status}`);
+  constructor(
+    public status: number,
+    public code?: string,
+  ) {
+    super(`API error ${status}${code ? ` ${code}` : ''}`);
   }
 }
 
@@ -31,13 +35,13 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       Cookie: await authClient.getCookie(),
     },
   });
+  const code = res.ok ? undefined : ((await res.json().catch(() => null))?.error as string | undefined);
   // A deleted account is 403 account_deleted on every call: sign out like a 401 (WR-02).
-  const deleted = res.status === 403 && (await res.json().catch(() => null))?.error === 'account_deleted';
-  if (res.status === 401 || deleted) {
+  if (res.status === 401 || (res.status === 403 && code === 'account_deleted')) {
     await endSession({ notice: true });
     throw new UnauthorizedError();
   }
-  if (!res.ok) throw new ApiError(res.status);
+  if (!res.ok) throw new ApiError(res.status, typeof code === 'string' ? code : undefined);
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -82,7 +86,7 @@ export function useDeleteWorld() {
     // Already gone (404) counts as deleted, so a stale local row can still be cleared.
     mutationFn: (id: string) =>
       deleteWorld(id).catch((e) => {
-        if (e instanceof ApiError && e.status === 404) return;
+        if (e instanceof ApiError && e.code === 'world_not_found') return;
         throw e;
       }),
     onMutate: async (id: string) => {

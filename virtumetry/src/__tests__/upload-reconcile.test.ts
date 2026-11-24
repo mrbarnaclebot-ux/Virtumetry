@@ -271,17 +271,23 @@ describe('reconcile', () => {
   });
 
   it('a deleted world (404) or deleted key (409 on create) is terminal: failed, files kept (CR-03)', async () => {
-    const httpError = (status: number) => Object.assign(new Error(`API error ${status}`), { status });
+    const httpError = (status: number, code?: string) => Object.assign(new Error(`API error ${status}`), { status, code });
     const server = fakeServer(3);
-    server.api.getMissing.mockRejectedValueOnce(httpError(404));
+    server.api.getMissing.mockRejectedValueOnce(httpError(404, 'world_not_found'));
     const local = fakeLocal();
     const res = await reconcile(localScan({ serverWorldId: 'w-1' }), { api: server.api, uploader: okUploader(server), local });
     expect(res.kind).toBe('failed');
     expect(local.update).toHaveBeenCalledWith('sess-1', { uploadState: 'failed', failureCode: WORLD_GONE });
     expect(local.deleteFiles).not.toHaveBeenCalled();
 
-    server.api.createScan.mockRejectedValueOnce(httpError(409));
+    server.api.createScan.mockRejectedValueOnce(httpError(409, 'idempotency_key_world_deleted'));
     expect((await reconcile(localScan(), { api: server.api, uploader: okUploader(server), local })).kind).toBe('failed');
+
+    // A 404/409 without our code (proxy, offline tunnel, old backend) is not terminal (iter-2 WR-01).
+    server.api.getMissing.mockRejectedValueOnce(httpError(404));
+    await expect(reconcile(localScan({ serverWorldId: 'w-1' }), { api: server.api, uploader: okUploader(server), local })).rejects.toThrow('404');
+    server.api.createScan.mockRejectedValueOnce(httpError(409, 'not_uploading'));
+    await expect(reconcile(localScan(), { api: server.api, uploader: okUploader(server), local })).rejects.toThrow('409');
 
     // Other errors still propagate (retried next pass).
     server.api.getMissing.mockRejectedValueOnce(httpError(500));

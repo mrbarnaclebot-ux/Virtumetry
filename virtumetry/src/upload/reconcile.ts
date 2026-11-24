@@ -48,7 +48,9 @@ async function applyServerState(scan: LocalScan, world: ScanWorld, local: LocalS
   return null;
 }
 
-const statusOf = (e: unknown) => (e as { status?: unknown } | null)?.status;
+const codeOf = (e: unknown) => (e as { code?: unknown } | null)?.code;
+/** Only the server's own codes mean the world is gone; a proxy or tunnel 404 stays retryable (WR-01). */
+const GONE_CODES = new Set(['world_not_found', 'capture_not_found', 'idempotency_key_world_deleted']);
 
 type Deps = { api: ScansApi; uploader: Uploader; local: LocalStore; batchSize?: number; stallMs?: number };
 
@@ -89,8 +91,7 @@ export async function reconcile(
   try {
     return await reconcileOnce(scan, deps, onProgress);
   } catch (e) {
-    // 404 on any :id route = deleted or not ours; 409 on create = idempotency_key_world_deleted.
-    if (statusOf(e) === 404 || (statusOf(e) === 409 && !scan.serverWorldId)) return gone();
+    if (GONE_CODES.has(codeOf(e) as string)) return gone();
     throw e;
   }
 }
