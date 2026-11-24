@@ -10,24 +10,47 @@ const indexFile = () => new File(Paths.document, 'sessions', 'index.json');
 let scans: LocalScan[] | null = null;
 const listeners = new Set<() => void>();
 
-/** Lazy sync load; a missing or corrupt index loads as [] (T-04-21). */
+const tmpFile = () => new File(Paths.document, 'sessions', 'index.json.tmp');
+const corruptFile = () => new File(Paths.document, 'sessions', 'index.corrupt.json');
+
+function readIndex(f: File): LocalScan[] | null {
+  try {
+    if (!f.exists) return null;
+    const parsed: unknown = JSON.parse(f.textSync());
+    return Array.isArray(parsed) ? (parsed as LocalScan[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lazy sync load (T-04-21). Falls back to index.json.tmp, which holds the newest list if a
+ * write was cut off between removing index.json and moving the tmp over it. A corrupt index
+ * is set aside as index.corrupt.json (never overwritten by the next write) and loads as [].
+ */
 function load(): LocalScan[] {
   if (scans) return scans;
-  try {
-    const f = indexFile();
-    const parsed: unknown = f.exists ? JSON.parse(f.textSync()) : [];
-    scans = Array.isArray(parsed) ? (parsed as LocalScan[]) : [];
-  } catch {
+  scans = readIndex(indexFile()) ?? readIndex(tmpFile());
+  if (!scans) {
     scans = [];
+    try {
+      const f = indexFile();
+      if (f.exists) f.moveSync(corruptFile(), { overwrite: true });
+    } catch {
+      // Best effort: keep going with an empty list.
+    }
   }
   return scans;
 }
 
+/** Write-to-tmp then move over index.json, so a force-quit never leaves a torn index (CR-02). */
 function set(next: LocalScan[], persist = true) {
   scans = next;
   if (persist) {
     sessionsDir().create({ intermediates: true, idempotent: true });
-    indexFile().writeSync(JSON.stringify(next));
+    const tmp = tmpFile();
+    tmp.writeSync(JSON.stringify(next));
+    tmp.moveSync(indexFile(), { overwrite: true });
   }
   listeners.forEach((l) => l());
 }

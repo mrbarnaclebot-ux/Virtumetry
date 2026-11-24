@@ -85,11 +85,25 @@ describe('local scan store', () => {
     expect(getLocalScans()).toEqual([s]);
   });
 
-  it('loads a missing or corrupt index as []', () => {
+  it('loads a missing or corrupt index as [] and sets the corrupt file aside (CR-02)', () => {
     expect(getLocalScans()).toEqual([]);
     sessions().create({ intermediates: true, idempotent: true });
     indexFile().writeSync('{not json');
     __reloadForTest();
     expect(getLocalScans()).toEqual([]);
+    addLocalScan(scan());
+    // The next write did not destroy the corrupt original.
+    expect(new File(Paths.document, 'sessions', 'index.corrupt.json').textSync()).toBe('{not json');
+  });
+
+  it('writes via a tmp file and recovers it when index.json is missing (CR-02)', () => {
+    const s = scan();
+    addLocalScan(s);
+    expect(new File(Paths.document, 'sessions', 'index.json.tmp').exists).toBe(false);
+    // Crash between removing index.json and moving the tmp over it.
+    new File(Paths.document, 'sessions', 'index.json.tmp').writeSync(indexFile().textSync());
+    indexFile().delete();
+    __reloadForTest();
+    expect(getLocalScans()).toEqual([s]);
   });
 });
