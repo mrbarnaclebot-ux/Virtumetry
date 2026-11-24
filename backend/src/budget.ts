@@ -47,6 +47,39 @@ function rowsOf<T>(res: unknown): T[] {
 }
 
 /**
+ * Credits spent by `mode` in the current UTC day and UTC month. Shared by
+ * reserveCredits (inside its advisory-locked tx) and the read-only /v1/quote.
+ */
+export async function spentCredits(
+  db: Pick<Db, 'execute'>,
+  mode: 'mock' | 'live',
+): Promise<{ day: number; month: number }> {
+  // The windows are pinned to UTC. `date_trunc('day', now())` follows the
+  // session's TimeZone, so the budget would reset at whatever local midnight
+  // the connection happened to inherit — and two connections with different
+  // TimeZone settings would disagree about which day a charge belongs to.
+  //
+  // `AT TIME ZONE 'UTC'` twice is deliberate, not redundant: the first
+  // converts timestamptz -> naive UTC wall time so date_trunc cuts on the UTC
+  // day/month, the second converts that naive midnight back to a timestamptz.
+  // Drop the second and Postgres would re-interpret midnight in the SESSION
+  // zone, reintroducing exactly the bug this fixes.
+  const [s] = rowsOf<{ day: string | number; month: string | number }>(
+    await db.execute(sql`
+      SELECT
+        COALESCE(SUM(amount) FILTER (
+          WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+        ), 0) AS day,
+        COALESCE(SUM(amount), 0) AS month
+      FROM credit_events
+      WHERE provider_mode = ${mode}
+        AND created_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+    `),
+  );
+  return { day: Number(s?.day ?? 0), month: Number(s?.month ?? 0) };
+}
+
+/**
  * Atomically reserve `amount` credits for one submission. Returns 'already'
  * when this submission_key already holds a reservation (a resumed submit is
  * never re-checked and never double-reserves), else checks the UTC day then the
@@ -74,30 +107,7 @@ export async function reserveCredits(
     );
     if (prior.length > 0) return 'already';
 
-    // The windows are pinned to UTC. `date_trunc('day', now())` follows the
-    // session's TimeZone, so the budget would reset at whatever local midnight
-    // the connection happened to inherit — and two connections with different
-    // TimeZone settings would disagree about which day a charge belongs to.
-    //
-    // `AT TIME ZONE 'UTC'` twice is deliberate, not redundant: the first
-    // converts timestamptz -> naive UTC wall time so date_trunc cuts on the UTC
-    // day/month, the second converts that naive midnight back to a timestamptz.
-    // Drop the second and Postgres would re-interpret midnight in the SESSION
-    // zone, reintroducing exactly the bug this fixes.
-    const [s] = rowsOf<{ day: string | number; month: string | number }>(
-      await tx.execute(sql`
-        SELECT
-          COALESCE(SUM(amount) FILTER (
-            WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
-          ), 0) AS day,
-          COALESCE(SUM(amount), 0) AS month
-        FROM credit_events
-        WHERE provider_mode = ${a.mode}
-          AND created_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
-      `),
-    );
-    const day = Number(s?.day ?? 0);
-    const month = Number(s?.month ?? 0);
+    const { day, month } = await spentCredits(tx, a.mode);
     if (wouldExceedBudget(day, a.amount, a.daily)) {
       throw new BudgetExceededError('daily', a.amount, day, a.daily);
     }

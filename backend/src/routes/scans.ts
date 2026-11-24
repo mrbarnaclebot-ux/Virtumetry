@@ -5,7 +5,8 @@ import { getDb } from '../db/client.js';
 import { captures, worlds, type World } from '../db/schema.js';
 import { chargeScanQuota, releaseScanQuota } from '../quota.js';
 import { BundleInvalidError, MANIFEST_MAX_BYTES, validateStored } from '../bundle/pack.js';
-import { captureConfig } from '../capture-config.js';
+import { PRICING, captureConfig } from '../capture-config.js';
+import { spentCredits, wouldExceedBudget } from '../budget.js';
 import { failWorld } from '../pipeline.js';
 import { enqueue } from '../queue.js';
 import { createProvider } from '../provider/index.js';
@@ -91,6 +92,51 @@ function replayScan(reply: FastifyReply, world: World) {
 export function scansRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { config, storage } = deps;
   const provider = deps.provider ?? createProvider(config);
+
+  // GET /v1/quote?frames=N — what a scan of N frames costs and whether today's
+  // and this month's budget can cover it (D-18). Read-only: no reservation,
+  // no ledger row. withinBudget is decided here, never on the client (T-04-14);
+  // submit re-checks atomically under the advisory lock.
+  app.get('/v1/quote', async (req, reply) => {
+    const userId = requireUserId(req, reply);
+    if (!userId) return;
+    const limits = await provider.limits();
+    const parsed = z
+      .object({ frames: z.coerce.number().int().min(1).max(limits.maxFrames) })
+      .safeParse(req.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_query', issues: parsed.error.issues });
+    }
+    const { credits } = await provider.quote(parsed.data.frames);
+    const spent = await spentCredits(getDb(), provider.mode);
+    const daily = config.DAILY_CREDIT_BUDGET - spent.day;
+    const monthly = config.MONTHLY_CREDIT_BUDGET - spent.month;
+    return reply.send({
+      credits,
+      usd: Math.round(credits * PRICING.usdPerCredit * 100) / 100,
+      budgetRemaining: Math.max(0, Math.min(daily, monthly)),
+      budgetWindow: monthly < daily ? 'monthly' : 'daily',
+      withinBudget:
+        !wouldExceedBudget(spent.day, credits, config.DAILY_CREDIT_BUDGET) &&
+        !wouldExceedBudget(spent.month, credits, config.MONTHLY_CREDIT_BUDGET),
+    });
+  });
+
+  // GET /v1/capture/config — env-tunable readiness/precheck thresholds (D-08),
+  // display pricing and provider frame limits for the app's meters.
+  app.get('/v1/capture/config', async (req, reply) => {
+    const userId = requireUserId(req, reply);
+    if (!userId) return;
+    const cc = captureConfig(config);
+    const limits = await provider.limits();
+    const minFrames = Math.max(cc.precheck.minFrames, limits.minFrames);
+    return reply.send({
+      readiness: cc.readiness,
+      precheck: { ...cc.precheck, minFrames },
+      pricing: PRICING,
+      limits: { minFrames, maxFrames: limits.maxFrames },
+    });
+  });
 
   // POST /v1/scans — an approved scan (D-19) in 'uploading' + its capture row.
   // Idempotency-Key is REQUIRED (the app's local sessionId): retries replay.
