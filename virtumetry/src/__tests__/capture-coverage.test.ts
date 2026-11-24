@@ -1,7 +1,8 @@
+/// <reference types="node" />
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { coverage, fitToBox, sectorOf, yawDeg } from '@/capture/coverage';
+import { coverage, fitToBox, sectorOf, sectorScreenDeg, yawDeg } from '@/capture/coverage';
 import type { KeyframeEvent } from '@/capture/types';
 
 const FIXTURE = join(__dirname, '../../../backend/test/fixtures/tiny-session/frames.jsonl');
@@ -49,6 +50,13 @@ describe('coverage (D-10)', () => {
     expect(sectorOf(16, 0)).toBe(1);
     expect(sectorOf(-16, 0)).toBe(11);
     expect(sectorOf(180, 0)).toBe(6);
+  });
+
+  it('a look to the screen-right lands in the sector drawn at 90 deg clockwise', () => {
+    const c = coverage([frame(1, 0, 0, 0, -1), frame(2, 0, 0, 1, 0)]);
+    expect(c.current!.dx).toBeCloseTo(1);
+    const k = c.sectorsSeen.findIndex((seen, i) => seen && i !== 0);
+    expect(sectorScreenDeg(k)).toBe(90);
   });
 });
 
