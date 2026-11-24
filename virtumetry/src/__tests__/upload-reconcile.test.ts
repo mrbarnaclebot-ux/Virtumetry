@@ -155,10 +155,16 @@ describe('reconcile', () => {
           }),
       ),
     };
-    const p = reconcile(localScan({ serverWorldId: 'w-1', frameCount: 4 }), { api: server.api, uploader, local: fakeLocal() });
+    const onProgress = jest.fn();
+    const p = reconcile(localScan({ serverWorldId: 'w-1', frameCount: 4 }), { api: server.api, uploader, local: fakeLocal() }, onProgress);
     await new Promise((r) => setTimeout(r, 0));
     expect(uploader.put).toHaveBeenCalledTimes(4); // all started, none resolved yet
     expect(server.api.getMissing).toHaveBeenCalledTimes(1);
+    const progress = onProgress.mock.calls.length;
+    resolvers.shift()!();
+    await new Promise((r) => setTimeout(r, 0));
+    // Progress moves per settled put, not per batch (WR-04).
+    expect(onProgress.mock.calls.length).toBe(progress + 1);
     resolvers.splice(0).forEach((r) => r());
     // manifest puts are sequential: resolve them as they appear
     for (let i = 0; i < 20 && resolvers.length === 0; i++) await new Promise((r) => setTimeout(r, 0));

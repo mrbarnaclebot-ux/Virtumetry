@@ -131,18 +131,27 @@ async function reconcileOnce(
         const batch = m.missingFrames.slice(i, i + batchSize);
         const files = await Promise.all(batch.map(async (path) => ({ path, bytes: await uploader.size(scan, path) })));
         const { uploads } = await api.presignUploads(id, files);
-        // Hand the whole batch to the native session at once; no JS concurrency cap.
-        const results = await Promise.allSettled(uploads.map(put));
+        // Hand the whole batch to the native session at once: a JS-side cap of ~4 (D-21) would
+        // stop enqueueing when the app is suspended, so the background session could not finish
+        // the scan (04-RESEARCH override). Progress still moves per file as each put settles.
         let failed = 0;
         let thrown = 0;
-        for (const r of results) {
-          if (r.status === 'fulfilled' && ok(r.value)) uploaded++;
-          else {
-            failed++;
-            if (r.status === 'rejected') thrown++;
-          }
-        }
-        report();
+        await Promise.allSettled(
+          uploads.map((s) =>
+            put(s).then(
+              (status) => {
+                if (ok(status)) {
+                  uploaded++;
+                  report();
+                } else failed++;
+              },
+              () => {
+                failed++;
+                thrown++;
+              },
+            ),
+          ),
+        );
         // Failures end the pass (T-04-31); a 403 (expired URL) is re-presigned next pass.
         if (failed) return thrown === failed ? pause() : { kind: 'incomplete', world: m.world };
       }
