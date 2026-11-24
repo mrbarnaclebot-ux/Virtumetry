@@ -6,18 +6,20 @@ const crash = (s: RecoveryState, at: number) => recoveryReducer(s, { type: 'cras
 
 describe('recovery reducer (D-13)', () => {
   it('starts clean', () => {
-    expect(initialRecovery).toEqual({ mountKey: 0, savedPose: null, crashes: [], capped: false, reconnecting: false });
+    expect(initialRecovery).toEqual({ mountKey: 0, savedPose: null, mountPose: null, crashes: [], capped: false, reconnecting: false });
     expect(RECOVERY_CAP).toBe(3);
     expect(RECOVERY_WINDOW_MS).toBe(60_000);
   });
 
   it('pose is saved', () => {
-    expect(recoveryReducer(initialRecovery, { type: 'pose', pose: POSE }).savedPose).toEqual(POSE);
+    const s = recoveryReducer(initialRecovery, { type: 'pose', pose: POSE });
+    expect(s.savedPose).toEqual(POSE);
+    expect(s.mountPose).toBeNull(); // the mounted viewer's props do not change on every pose
   });
 
   it('a crash remounts with the saved pose and shows reconnecting until ready', () => {
     const s = crash(recoveryReducer(initialRecovery, { type: 'pose', pose: POSE }), 1000);
-    expect(s).toMatchObject({ mountKey: 1, savedPose: POSE, crashes: [1000], capped: false, reconnecting: true });
+    expect(s).toMatchObject({ mountKey: 1, savedPose: POSE, mountPose: POSE, crashes: [1000], capped: false, reconnecting: true });
     expect(recoveryReducer(s, { type: 'ready' }).reconnecting).toBe(false);
   });
 
@@ -43,6 +45,6 @@ describe('recovery reducer (D-13)', () => {
     for (const at of [0, 1, 2, 3]) s = crash(s, at);
     expect(s.capped).toBe(true);
     s = recoveryReducer(s, { type: 'reload' });
-    expect(s).toMatchObject({ capped: false, crashes: [], mountKey: 4, savedPose: POSE, reconnecting: true });
+    expect(s).toMatchObject({ capped: false, crashes: [], mountKey: 4, savedPose: POSE, mountPose: POSE, reconnecting: true });
   });
 });
