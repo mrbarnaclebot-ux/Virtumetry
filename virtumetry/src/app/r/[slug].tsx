@@ -1,5 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
+import type { GenerateMetadataFunction } from 'expo-router/server';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -49,6 +50,9 @@ function Message({ heading, body, action, onPress }: { heading: string; body: st
     </View>
   );
 }
+
+/** D-20 / SHARE-03: robots in the first HTML bytes (SDK 58 Head only lands after hydration). Server-only, stripped from the client. */
+export const generateMetadata: GenerateMetadataFunction = () => ({ title: 'Virtumetry', robots: 'noindex,nofollow' });
 
 /** D-19 public web share page: no session, no upload manager, always dark (UI-SPEC F). */
 export default function SharePage() {

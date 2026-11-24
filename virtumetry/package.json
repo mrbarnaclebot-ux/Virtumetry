@@ -58,6 +58,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "web:export:dev": "node --env-file=.env.development node_modules/expo/bin/cli export --platform web",
     "test": "jest --ci"
   },
   "private": true,
