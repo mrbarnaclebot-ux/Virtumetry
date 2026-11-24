@@ -1,7 +1,7 @@
 import { useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { LibraryRow, type RowItem } from '@/components/library-row';
@@ -111,6 +111,21 @@ export default function LibraryScreen() {
 
   // Once the server row is past uploading it replaces the local row (Pitfall 10).
   const serverStatus = new Map((data?.worlds ?? []).map((w) => [w.id, w.status]));
+
+  // A 'done' entry (files already deleted) is dropped once the server lists its world, so it
+  // can't come back as a stale "Uploaded" row after a delete or past the first page (WR-07).
+  const listed = data?.worlds;
+  useEffect(() => {
+    const ids = new Set((listed ?? []).map((w) => w.id));
+    for (const s of scans) {
+      if (s.uploadState !== 'done' || !s.serverWorldId || !ids.has(s.serverWorldId)) continue;
+      try {
+        removeLocal(s.id);
+      } catch {
+        // Kept; retried on the next list refresh.
+      }
+    }
+  }, [listed, scans, removeLocal]);
   const shownScans = scans.filter((s) => {
     const status = s.serverWorldId ? serverStatus.get(s.serverWorldId) : undefined;
     return status === undefined || status === 'uploading';

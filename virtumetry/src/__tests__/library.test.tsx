@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
-import { __setLocalScansForTest } from '@/capture/store';
+import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
 import { endSession } from '@/lib/session';
 
@@ -201,7 +201,8 @@ describe('library screen', () => {
     expect(screen.queryByText('Hallway')).toBeNull();
     expect(screen.getByText('Porch')).toBeTruthy();
     // The uploading server row is not listed twice (WR-01).
-    expect(screen.queryByText('Bedroom')).toBeNull();
+    expect(screen.queryByText('Bedroom')).toBeNull();    // The done entry is pruned from the store once its world is listed (WR-07).
+    await waitFor(() => expect(getLocalScans().map((x) => x.id)).toEqual(['l2']));
   });
 
   it('local rows open their capture step; server rows are not buttons', async () => {
