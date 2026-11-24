@@ -199,27 +199,27 @@ Plans:
   4. A share link with an unguessable slug opens the world in desktop and mobile browsers. Revoking it makes it stop working immediately. An optional password gates it, and the owner sees its open count *(automated API tests for slug, revoke, password and counter + manual browser check)*
   5. Pasting a link into a messaging app shows a thumbnail and title preview, and the page is `noindex` *(automated test for OG/robots tags + manual paste check)*
 
-**Plans:** 8 plans
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Demo-room fixture + MOCK_OUTPUTS_SET + thumbnail import + floorplan_meta on world detail + Docker image (wave 1)
-- [ ] 05-02-PLAN.md — Open a Ready room from the Library: pinned viewer deps, coords/progress/tokens, DOM viewer with honest progress, LoD, start pose, orbit, Reset (wave 1)
+- [x] 05-01-PLAN.md — Demo-room fixture + MOCK_OUTPUTS_SET + thumbnail import + floorplan_meta on world detail + Docker image (wave 1)
+- [x] 05-02-PLAN.md — Open a Ready room from the Library: pinned viewer deps, coords/progress/tokens, DOM viewer with honest progress, LoD, start pose, orbit, Reset (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-03-PLAN.md — Walk with capsule collision + two-point approximate measure (wave 2)
-- [ ] 05-04-PLAN.md — Share API: migration 0004, owner create/list/revoke, public get/open with password + count, /s/:slug OG + noindex landing, scoped CORS (wave 2)
+- [x] 05-03-PLAN.md — Walk with capsule collision + two-point approximate measure (wave 2)
+- [x] 05-04-PLAN.md — Share API: migration 0004, owner create/list/revoke, public get/open with password + count, /s/:slug OG + noindex landing, scoped CORS (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-05-PLAN.md — Floor plan panel with you-are-here + teleport; WebGL context-loss rebuild + native WebView crash remount (wave 3)
+- [x] 05-05-PLAN.md — Floor plan panel with you-are-here + teleport; WebGL context-loss rebuild + native WebView crash remount (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 05-06-PLAN.md — Share sheet in the app: create (optional password), share, open counts, revoke (wave 4)
-- [ ] 05-07-PLAN.md — Public web page /r/[slug]: password gate, dead-link copy, noindex, client-only viewer, web export smoke (wave 4)
+- [x] 05-06-PLAN.md — Share sheet in the app: create (optional password), share, open counts, revoke (wave 4)
+- [x] 05-07-PLAN.md — Public web page /r/[slug]: password gate, dead-link copy, noindex, client-only viewer, web export smoke (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -300,7 +300,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
 | 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
 | 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
-| 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
+| 5. Viewer, Floor Plan, Measure & Share | 7/8 | In Progress|  |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
 | 7. Native Build Readiness | 0/TBD | Not started | - |
 | 8. Native ARKit Capture & Sign in with Apple | 0/TBD | Not started | - |
