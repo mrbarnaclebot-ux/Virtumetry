@@ -200,4 +200,106 @@ describe.skipIf(!url)('share links (real Postgres)', () => {
       ).toBe(204);
     });
   });
+
+  describe('public get/open (D-17)', () => {
+    // A fresh IP per request keeps the per-IP limiters out of these assertions.
+    let ip = 0;
+    const pub = (method: 'GET' | 'POST', path: string, body?: unknown) =>
+      app.inject({
+        method,
+        url: path,
+        remoteAddress: `10.1.${Math.floor(++ip / 250)}.${ip % 250}`,
+        ...(body !== undefined
+          ? { headers: { 'content-type': 'application/json' }, payload: JSON.stringify(body) }
+          : {}),
+      });
+    const open = (slug: string, body?: unknown) => pub('POST', `/v1/public/shares/${slug}/open`, body);
+    const slugOf = async (worldId: string, body: unknown = {}) => {
+      const { json } = await create(worldId, body);
+      return { id: json.id as string, slug: json.slug as string };
+    };
+
+    it('GET returns title + needs_password for a live link', async () => {
+      const plain = await slugOf(worldA);
+      const locked = await slugOf(worldA, { password: 'abcd' });
+      const a = await pub('GET', `/v1/public/shares/${plain.slug}`);
+      expect(a.statusCode).toBe(200);
+      expect(JSON.parse(a.body)).toEqual({ title: 'Kitchen', needs_password: false });
+      expect(JSON.parse((await pub('GET', `/v1/public/shares/${locked.slug}`)).body)).toEqual({
+        title: 'Kitchen',
+        needs_password: true,
+      });
+    });
+
+    it('revoked, unknown, malformed, not-ready and deleted all give one byte-identical 404', async () => {
+      const revoked = await slugOf(worldA);
+      await call('DELETE', `/v1/worlds/${worldA}/shares/${revoked.id}`, cookieA);
+      const nrWorld = await insertWorld(userA, 'Reprocessing');
+      const notReady = await slugOf(nrWorld);
+      await schema.pool.query(`UPDATE worlds SET status = 'processing' WHERE id = $1`, [nrWorld]);
+      const delWorld = await insertWorld(userA, 'Gone');
+      const deleted = await slugOf(delWorld);
+      await schema.pool.query('UPDATE worlds SET deleted_at = now() WHERE id = $1', [delWorld]);
+
+      const slugs = [revoked.slug, 'B'.repeat(22), 'bad!slug', notReady.slug, deleted.slug];
+      for (const s of slugs) {
+        for (const res of [await pub('GET', `/v1/public/shares/${s}`), await open(s)]) {
+          expect(res.statusCode).toBe(404);
+          expect(res.body).toBe('{"error":"share_not_found"}');
+        }
+      }
+    });
+
+    it('password link: missing → 401, wrong → 401 (no count), right → assets + count', async () => {
+      const { id, slug } = await slugOf(worldA, { password: 'hunter22' });
+      const none = await open(slug);
+      expect(none.statusCode).toBe(401);
+      expect(JSON.parse(none.body).error).toBe('password_required');
+      const wrong = await open(slug, { password: 'nope' });
+      expect(wrong.statusCode).toBe(401);
+      expect(JSON.parse(wrong.body).error).toBe('wrong_password');
+      expect((await shareRow(id)).open_count).toBe(0);
+
+      const ok = await open(slug, { password: 'hunter22' });
+      expect(ok.statusCode).toBe(200);
+      const body = JSON.parse(ok.body);
+      expect(body.title).toBe('Kitchen');
+      expect(body.floorplan_meta).toEqual({ scale: 1 });
+      expect(body.assets.splat_url).toContain('scene.spz');
+      expect(body.assets.collider_url).toContain('collider.ply');
+      expect(body.assets).not.toHaveProperty('thumbnail_url');
+      const r = await shareRow(id);
+      expect(r.open_count).toBe(1);
+      expect(r.last_opened_at).not.toBeNull();
+    });
+
+    it('unprotected link counts every open; revoke 404s the very next open', async () => {
+      const { id, slug } = await slugOf(worldA);
+      expect((await open(slug)).statusCode).toBe(200);
+      expect((await open(slug)).statusCode).toBe(200);
+      expect((await shareRow(id)).open_count).toBe(2);
+      expect((await call('DELETE', `/v1/worlds/${worldA}/shares/${id}`, cookieA)).statusCode).toBe(204);
+      expect((await open(slug)).statusCode).toBe(404);
+      expect((await pub('GET', `/v1/public/shares/${slug}`)).statusCode).toBe(404);
+    });
+
+    it('SHARE_FAIL_MAX=2: the third attempt is 429, even with the right password', async () => {
+      const { id, slug } = await slugOf(worldA, { password: 'hunter22' });
+      expect((await open(slug, { password: 'x1' })).statusCode).toBe(401);
+      expect((await open(slug, { password: 'x2' })).statusCode).toBe(401);
+      for (const pw of ['x3', 'hunter22']) {
+        const res = await open(slug, { password: pw });
+        expect(res.statusCode).toBe(429);
+        const body = JSON.parse(res.body);
+        expect(body.error).toBe('rate_limited');
+        expect(body.retry_after).toBeGreaterThan(0);
+      }
+      expect((await shareRow(id)).open_count).toBe(0);
+    });
+
+    it('rejects an unknown body key with 400', async () => {
+      const { slug } = await slugOf(worldA);
+      expect((await open(slug, { password: 'x', extra: 1 })).statusCode).toBe(400);
+    });
+  });
 });
