@@ -43,6 +43,9 @@ const baseSchema = z.object({
   // Deployment environment. Only 'production' is load-bearing (see refine());
   // anything else is treated as a non-production run.
   NODE_ENV: z.string().optional(),
+  // Set by Railway on every deployed service (dev included): the hardening
+  // guards in refine() apply whenever it is present, not only in production.
+  RAILWAY_ENVIRONMENT_ID: z.string().optional(),
 
   AUTH_MODE: z.enum(['dev', 'session', 'apple']).default('dev'),
   DEV_AUTH_TOKEN: z.string().optional(),
@@ -200,27 +203,34 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
     }
   }
 
-  if (isProd) {
-    // Dev auth in production (D-12). AUTH_MODE defaults to 'dev', so a dropped
-    // env var must never serve shared-token auth. No escape hatch.
-    if (cfg.AUTH_MODE === 'dev') {
-      throw new Error('AUTH_MODE=dev refused under NODE_ENV=production: set AUTH_MODE=session');
-    }
+  // Dev auth in production (D-12). AUTH_MODE defaults to 'dev', so a dropped
+  // env var must never serve shared-token auth. No escape hatch.
+  if (isProd && cfg.AUTH_MODE === 'dev') {
+    throw new Error('AUTH_MODE=dev refused under NODE_ENV=production: set AUTH_MODE=session');
+  }
+
+  // Any public deployment (production, or the Railway dev env with NODE_ENV=
+  // development so exp:// stays trusted) holds a real owner credential (WR-05).
+  if (isProd || cfg.RAILWAY_ENVIRONMENT_ID) {
+    const where = isProd ? 'NODE_ENV=production' : 'a deployed (Railway) service';
     if (cfg.DEV_AUTH_TOKEN) {
-      throw new Error('DEV_AUTH_TOKEN refused under NODE_ENV=production: unset it');
+      throw new Error(`DEV_AUTH_TOKEN refused under ${where}: unset it`);
     }
     // Better Auth's sign-in limiter is the brute-force guard (D-06).
     if (cfg.AUTH_RATE_LIMIT === '0') {
-      throw new Error('AUTH_RATE_LIMIT=0 refused under NODE_ENV=production: unset it');
+      throw new Error(`AUTH_RATE_LIMIT=0 refused under ${where}: unset it`);
     }
     // Session cookies must only ever travel over TLS.
     if (cfg.AUTH_MODE === 'session' && !cfg.BETTER_AUTH_URL?.startsWith('https://')) {
-      throw new Error('BETTER_AUTH_URL must be https under NODE_ENV=production');
+      throw new Error(`BETTER_AUTH_URL must be https under ${where}`);
     }
     // The local driver's /dev-storage route serves objects unauthenticated.
     if (cfg.STORAGE_DRIVER === 'local') {
-      throw new Error('STORAGE_DRIVER=local refused under NODE_ENV=production: set STORAGE_DRIVER=s3');
+      throw new Error(`STORAGE_DRIVER=local refused under ${where}: set STORAGE_DRIVER=s3`);
     }
+  }
+
+  if (isProd) {
     // Migrations over the direct host of the same endpoint (D-07, D-13).
     // Only the migrator needs it (api preDeploy); migrateUrl() requires it there,
     // so the worker and api runtime boot without it.

@@ -323,6 +323,30 @@ describe('AUTH_MODE=session (D-05)', () => {
     );
   });
 
+  // WR-05: the Railway dev env runs NODE_ENV=development but is public.
+  describe('deployed dev (RAILWAY_ENVIRONMENT_ID set, NODE_ENV=development)', () => {
+    const railwayDev = {
+      NODE_ENV: 'development',
+      RAILWAY_ENVIRONMENT_ID: 'env-id',
+      DATABASE_URL: pooled(DEV_EP),
+      AUTH_MODE: 'session',
+      BETTER_AUTH_SECRET: SECRET,
+      BETTER_AUTH_URL: 'https://api-dev.example.com',
+      ...s3('virtumetry-dev'),
+    };
+    it('loads when hardened', () => {
+      expect(loadConfig(env(railwayDev)).AUTH_MODE).toBe('session');
+    });
+    it.each([
+      [{ AUTH_RATE_LIMIT: '0' }, /AUTH_RATE_LIMIT/],
+      [{ DEV_AUTH_TOKEN: 't' }, /DEV_AUTH_TOKEN/],
+      [{ BETTER_AUTH_URL: 'http://api-dev.example.com' }, /BETTER_AUTH_URL/],
+      [{ STORAGE_DRIVER: 'local' }, /STORAGE_DRIVER=local/],
+    ])('refuses %o', (bad, msg) => {
+      expect(() => loadConfig(env({ ...railwayDev, ...bad }))).toThrow(msg);
+    });
+  });
+
   it('production refuses a non-https BETTER_AUTH_URL', () => {
     expect(() =>
       loadConfig(env({ ...prodSession, BETTER_AUTH_URL: 'http://api.example.com' })),
