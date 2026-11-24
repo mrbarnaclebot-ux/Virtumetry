@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md) (completed 2026-11-24)
 - [x] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
  (completed 2026-11-24)
-- [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
+- [x] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link (completed 2026-11-24)
 - [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
 - [ ] **Phase 8: Native ARKit Capture & Sign in with Apple** - Owner consents, then scans a real room with the iPhone and it comes back as a walkable world
@@ -199,7 +199,7 @@ Plans:
   4. A share link with an unguessable slug opens the world in desktop and mobile browsers. Revoking it makes it stop working immediately. An optional password gates it, and the owner sees its open count *(automated API tests for slug, revoke, password and counter + manual browser check)*
   5. Pasting a link into a messaging app shows a thumbnail and title preview, and the page is `noindex` *(automated test for OG/robots tags + manual paste check)*
 
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -223,7 +223,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 05-08-PLAN.md — EAS Hosting dev alias, R2 dev CORS, Railway dev vars + deploy, owner UAT checklist, green CI (wave 5)
+- [x] 05-08-PLAN.md — EAS Hosting dev alias, R2 dev CORS, Railway dev vars + deploy, owner UAT checklist, green CI (wave 5)
 **UI hint**: yes
 
 ### Phase 6: Live Echo-3 Provider
@@ -300,7 +300,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
 | 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
 | 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
-| 5. Viewer, Floor Plan, Measure & Share | 7/8 | In Progress|  |
+| 5. Viewer, Floor Plan, Measure & Share | 8/8 | Complete   | 2026-11-24 |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
 | 7. Native Build Readiness | 0/TBD | Not started | - |
 | 8. Native ARKit Capture & Sign in with Apple | 0/TBD | Not started | - |
