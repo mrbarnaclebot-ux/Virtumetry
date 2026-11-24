@@ -62,7 +62,7 @@ export function createMockProvider(
     outputsDir?: string;
     fetchImpl?: typeof fetch;
   } = {},
-): ReconProvider & { calls: { submit: { key: string; body: string }[] } } {
+): ReconProvider & { calls: { submit: { key: string; body: string }[]; deleteWorld: string[] } } {
   const scenario = opts.scenario ?? 'happy';
   const processingMs = (opts.processingSeconds ?? 0) * 1000;
   const now = opts.now ?? Date.now;
@@ -70,7 +70,7 @@ export function createMockProvider(
   const outputsDir = opts.outputsDir ?? DEFAULT_OUTPUTS_DIR;
   const byKey = new Map<string, Req>();
   const byId = new Map<string, Req>();
-  const calls = { submit: [] as { key: string; body: string }[] };
+  const calls = { submit: [] as { key: string; body: string }[], deleteWorld: [] as string[] };
   let transientFired = false;
 
   const find = (requestId: string): Req => {
@@ -306,6 +306,12 @@ export function createMockProvider(
 
     async cancel(requestId) {
       find(requestId).cancelled = true;
+    },
+
+    async deleteWorld(requestId) {
+      calls.deleteWorld.push(requestId);
+      find(requestId); // 404 for unknown / already deleted
+      byId.delete(requestId);
     },
 
     verifyWebhook(raw, signatureHeader) {

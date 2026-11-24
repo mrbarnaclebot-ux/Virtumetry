@@ -1,9 +1,18 @@
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import { getConfig, type Config } from './config.js';
 import { getDb, closeDb, type Db } from './db/client.js';
-import { captures, worlds, type Job, type JobKind, type World } from './db/schema.js';
+import {
+  captures,
+  creditEvents,
+  jobs,
+  shareSlugs,
+  worlds,
+  type Job,
+  type JobKind,
+  type World,
+} from './db/schema.js';
 import {
   claimNextJob,
   completeJob,
@@ -14,7 +23,7 @@ import {
 } from './queue.js';
 import { createStorage, type StorageDriver } from './storage/index.js';
 import { sendPush, type SendPush } from './push.js';
-import { createProvider, type ReconProvider } from './provider/index.js';
+import { createProvider, ProviderError, type ReconProvider } from './provider/index.js';
 import { failWorld, handlePack, handleSubmit, handleTrack } from './pipeline.js';
 
 /**
@@ -108,10 +117,15 @@ export interface WorkerDeps {
 
 
 /**
- * purge — delete every storage object under worlds/{wid}/, and each
- * capture's captures/{cid}/ and bundles/{cid}/ prefixes (via list). The DB row is KEPT (soft-deleted) so history/analytics survive.
- * A `{ framesOnly: true }` payload (reaper) skips the world-asset keys — a
- * reaped uploading world never produced any, and its row is NOT soft-deleted.
+ * purge (D-17) — for a soft-deleted world: ask the provider to delete its copy
+ * (404 = already gone), delete every storage object under worlds/{wid}/ and each
+ * capture's captures/{cid}/ and bundles/{cid}/ prefixes, then hard-delete the
+ * world's rows (share_slugs, jobs incl. this one, captures, world) in one tx.
+ * credit_events survive with world_id NULL so budget caps stay correct.
+ * Idempotent on retry: a missing world is complete, a repeated provider delete 404s.
+ * A `{ framesOnly: true }` payload (reaper) skips the world-asset keys and the
+ * provider — a reaped uploading world never produced any — and its row is kept.
+ * A world whose deleted_at is NULL is never hard-deleted.
  */
 async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage } = deps;
@@ -120,6 +134,18 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
     typeof job.payload === 'object' &&
     job.payload !== null &&
     (job.payload as { framesOnly?: boolean }).framesOnly === true;
+
+  const [world] = await db.select().from(worlds).where(eq(worlds.id, worldId));
+  if (!world) return void (await completeJob(db, job.id, job.lockedBy)); // already hard-deleted
+  const hardDelete = !framesOnly && Boolean(world.deletedAt);
+
+  if (hardDelete && world.providerRequestId) {
+    try {
+      await deps.provider.deleteWorld(world.providerRequestId);
+    } catch (err) {
+      if (!(err instanceof ProviderError && err.status === 404)) throw err; // retryable
+    }
+  }
 
   if (!framesOnly) await purgePrefix(storage, `worlds/${worldId}/`);
 
@@ -140,7 +166,17 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
       .where(eq(captures.worldId, worldId));
   }
 
-  await completeJob(db, job.id, job.lockedBy);
+  if (!hardDelete) return void (await completeJob(db, job.id, job.lockedBy));
+
+  // jobs.world_id is a NOT NULL FK without ON DELETE, so this running purge
+  // job's own row goes too — no completeJob afterwards (the row is gone).
+  await db.transaction(async (tx) => {
+    await tx.delete(shareSlugs).where(eq(shareSlugs.worldId, worldId));
+    await tx.update(creditEvents).set({ worldId: null }).where(eq(creditEvents.worldId, worldId));
+    await tx.delete(jobs).where(eq(jobs.worldId, worldId));
+    await tx.delete(captures).where(eq(captures.worldId, worldId));
+    await tx.delete(worlds).where(and(eq(worlds.id, worldId), isNotNull(worlds.deletedAt)));
+  });
 }
 
 export async function processJob(deps: WorkerDeps, job: Job): Promise<void> {

@@ -124,7 +124,8 @@ function makePurgeDb(captureRows: unknown[], sink: PurgeSink) {
   return {
     select: () => ({
       from: (table: unknown) => ({
-        where: async () => (table === captures ? captureRows : []),
+        where: async () =>
+          table === captures ? captureRows : table === worlds ? [{ id: 'w-1', deletedAt: null, providerRequestId: null }] : [],
       }),
     }),
     update: (table: unknown) => ({

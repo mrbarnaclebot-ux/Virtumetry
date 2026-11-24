@@ -57,6 +57,8 @@ export interface ReconProvider {
   /** Stream one artifact's bytes (FREE download). */
   open(artifact: Artifact): Promise<Readable>;
   cancel(requestId: string): Promise<void>;
+  /** (FREE) ask the provider to delete its copy; ProviderError 404 = already gone. */
+  deleteWorld(requestId: string): Promise<void>;
   /** HMAC check over the exact raw body bytes. */
   verifyWebhook(raw: Buffer, signatureHeader: string | undefined): boolean;
 }

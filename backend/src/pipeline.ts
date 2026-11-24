@@ -92,7 +92,9 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
   }
   // Deleted while we packed: purge may already have listed bundles/, so the
   // bundle we just wrote is ours to remove (deleted_at commits before purge runs).
-  if ((await getWorld(db, w.id))?.deletedAt) {
+  // A missing row means purge already hard-deleted it (D-17): same cleanup.
+  const after = await getWorld(db, w.id);
+  if (!after || after.deletedAt) {
     await storage.deleteObject(res.bundleKey);
     return completeJob(db, job.id, job.lockedBy);
   }
@@ -406,8 +408,10 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
     .where(and(eq(worlds.id, w.id), eq(worlds.status, 'importing'), isNull(worlds.deletedAt)))
     .returning({ id: worlds.id });
   // Deleted while importing: purge may have run before our writes landed.
-  if (done.length === 0 && (await getWorld(db, w.id))?.deletedAt) {
-    await purgePrefix(storage, `worlds/${w.id}/`);
+  // A missing row means purge already hard-deleted it (D-17).
+  if (done.length === 0) {
+    const after = await getWorld(db, w.id);
+    if (!after || after.deletedAt) await purgePrefix(storage, `worlds/${w.id}/`);
   }
   await completeJob(db, job.id, job.lockedBy);
 }
