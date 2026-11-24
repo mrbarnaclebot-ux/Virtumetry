@@ -11,7 +11,7 @@ import { accountRoutes } from './account.js';
 import { meRoutes } from './me.js';
 import { webhookRoutes } from './webhooks.js';
 import { authHandlerRoutes } from './auth-handler.js';
-import { shareRoutes } from './share.js';
+import { publicShareRoutes, shareRoutes } from './share.js';
 import type { RouteDeps } from './deps.js';
 
 /**
@@ -65,6 +65,8 @@ export async function registerRoutes(
   await webhookRoutes(app, deps);
   // Better Auth: its own credentials are its auth, so also outside the scope.
   if (deps.auth) await authHandlerRoutes(app, { auth: deps.auth, config });
+  // Share links for anonymous visitors (D-17/D-20): the slug (+ password) is the auth.
+  await publicShareRoutes(app, deps);
 
   // Failed-auth throttle, shared by every authenticated route. Auth failures
   // never reach the limiter above (the auth hook short-circuits first), and they
