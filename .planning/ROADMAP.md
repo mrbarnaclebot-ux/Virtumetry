@@ -16,7 +16,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards (completed 2026-11-23)
 - [x] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0 (completed 2026-11-23)
 - [x] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md) (completed 2026-11-24)
-- [x] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go (completed 2026-11-24)
+- [x] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
+ (completed 2026-11-24)
 - [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
 - [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
@@ -198,7 +199,31 @@ Plans:
   4. A share link with an unguessable slug opens the world in desktop and mobile browsers. Revoking it makes it stop working immediately. An optional password gates it, and the owner sees its open count *(automated API tests for slug, revoke, password and counter + manual browser check)*
   5. Pasting a link into a messaging app shows a thumbnail and title preview, and the page is `noindex` *(automated test for OG/robots tags + manual paste check)*
 
-**Plans**: TBD
+**Plans:** 8 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Demo-room fixture + MOCK_OUTPUTS_SET + thumbnail import + floorplan_meta on world detail + Docker image (wave 1)
+- [ ] 05-02-PLAN.md — Open a Ready room from the Library: pinned viewer deps, coords/progress/tokens, DOM viewer with honest progress, LoD, start pose, orbit, Reset (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-03-PLAN.md — Walk with capsule collision + two-point approximate measure (wave 2)
+- [ ] 05-04-PLAN.md — Share API: migration 0004, owner create/list/revoke, public get/open with password + count, /s/:slug OG + noindex landing, scoped CORS (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-05-PLAN.md — Floor plan panel with you-are-here + teleport; WebGL context-loss rebuild + native WebView crash remount (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-06-PLAN.md — Share sheet in the app: create (optional password), share, open counts, revoke (wave 4)
+- [ ] 05-07-PLAN.md — Public web page /r/[slug]: password gate, dead-link copy, noindex, client-only viewer, web export smoke (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 05-08-PLAN.md — EAS Hosting dev alias, R2 dev CORS, Railway dev vars + deploy, owner UAT checklist, green CI (wave 5)
 **UI hint**: yes
 
 ### Phase 6: Live Echo-3 Provider
