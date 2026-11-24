@@ -305,6 +305,37 @@ describe('expired presigned URLs (CR-01)', () => {
     expect(v().splatUrl).toBe(ASSETS2.splat_url);
   });
 
+  it('a stale crash shows "Reconnecting viewer…" while the refetch runs (review-2 WR-02)', async () => {
+    await open();
+    let answer!: (r: Response) => void;
+    fetchMock.mockReturnValue(new Promise<Response>((r) => (answer = r)));
+    now += 51 * MIN;
+    await act(async () => (v().dom as unknown as Dom).onContentProcessDidTerminate());
+    expect(screen.getByText('Reconnecting viewer…')).toBeTruthy();
+    expect(mockMounts).toHaveLength(1);
+    await act(async () => answer(ok({ world: world(), assets: ASSETS2 })));
+    expect(mockMounts).toHaveLength(2);
+    expect(mockMounts[1].splatUrl).toBe(ASSETS2.splat_url);
+  });
+
+  it('a double tap on Reload viewer reloads once (review-2 IN-03)', async () => {
+    await open();
+    for (let i = 0; i < 4; i++) await act(async () => (v().dom as unknown as Dom).onContentProcessDidTerminate());
+    let answer!: (r: Response) => void;
+    fetchMock.mockReturnValue(new Promise<Response>((r) => (answer = r)));
+    now += 51 * MIN;
+    const reload = screen.getByRole('button', { name: 'Reload viewer' });
+    await act(async () => {
+      fireEvent.press(reload);
+      fireEvent.press(reload);
+    });
+    expect(screen.getByText('Reconnecting viewer…')).toBeTruthy();
+    await act(async () => answer(ok({ world: world(), assets: ASSETS2 })));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockMounts).toHaveLength(5);
+    expect(v().splatUrl).toBe(ASSETS2.splat_url);
+  });
+
   it('re-entering the screen never mounts the viewer on cached URLs', async () => {
     const client = newClient();
     const first = await open(client);

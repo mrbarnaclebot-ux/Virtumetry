@@ -3,7 +3,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -49,6 +49,17 @@ function Message({
   );
 }
 
+function Reconnecting() {
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.center, styles.reconnect]} accessibilityLiveRegion="polite">
+      <ActivityIndicator size="large" color={VT.accent} />
+      <Text style={styles.reconnectLabel} maxFontSizeMultiplier={CHROME}>
+        Reconnecting viewer…
+      </Text>
+    </View>
+  );
+}
+
 /** D-14 viewer screen: always dark, RN top bar over a full-bleed DOM viewer (UI-SPEC A). */
 export default function WorldScreen() {
   useKeepAwake();
@@ -61,9 +72,20 @@ export default function WorldScreen() {
     () => Date.now() - (qc.getQueryState(['world', id])?.dataUpdatedAt ?? 0) > WORLD_URL_FRESH_MS,
     [qc, id],
   );
+  // Review-2 WR-02: "Reconnecting viewer…" shows while the refetch runs; one refetch in flight at a time (IN-03).
+  const [refreshing, setRefreshing] = useState(false);
+  const inflight = useRef<Promise<unknown> | null>(null);
   const freshen = useCallback(async () => {
-    if (urlsStale()) await refetch();
+    if (inflight.current) return void (await inflight.current);
+    if (!urlsStale()) return;
+    setRefreshing(true);
+    inflight.current = refetch().finally(() => {
+      inflight.current = null;
+      setRefreshing(false);
+    });
+    await inflight.current;
   }, [urlsStale, refetch]);
+  const reloading = useRef(false);
   // Pitfall 12: the DOM bundle takes a moment to parse; keep a native spinner until it reports in.
   const [domUp, setDomUp] = useState(false);
   // Stable identities: every prop change re-renders the whole DOM tree.
@@ -126,13 +148,22 @@ export default function WorldScreen() {
         body="Open it again from your Library when it says Ready."
       />
     );
+  } else if (rec.capped && refreshing) {
+    content = <Reconnecting />;
   } else if (rec.capped) {
     content = (
       <Message
         heading="The viewer stopped working"
         body="This can happen when the phone is low on memory. Reload to try again."
         retryLabel="Reload viewer"
-        onRetry={() => void freshen().then(() => dispatch({ type: 'reload' }))}
+        onRetry={() => {
+          if (reloading.current) return; // IN-03: a double tap queues one reload
+          reloading.current = true;
+          void freshen().then(() => {
+            reloading.current = false;
+            dispatch({ type: 'reload' });
+          });
+        }}
       />
     );
   } else {
@@ -154,13 +185,8 @@ export default function WorldScreen() {
           onPose={onPose}
           dom={dom}
         />
-        {rec.reconnecting ? (
-          <View style={[StyleSheet.absoluteFill, styles.center, styles.reconnect]} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="large" color={VT.accent} />
-            <Text style={styles.reconnectLabel} maxFontSizeMultiplier={CHROME}>
-              Reconnecting viewer…
-            </Text>
-          </View>
+        {rec.reconnecting || refreshing ? (
+          <Reconnecting />
         ) : (
           !domUp && (
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.center]}>
