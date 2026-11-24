@@ -30,7 +30,9 @@
           "pageHeaders": [
             {
               "source": "/r/[slug]",
-              "headers": { "X-Robots-Tag": "noindex, nofollow" }
+              "headers": {
+                "X-Robots-Tag": "noindex, nofollow"
+              }
             }
           ]
         }
@@ -48,6 +50,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "36beb6c1-8f08-400c-8dea-33a357948325"
+      }
+    },
+    "owner": "uziman99"
   }
 }
