@@ -13,7 +13,12 @@ export type ScansApi = {
 export type Uploader = {
   size(scan: LocalScan, path: string): Promise<number>;
   /** Resolves with the HTTP status (non-2xx resolves too); rejects on network errors. */
-  put(scan: LocalScan, signed: PresignedPut, onProgress?: (p: { bytesSent: number; totalBytes: number }) => void): Promise<number>;
+  put(
+    scan: LocalScan,
+    signed: PresignedPut,
+    onProgress?: (p: { bytesSent: number; totalBytes: number }) => void,
+    signal?: AbortSignal,
+  ): Promise<number>;
 };
 
 export type LocalStore = {
@@ -45,7 +50,26 @@ async function applyServerState(scan: LocalScan, world: ScanWorld, local: LocalS
 
 const statusOf = (e: unknown) => (e as { status?: unknown } | null)?.status;
 
-type Deps = { api: ScansApi; uploader: Uploader; local: LocalStore; batchSize?: number };
+type Deps = { api: ScansApi; uploader: Uploader; local: LocalStore; batchSize?: number; stallMs?: number };
+
+/**
+ * Aborts the pass's puts when no bytes have moved for stallMs (WR-03): a background URLSession
+ * task that waits for connectivity would otherwise hold the manager's single-pass lock for hours.
+ * A late tick means JS timers were suspended (app in background), which never counts as a stall.
+ */
+function stallGuard(stallMs: number) {
+  const ctrl = new AbortController();
+  const tickMs = stallMs / 4;
+  let last = Date.now();
+  let lastTick = last;
+  const id = setInterval(() => {
+    const now = Date.now();
+    if (now - lastTick > tickMs * 2) last = now;
+    lastTick = now;
+    if (now - last > stallMs) ctrl.abort();
+  }, tickMs);
+  return { signal: ctrl.signal, alive: () => void (last = Date.now()), stop: () => clearInterval(id) };
+}
 
 /**
  * The server world is gone (deleted, or its key was used by a deleted world): terminal, never
@@ -76,7 +100,7 @@ async function reconcileOnce(
   deps: Deps,
   onProgress?: (p: UploadProgress) => void,
 ): Promise<ReconcileResult> {
-  const { api, uploader, local, batchSize = 200 } = deps;
+  const { api, uploader, local, batchSize = 200, stallMs = 60_000 } = deps;
 
   let id = scan.serverWorldId;
   if (!id) {
@@ -99,46 +123,52 @@ async function reconcileOnce(
     return { kind: 'paused', world: m.world };
   };
 
-  if (m.missingFrames.length) {
-    for (let i = 0; i < m.missingFrames.length; i += batchSize) {
-      const batch = m.missingFrames.slice(i, i + batchSize);
-      const files = await Promise.all(batch.map(async (path) => ({ path, bytes: await uploader.size(scan, path) })));
-      const { uploads } = await api.presignUploads(id, files);
-      // Hand the whole batch to the native session at once; no JS concurrency cap.
-      const results = await Promise.allSettled(uploads.map((s) => uploader.put(scan, s)));
-      let failed = 0;
-      let thrown = 0;
-      for (const r of results) {
-        if (r.status === 'fulfilled' && ok(r.value)) uploaded++;
-        else {
-          failed++;
-          if (r.status === 'rejected') thrown++;
+  const guard = stallGuard(stallMs);
+  const put = (s: PresignedPut) => uploader.put(scan, s, guard.alive, guard.signal).finally(guard.alive);
+  try {
+    if (m.missingFrames.length) {
+      for (let i = 0; i < m.missingFrames.length; i += batchSize) {
+        const batch = m.missingFrames.slice(i, i + batchSize);
+        const files = await Promise.all(batch.map(async (path) => ({ path, bytes: await uploader.size(scan, path) })));
+        const { uploads } = await api.presignUploads(id, files);
+        // Hand the whole batch to the native session at once; no JS concurrency cap.
+        const results = await Promise.allSettled(uploads.map(put));
+        let failed = 0;
+        let thrown = 0;
+        for (const r of results) {
+          if (r.status === 'fulfilled' && ok(r.value)) uploaded++;
+          else {
+            failed++;
+            if (r.status === 'rejected') thrown++;
+          }
         }
+        report();
+        // Failures end the pass (T-04-31); a 403 (expired URL) is re-presigned next pass.
+        if (failed) return thrown === failed ? pause() : { kind: 'incomplete', world: m.world };
       }
-      report();
-      // Failures end the pass (T-04-31); a 403 (expired URL) is re-presigned next pass.
-      if (failed) return thrown === failed ? pause() : { kind: 'incomplete', world: m.world };
+      m = await api.getMissing(id);
+      const after = await applyServerState(scan, m.world, local);
+      if (after) return after;
+      if (m.missingFrames.length) return { kind: 'incomplete', world: m.world };
     }
-    m = await api.getMissing(id);
-    const after = await applyServerState(scan, m.world, local);
-    if (after) return after;
-    if (m.missingFrames.length) return { kind: 'incomplete', world: m.world };
-  }
 
-  if (!m.manifestPresent) {
-    // Manifest LAST, frames.jsonl before session.json.
-    for (const path of MANIFEST) {
-      const { uploads } = await api.presignUploads(id, [{ path, bytes: await uploader.size(scan, path) }]);
-      let status: number;
-      try {
-        status = await uploader.put(scan, uploads[0]);
-      } catch {
-        return pause();
+    if (!m.manifestPresent) {
+      // Manifest LAST, frames.jsonl before session.json.
+      for (const path of MANIFEST) {
+        const { uploads } = await api.presignUploads(id, [{ path, bytes: await uploader.size(scan, path) }]);
+        let status: number;
+        try {
+          status = await put(uploads[0]);
+        } catch {
+          return pause();
+        }
+        if (!ok(status)) return { kind: 'incomplete', world: m.world };
+        uploaded++;
+        report();
       }
-      if (!ok(status)) return { kind: 'incomplete', world: m.world };
-      uploaded++;
-      report();
     }
+  } finally {
+    guard.stop();
   }
 
   const res = await api.completeScan(id);

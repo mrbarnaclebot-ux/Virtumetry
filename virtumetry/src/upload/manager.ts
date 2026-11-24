@@ -1,5 +1,5 @@
 // D-21: app-scoped upload manager. Started from the root layout while signed in; one pass on start,
-// on AppState 'active' and on kick. Logs scan ids only, never URLs (T-04-30).
+// on AppState 'active', on kick, and on a backoff timer after a paused/incomplete pass (WR-03). Logs scan ids only, never URLs (T-04-30).
 import { Directory } from 'expo-file-system';
 import { useSyncExternalStore } from 'react';
 import { AppState, Platform, type NativeEventSubscription } from 'react-native';
@@ -17,6 +17,9 @@ let started = false;
 let sub: NativeEventSubscription | null = null;
 let running = false;
 let again = false;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retries = 0;
+const RETRY_MS = [15_000, 30_000, 60_000, 120_000, 300_000];
 
 const progress = new Map<string, UploadProgress>();
 const lastEmit = new Map<string, number>();
@@ -45,15 +48,34 @@ const deps = {
   local: { update: updateLocalScan, deleteFiles },
 };
 
-async function passOnce() {
+/** True when some scan should be retried (paused, incomplete or errored). */
+async function passOnce(): Promise<boolean> {
+  let retry = false;
   for (const scan of getLocalScans().filter((s) => ACTIVE.includes(s.uploadState))) {
     try {
-      await reconcile(scan, deps, (p) => setProgress(scan.id, p));
+      const r = await reconcile(scan, deps, (p) => setProgress(scan.id, p));
+      if (r.kind === 'paused' || r.kind === 'incomplete') retry = true;
     } catch (e) {
-      if (e instanceof UnauthorizedError) return; // signed out: stop the pass
+      if (e instanceof UnauthorizedError) return false; // signed out: stop the pass
+      retry = true;
       console.warn('upload pass failed for scan', scan.id); // one bad scan never blocks another
     }
   }
+  return retry;
+}
+
+function scheduleRetry(retry: boolean) {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  if (!retry || !started) {
+    retries = 0;
+    return;
+  }
+  const delay = RETRY_MS[Math.min(retries++, RETRY_MS.length - 1)];
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void runPass();
+  }, delay);
 }
 
 /** One pass at a time; a request during a pass schedules exactly one follow-up (T-04-31). */
@@ -63,14 +85,16 @@ async function runPass() {
     return;
   }
   running = true;
+  let retry = false;
   try {
     do {
       again = false;
-      await passOnce();
+      retry = await passOnce();
     } while (again && started);
   } finally {
     running = false;
   }
+  scheduleRetry(retry);
 }
 
 export function startUploadManager() {
@@ -86,6 +110,7 @@ export function startUploadManager() {
 
 export function stopUploadManager() {
   started = false;
+  scheduleRetry(false);
   sub?.remove();
   sub = null;
 }

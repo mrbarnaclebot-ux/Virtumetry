@@ -141,4 +141,25 @@ describe('upload manager', () => {
     expect(updateLocalScan).toHaveBeenCalledWith('a', { progress: { uploaded: 32, total: 32 } });
     release();
   });
+
+  it('retries a paused/incomplete pass on a backoff while in the foreground (WR-03)', async () => {
+    jest.useFakeTimers();
+    try {
+      mockScans.mockReturnValue([scan('a', 'paused')]);
+      mockReconcile.mockResolvedValue({ kind: 'paused' });
+      startUploadManager();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockReconcile).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(mockReconcile).toHaveBeenCalledTimes(2);
+      mockReconcile.mockResolvedValue({ kind: 'done' });
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(mockReconcile).toHaveBeenCalledTimes(3);
+      await jest.advanceTimersByTimeAsync(600_000); // done: no more retries
+      expect(mockReconcile).toHaveBeenCalledTimes(3);
+    } finally {
+      stopUploadManager();
+      jest.useRealTimers();
+    }
+  });
 });

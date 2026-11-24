@@ -281,4 +281,19 @@ describe('reconcile', () => {
     server.api.getMissing.mockRejectedValueOnce(httpError(500));
     await expect(reconcile(localScan({ serverWorldId: 'w-1' }), { api: server.api, uploader: okUploader(server), local })).rejects.toThrow('500');
   });
+
+  it('aborts a put that moves no bytes for stallMs and pauses instead of holding the pass (WR-03)', async () => {
+    const server = fakeServer(2);
+    const uploader: Uploader = {
+      size: async () => 1,
+      put: jest.fn(
+        (_scan, _s, _onProgress, signal) =>
+          new Promise<number>((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('cancelled')))),
+      ),
+    };
+    const local = fakeLocal();
+    const res = await reconcile(localScan({ serverWorldId: 'w-1', frameCount: 2 }), { api: server.api, uploader, local, stallMs: 40 });
+    expect(res.kind).toBe('paused');
+    expect(server.api.completeScan).not.toHaveBeenCalled();
+  });
 });

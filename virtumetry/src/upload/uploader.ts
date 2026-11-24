@@ -18,11 +18,12 @@ export const uploader: Uploader = {
     return f.size;
   },
   // File.upload RESOLVES on non-2xx: the caller checks the returned status.
-  async put(scan, signed, onProgress) {
+  async put(scan, signed, onProgress, signal) {
     const result = await sessionFile(scan.dir, signed.path).upload(signed.url, {
       httpMethod: 'PUT',
       headers: signed.headers,
       onProgress,
+      signal,
     });
     return result.status;
   },
