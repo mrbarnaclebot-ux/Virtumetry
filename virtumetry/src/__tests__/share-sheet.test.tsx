@@ -52,7 +52,7 @@ beforeEach(() => {
   });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  shareSpy = jest.spyOn(RNShare, 'share').mockResolvedValue({ action: 'dismissedAction' });
+  shareSpy = jest.spyOn(RNShare, 'share').mockResolvedValue({ action: 'dismissedAction', activityType: undefined });
 });
 afterEach(() => jest.restoreAllMocks());
 
