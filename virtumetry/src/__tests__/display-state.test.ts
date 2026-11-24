@@ -183,6 +183,70 @@ describe('toDisplayState: local and titles', () => {
     expect(s.icon).toBe('iphone');
   });
 
+  const loc = (over: Partial<LocalScan> = {}) =>
+    toDisplayState(
+      {
+        local: true,
+        id: 'l1',
+        sessionId: 'l1',
+        title: 'Hall',
+        createdAt: CREATED,
+        dir: 'file:///x',
+        frameCount: 30,
+        durationS: 7,
+        imageW: 640,
+        imageH: 480,
+        readiness: 'green',
+        precheckIssues: [],
+        uploadState: 'saved',
+        ...over,
+      },
+      NOW,
+    );
+
+  it('saved shows the frame count with the date', () => {
+    const s = loc();
+    expect(s.statusLine).toBe('Saved on phone · Not uploaded');
+    expect(s.secondaryLine).toBe(`30 frames · ${date(CREATED)}`);
+  });
+
+  it('saved with failed checks', () => {
+    const s = loc({ precheckIssues: [{ code: 'BLUR_SHARE' }] });
+    expect(s.statusLine).toBe("Saved on phone · Didn't pass checks");
+    expect(s.secondaryLine).toBe(`30 frames · ${date(CREATED)}`);
+  });
+
+  it.each(['approved', 'uploading'] as const)('%s without progress → Uploading…', (uploadState) => {
+    const s = loc({ uploadState });
+    expect(s.kind).toBe('uploading');
+    expect(s.statusLine).toBe('Uploading…');
+    expect(s.progress).toBeNull();
+    expect(s.secondaryLine).toBeNull();
+  });
+
+  it('uploading with progress shows the percent', () => {
+    const s = loc({ uploadState: 'uploading', progress: { uploaded: 12, total: 32 } });
+    expect(s.statusLine).toBe('Uploading · 38%');
+    expect(s.progress).toBe(37.5);
+  });
+
+  it('paused waits for a connection', () => {
+    expect(loc({ uploadState: 'paused' }).statusLine).toBe('Upload paused · Waiting for connection');
+  });
+
+  it('blocked did not pass checks and is not charged', () => {
+    const s = loc({ uploadState: 'blocked', failureCode: 'CAMERA_JUMP' });
+    expect(s.statusLine).toBe("Failed · Didn't pass checks");
+    expect(s.secondaryLine).toBe(`Not charged · ${date(CREATED)}`);
+    expect(s.tone).toBe('destructive');
+  });
+
+  it('server failure at validate wins over the IMAGE_ upload family', () => {
+    const s = ds({ status: 'failed', failure_stage: 'validate', failure_code: 'IMAGE_LONG_EDGE', charged: false });
+    expect(s.statusLine).toBe("Failed · Didn't pass checks");
+    expect(s.secondaryLine).toMatch(/^Not charged/);
+  });
+
   it.each([null, '', '   '])('title %p → Untitled scan', (title) => {
     expect(ds({ title }).displayTitle).toBe('Untitled scan');
   });
@@ -208,5 +272,9 @@ describe('isTerminal / pollInterval', () => {
     expect(pollInterval([{ status: 'ready' }, { status: 'failed' }])).toBe(false);
     expect(pollInterval([])).toBe(false);
     expect(pollInterval(undefined)).toBe(false);
+  });
+
+  it('keeps polling while a local scan is uploading even if every server item is terminal', () => {
+    expect(pollInterval([{ status: 'ready' }], true)).toBe(5000);
   });
 });
