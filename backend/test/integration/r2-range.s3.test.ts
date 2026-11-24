@@ -40,7 +40,7 @@ describe.skipIf(gated)('R2 Range preflight (virtumetry-dev)', () => {
   }, 120_000);
 
   it('packs to R2, presigns 24 h, serves Range 206 and a readable central directory', async () => {
-    const res = await packCapture(storage, cid, { minFrames: 1, maxFrames: 5000 });
+    const res = await packCapture(storage, cid, { minFrames: 1, maxFrames: 5000, rules: { minFrames: 20, maxBlurShare: 0.25, maxTrackingGapShare: 0, minCoverageSectors: 1 } });
     console.log(`[r2-it] bundle ${res.bundleKey} bytes=${res.bundleBytes} frames=${res.frameCount}`);
     const listed = await storage.list(`bundles/${cid}/`);
     expect(listed).toEqual([{ key: res.bundleKey, size: res.bundleBytes }]);

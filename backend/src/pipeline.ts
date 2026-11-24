@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { BudgetExceededError, releaseCredits, reserveCredits } from './budget.js';
 import { BundleInvalidError, packCapture } from './bundle/pack.js';
+import { captureConfig } from './capture-config.js';
 import type { Db } from './db/client.js';
 import { captures, jobs, worlds, type FailureStage, type Job, type World, type WorldStatus } from './db/schema.js';
 import { ProviderError, type ArtifactKind, type ExportKind } from './provider/index.js';
@@ -80,10 +81,16 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
     return completeJob(db, job.id, job.lockedBy);
   }
 
+  const cc = captureConfig(deps.config);
   const limits = await provider.limits();
   let res;
   try {
-    res = await packCapture(storage, cap.id, { ...limits, onProgress: heartbeat(deps, job) });
+    res = await packCapture(storage, cap.id, {
+      minFrames: Math.max(cc.precheck.minFrames, limits.minFrames),
+      maxFrames: limits.maxFrames,
+      rules: cc.precheck, // D-17: same rules as `:complete` and the device precheck
+      onProgress: heartbeat(deps, job),
+    });
   } catch (err) {
     if (!(err instanceof BundleInvalidError)) throw err; // retryable
     const codes = err.issues.map((i) => i.code);

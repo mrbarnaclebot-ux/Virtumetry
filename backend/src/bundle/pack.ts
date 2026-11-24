@@ -8,6 +8,7 @@ import { arkitToOpenCV } from './convert.js';
 import { EXIF_APP1_BYTES, withExif } from './exif.js';
 import { SessionV1, parseFramesJsonl, type FrameLine, type Session } from './manifest.js';
 import { validateFrameImage, validateSession, type BundleIssue } from './validate.js';
+import type { PrecheckRules } from '../capture-config.js';
 
 export class BundleInvalidError extends Error {
   constructor(readonly issues: BundleIssue[]) {
@@ -20,7 +21,7 @@ const pad6 = (i: number) => String(i).padStart(6, '0');
 /** 5000 frames x ~400 B is ~2 MB of frames.jsonl; 8 MiB leaves headroom. */
 export const MANIFEST_MAX_BYTES = 8 * 1024 * 1024;
 
-async function readManifest(
+export async function readManifest(
   storage: StorageDriver,
   cid: string,
   listed: Map<string, number>,
@@ -46,17 +47,34 @@ async function readManifest(
   }
 }
 
-export async function packCapture(
+/**
+ * D-17: the one server-side validation entry point (pack job and `:complete`).
+ * Lists the stored capture, parses the manifest and runs validateSession;
+ * throws BundleInvalidError on any issue. `objects` keys are prefix-relative.
+ */
+export async function validateStored(
   storage: StorageDriver,
   captureId: string,
-  opts: { minFrames: number; maxFrames: number; onProgress?: () => Promise<void> },
-): Promise<{ bundleKey: string; bundleBytes: number; manifestKey: string; frameCount: number; imageW: number; imageH: number }> {
+  opts: { minFrames: number; maxFrames: number; rules: PrecheckRules; expectedFrameCount?: number },
+): Promise<{ session: Session; frames: FrameLine[]; objects: { key: string; size: number }[] }> {
   const prefix = captureKey(captureId, '');
   const all = (await storage.list(prefix)).map((o) => ({ key: o.key.slice(prefix.length), size: o.size }));
   const { session, frames } = await readManifest(storage, captureId, new Map(all.map((o) => [o.key, o.size])));
   const objects = all.filter((o) => o.key.startsWith('frames/'));
   const issues = validateSession(session, frames, objects, opts);
+  if (opts.expectedFrameCount !== undefined && opts.expectedFrameCount !== frames.length) {
+    issues.push({ code: 'FRAME_COUNT_MISMATCH', message: `${frames.length} frames in the manifest, ${opts.expectedFrameCount} declared` });
+  }
   if (issues.length) throw new BundleInvalidError(issues);
+  return { session, frames, objects };
+}
+
+export async function packCapture(
+  storage: StorageDriver,
+  captureId: string,
+  opts: { minFrames: number; maxFrames: number; rules: PrecheckRules; onProgress?: () => Promise<void> },
+): Promise<{ bundleKey: string; bundleBytes: number; manifestKey: string; frameCount: number; imageW: number; imageH: number }> {
+  const { session, frames, objects } = await validateStored(storage, captureId, opts);
   const sizes = new Map(objects.map((o) => [o.key, o.size]));
 
   const zip = new yazl.ZipFile();

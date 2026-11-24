@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createLocalStorage, type LocalStorage } from '../../src/storage/local.js';
 import { captureKey, bundleKeyFor } from '../../src/storage/index.js';
-import { packCapture, BundleInvalidError, MANIFEST_MAX_BYTES } from '../../src/bundle/pack.js';
+import { packCapture, validateStored, BundleInvalidError, MANIFEST_MAX_BYTES } from '../../src/bundle/pack.js';
 import { parseFramesJsonl } from '../../src/bundle/manifest.js';
 import { arkitToOpenCV } from '../../src/bundle/convert.js';
 import { readCentralDirectory, readEntry, type ReadRange } from '../../src/bundle/zipread.js';
@@ -16,7 +16,8 @@ import type { Config } from '../../src/config.js';
 const FIX = fileURLToPath(new URL('../fixtures/tiny-session/', import.meta.url));
 const frames = parseFramesJsonl(readFileSync(path.join(FIX, 'frames.jsonl'), 'utf8'));
 const N = frames.length;
-const OPTS = { minFrames: 1, maxFrames: 5000 };
+const DEV_RULES = { minFrames: 20, maxBlurShare: 0.25, maxTrackingGapShare: 0, minCoverageSectors: 1 };
+const OPTS = { minFrames: 1, maxFrames: 5000, rules: DEV_RULES };
 
 let dir: string;
 let storage: LocalStorage;
@@ -161,5 +162,25 @@ describe('packCapture (local driver)', () => {
     const err = await packCapture(storage, cid, OPTS).catch((e) => e);
     expect(err).toBeInstanceOf(BundleInvalidError);
     expect(err.issues[0].code).toBe('MANIFEST_MISSING');
+  });
+
+  it('validateStored returns the parsed capture, and FRAME_COUNT_MISMATCH when the declared count differs', async () => {
+    const cid = randomUUID();
+    await upload(cid);
+    const ok = await validateStored(storage, cid, { ...OPTS, expectedFrameCount: 30 });
+    expect(ok.frames).toHaveLength(30);
+    expect(ok.objects.every((o) => o.key.startsWith('frames/'))).toBe(true);
+    const err = await validateStored(storage, cid, { ...OPTS, expectedFrameCount: 29 }).catch((e) => e);
+    expect(err).toBeInstanceOf(BundleInvalidError);
+    expect(err.issues.map((i: { code: string }) => i.code)).toEqual(['FRAME_COUNT_MISMATCH']);
+  });
+
+  it('pack applies the precheck rules (D-17 second line)', async () => {
+    const cid = randomUUID();
+    await upload(cid);
+    const err = await packCapture(storage, cid, { ...OPTS, rules: { ...DEV_RULES, minCoverageSectors: 2 } }).catch((e) => e);
+    expect(err).toBeInstanceOf(BundleInvalidError);
+    expect(err.issues.map((i: { code: string }) => i.code)).toEqual(['COVERAGE_LOW']);
+    expect(await storage.list(`bundles/${cid}/`)).toEqual([]);
   });
 });

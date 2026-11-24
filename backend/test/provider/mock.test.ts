@@ -80,7 +80,7 @@ beforeAll(async () => {
   for (const f of readdirSync(path.join(FIX, 'frames'))) {
     await storage.putObject(captureKey(cid, `frames/${f}`), readFileSync(path.join(FIX, 'frames', f)));
   }
-  const res = await packCapture(storage, cid, { minFrames: 1, maxFrames: 5000 });
+  const res = await packCapture(storage, cid, { minFrames: 1, maxFrames: 5000, rules: { minFrames: 20, maxBlurShare: 0.25, maxTrackingGapShare: 0, minCoverageSectors: 1 } });
   bundleFile = storage.resolvePath(res.bundleKey);
 });
 afterAll(async () => {

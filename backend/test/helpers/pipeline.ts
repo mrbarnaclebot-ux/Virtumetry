@@ -21,6 +21,9 @@ import { createTestSchema } from './pg-schema.js';
 const FIXTURE_DIR = fileURLToPath(new URL('../fixtures/tiny-session/', import.meta.url));
 const TERMINAL = new Set(['ready', 'failed', 'cancelled']);
 export const TEST_WEBHOOK_SECRET = 'test-webhook-secret';
+/** Railway dev + test-harness thresholds (RESEARCH "Recommended config values"): the tiny fixture passes. */
+export const DEV_CAPTURE_CONFIG_JSON =
+  '{"readiness":{"minFramesGreen":25,"minFramesAmber":15,"minSectorsGreen":1,"minSectorsAmber":1},"precheck":{"minFrames":20,"minCoverageSectors":1}}';
 
 async function readFixture(): Promise<Map<string, Buffer>> {
   const files = new Map<string, Buffer>();
@@ -68,6 +71,7 @@ export async function startPipeline(
     DAILY_CREDIT_BUDGET: String(opts.daily ?? 100_000),
     MONTHLY_CREDIT_BUDGET: String(opts.monthly ?? 100_000),
     SPAITIAL_WEBHOOK_SECRET: TEST_WEBHOOK_SECRET,
+    CAPTURE_CONFIG_JSON: DEV_CAPTURE_CONFIG_JSON,
   });
   const storage = createLocalStorage(config);
 
