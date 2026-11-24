@@ -5,15 +5,14 @@ import type { ViewerProps } from '@/viewer/types';
 
 const viewer: { current: ViewerProps | null } = { current: null };
 
-jest.mock('@/viewer/world-viewer', () => {
+// The page lazy-loads the viewer through this module (jest can't run a bare dynamic import()).
+jest.mock('@/viewer/load-viewer', () => {
   const { View } = jest.requireActual('react-native');
-  return {
-    __esModule: true,
-    default: function MockViewer(p: ViewerProps) {
-      viewer.current = p;
-      return <View testID="world-viewer" />;
-    },
-  };
+  function MockViewer(p: ViewerProps) {
+    viewer.current = p;
+    return <View testID="world-viewer" />;
+  }
+  return { loadViewer: async () => ({ default: MockViewer }) };
 });
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
 jest.mock('@/lib/auth-client', () => ({ authClient: { getCookie: jest.fn(async () => 'c=1') } }));
