@@ -144,6 +144,24 @@ describe.skipIf(!url)('scans upload path (real Postgres)', () => {
     expect(cap[0].r2_frames_prefix).toMatch(/^captures\//);
   });
 
+  it('a failed capture insert rolls back the world and refunds the quota (CR-01)', async () => {
+    const quota = async () =>
+      Number((await schema.pool.query('SELECT daily_scan_count AS n FROM users WHERE id = $1', [userA])).rows[0].n);
+    const before = await quota();
+    const key = randomUUID();
+    await schema.pool.query('ALTER TABLE captures ADD CONSTRAINT cr01_reject CHECK (image_w < 600) NOT VALID');
+    try {
+      const res = await create({ key });
+      expect(res.statusCode).toBe(500);
+    } finally {
+      await schema.pool.query('ALTER TABLE captures DROP CONSTRAINT cr01_reject');
+    }
+    expect(await count('SELECT count(*) AS n FROM worlds WHERE client_request_id = $1', key)).toBe(0);
+    expect(await quota()).toBe(before);
+    // The same key then succeeds normally.
+    expect((await create({ key })).statusCode).toBe(201);
+  });
+
   it('missing / malformed Idempotency-Key is a 400', async () => {
     const body = { frame_count: FRAMES, image_w: 640, image_h: 480, approved_max_credits: 930 };
     const none = await call('POST', '/v1/scans', cookieA, body);

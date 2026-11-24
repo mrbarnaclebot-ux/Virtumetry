@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -184,39 +185,43 @@ export function scansRoutes(app: FastifyInstance, deps: RouteDeps): void {
     if (!charge.userFound) return reply.code(401).send({ error: 'unknown_user' });
     if (!charge.allowed) return sendScanQuotaExceeded(reply, charge);
 
+    // World + capture land together or not at all (CR-01): a world without its
+    // capture row would 404 every upload call while holding a quota slot.
+    const captureId = randomUUID();
     let world: World;
     try {
-      const [row] = await db
-        .insert(worlds)
-        .values({
-          ownerId: userId,
-          title: body.title ?? null,
-          status: 'uploading',
-          clientRequestId,
-          // created_at doubles as the approval time (D-19, no migration).
-          approvedMaxCredits: body.approved_max_credits,
-        })
-        .returning();
-      world = row!;
+      world = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(worlds)
+          .values({
+            ownerId: userId,
+            title: body.title ?? null,
+            status: 'uploading',
+            clientRequestId,
+            // created_at doubles as the approval time (D-19, no migration).
+            approvedMaxCredits: body.approved_max_credits,
+          })
+          .returning();
+        await tx.insert(captures).values({
+          id: captureId,
+          worldId: row!.id,
+          frameCount: body.frame_count,
+          imageW: body.image_w,
+          imageH: body.image_h,
+          r2FramesPrefix: `captures/${captureId}`,
+        });
+        return row!;
+      });
     } catch (err) {
-      // Same-key race: the loser refunds its charge and replays the winner.
-      if (!isUniqueViolation(err)) throw err;
+      // Any failure refunds the charge; a same-key race replays the winner.
       await releaseScanQuota(db, userId);
+      if (!isUniqueViolation(err)) throw err;
       const winner = await findWorldByClientRequestId(db, userId, clientRequestId);
       if (!winner) throw err;
       return replayScan(reply, winner);
     }
 
-    const [capture] = await db
-      .insert(captures)
-      .values({ worldId: world.id, frameCount: body.frame_count, imageW: body.image_w, imageH: body.image_h })
-      .returning();
-    await db
-      .update(captures)
-      .set({ r2FramesPrefix: `captures/${capture!.id}` })
-      .where(eq(captures.id, capture!.id));
-
-    req.log.info({ worldId: world.id, captureId: capture!.id }, 'scan created');
+    req.log.info({ worldId: world.id, captureId }, 'scan created');
     return reply.code(201).send({ world: serializeWorld(world) });
   });
 
