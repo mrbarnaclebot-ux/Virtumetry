@@ -19,7 +19,7 @@ import { useCaptureConfig } from '@/capture/capture-config';
 import { costFor, formatCost, formatCredits, formatUsd } from '@/capture/cost';
 import { checkReason, serverReason } from '@/capture/precheck';
 import { LABEL } from '@/capture/readiness';
-import { discardLocalScan, updateLocalScan, useLocalScan } from '@/capture/store';
+import { discardLocalScan, getLocalScan, updateLocalScan, useLocalScan } from '@/capture/store';
 import { ReadinessPill } from '@/components/readiness-pill';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -300,7 +300,8 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
         updateLocalScan(scan.id, { serverWorldId: world.id, uploadState: 'uploading' });
       } catch (e) {
         if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
-          updateLocalScan(scan.id, { uploadState: 'saved' });
+          // A manager pass may have created the world meanwhile: never revert past a server id (iter-2 WR-02).
+          if (!getLocalScan(scan.id)?.serverWorldId) updateLocalScan(scan.id, { uploadState: 'saved' });
           throw e;
         }
         // Network error or 5xx: the outcome is unknown; the manager retries with the same key.

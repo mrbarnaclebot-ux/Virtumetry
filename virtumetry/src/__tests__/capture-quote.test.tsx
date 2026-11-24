@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { useLocalSearchParams } from 'expo-router';
 
 import CaptureScreen from '@/app/capture/[id]';
-import { __setLocalScansForTest, getLocalScan } from '@/capture/store';
+import { __setLocalScansForTest, getLocalScan, updateLocalScan } from '@/capture/store';
 import type { LocalScan } from '@/library/display-state';
 import type { Quote } from '@/lib/api';
 import { kickUploadManager, useUploadProgress } from '@/upload/manager';
@@ -112,6 +112,20 @@ describe('quote step', () => {
     await screen.findByText("Couldn't start the upload. Check your connection and try again.");
     expect(getLocalScan('s1')?.uploadState).toBe('saved');
     expect(kickUploadManager).not.toHaveBeenCalled();
+  });
+
+  it('a refused inline create never reverts a scan the manager already created (iter-2 WR-02)', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/v1/quote')) return ok(QUOTE);
+      // A manager pass won the race and stored the world before this response landed.
+      updateLocalScan('s1', { serverWorldId: 'w1', uploadState: 'uploading' });
+      return { ok: false, status: 429, json: async () => ({ error: 'rate_limited' }) };
+    });
+    await renderStep('quote');
+    await screen.findByText('~930 credits');
+    await fireEvent.press(approve());
+    await screen.findByText("Couldn't start the upload. Check your connection and try again.");
+    expect(getLocalScan('s1')).toMatchObject({ uploadState: 'uploading', serverWorldId: 'w1' });
   });
 
   it('a lost create response keeps the approval durable for the manager (WR-02)', async () => {

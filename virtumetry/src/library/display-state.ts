@@ -84,7 +84,15 @@ const LIMIT = 'Stopped by your spending limit';
 const UNKNOWN = 'Something went wrong while processing';
 
 const REJECTED_CODES = new Set(['INVALID_INPUT', 'VALIDATION_FAILED', 'CAPTURE_FRAME_LIMIT_EXCEEDED', 'WORLD_GENERATION_FAILED']);
-const LIMIT_CODES = new Set(['BUDGET_EXCEEDED', 'INSUFFICIENT_CREDITS', 'QUOTE_ABOVE_APPROVAL', 'NOT_APPROVED']);
+const LIMIT_CODES = new Set([
+  'BUDGET_EXCEEDED',
+  'INSUFFICIENT_CREDITS',
+  'QUOTE_ABOVE_APPROVAL',
+  'NOT_APPROVED',
+  // A refused create (iter-2 WR-02): the scan-create error code, uppercased.
+  'APPROVAL_BELOW_QUOTE',
+  'SCAN_QUOTA_EXCEEDED',
+]);
 const UPLOAD_CODE = /^(UPLOAD_STALE|BUNDLE_NOT_RANGEABLE|MANIFEST_|ZIP_|IMAGES_MISSING|IMAGE_|EXIF_|CAMERA_FILE_INVALID_JSON|PER_FRAME_INTRINSICS_)/;
 
 function failureText(code: string | null, stage: string | null): string {

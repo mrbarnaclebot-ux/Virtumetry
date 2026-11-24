@@ -294,6 +294,23 @@ describe('reconcile', () => {
     await expect(reconcile(localScan({ serverWorldId: 'w-1' }), { api: server.api, uploader: okUploader(server), local })).rejects.toThrow('500');
   });
 
+  it('a definitely refused create is terminal and visible; a rate-limit 429 is retried (iter-2 WR-02)', async () => {
+    const httpError = (status: number, code?: string) => Object.assign(new Error(`API error ${status}`), { status, code });
+    const server = fakeServer(3);
+    const local = fakeLocal();
+    for (const [status, code] of [
+      [400, 'approval_below_quote'],
+      [400, 'invalid_body'],
+      [429, 'scan_quota_exceeded'],
+    ] as const) {
+      server.api.createScan.mockRejectedValueOnce(httpError(status, code));
+      expect((await reconcile(localScan(), { api: server.api, uploader: okUploader(server), local })).kind).toBe('failed');
+      expect(local.update).toHaveBeenLastCalledWith('sess-1', { uploadState: 'failed', failureCode: code.toUpperCase() });
+    }
+    server.api.createScan.mockRejectedValueOnce(httpError(429, 'rate_limited'));
+    await expect(reconcile(localScan(), { api: server.api, uploader: okUploader(server), local })).rejects.toThrow('429');
+  });
+
   it('aborts a put that moves no bytes for stallMs and pauses instead of holding the pass (WR-03)', async () => {
     const server = fakeServer(2);
     const uploader: Uploader = {

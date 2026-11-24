@@ -276,6 +276,20 @@ describe('delete', () => {
     expect(getLocalScans()).toEqual([]);
   });
 
+  it('a failed local scan that has a server world offers Delete, never a local-only Discard (iter-2 WR-02)', async () => {
+    __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState: 'failed', serverWorldId: 'w9' }]);
+    await renderLibrary();
+    await openMenu('Hallway');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Delete', 'Cancel']);
+  });
+
+  it('a refused create (failed, no server id) offers Discard', async () => {
+    __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState: 'failed', failureCode: 'SCAN_QUOTA_EXCEEDED' }]);
+    await renderLibrary();
+    await openMenu('Hallway');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Discard', 'Cancel']);
+  });
+
   it('an approved local scan without a server id offers neither Discard nor Delete', async () => {
     __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState: 'approved' }]);
     await renderLibrary();

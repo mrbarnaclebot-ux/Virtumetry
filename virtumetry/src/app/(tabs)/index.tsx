@@ -53,17 +53,18 @@ export default function LibraryScreen() {
     });
 
   // Row action menu (D-21). Local scans: Discard only while nothing is on the server side
-  // (saved/blocked/failed); once uploading has a server world, Delete removes both (CR-03).
+  // (saved/blocked/failed); once a server world exists, Delete removes both (CR-03).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
     const title = state.displayTitle;
     if ('local' in item) {
-      const discardable = item.uploadState === 'saved' || item.uploadState === 'blocked' || item.uploadState === 'failed';
+      // A server id always means Delete, so a local-only Discard never orphans a charged world (iter-2 WR-02).
       const serverId = item.serverWorldId;
+      const discardable = item.uploadState === 'saved' || item.uploadState === 'blocked' || item.uploadState === 'failed';
       Alert.alert(title, undefined, [
-        ...(discardable
-          ? [{ text: 'Discard', style: 'destructive' as const, onPress: () => confirmDiscard(item.id, item.frameCount) }]
-          : serverId
-            ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => confirmDelete(serverId, title) }]
+        ...(serverId
+          ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => confirmDelete(serverId, title) }]
+          : discardable
+            ? [{ text: 'Discard', style: 'destructive' as const, onPress: () => confirmDiscard(item.id, item.frameCount) }]
             : []),
         { text: 'Cancel', style: 'cancel' },
       ]);

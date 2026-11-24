@@ -51,6 +51,9 @@ async function applyServerState(scan: LocalScan, world: ScanWorld, local: LocalS
 const codeOf = (e: unknown) => (e as { code?: unknown } | null)?.code;
 /** Only the server's own codes mean the world is gone; a proxy or tunnel 404 stays retryable (WR-01). */
 const GONE_CODES = new Set(['world_not_found', 'capture_not_found', 'idempotency_key_world_deleted']);
+/** The server's definite no to a create (bad body, approval below quote, daily scan quota); a rate-limit 429 is retried. */
+const refusedCreate = (e: unknown) =>
+  typeof codeOf(e) === 'string' && ((e as { status?: unknown }).status === 400 || codeOf(e) === 'scan_quota_exceeded');
 
 type Deps = { api: ScansApi; uploader: Uploader; local: LocalStore; batchSize?: number; stallMs?: number };
 
@@ -105,7 +108,14 @@ async function reconcileOnce(
 
   let id = scan.serverWorldId;
   if (!id) {
-    id = (await api.createScan(scan)).world.id;
+    try {
+      id = (await api.createScan(scan)).world.id;
+    } catch (e) {
+      // Terminal and visible (iter-2 WR-02): retrying every 5 min can never succeed; the owner can Discard.
+      if (!refusedCreate(e)) throw e;
+      local.update(scan.id, { uploadState: 'failed', failureCode: String(codeOf(e)).toUpperCase() });
+      return { kind: 'failed' };
+    }
     local.update(scan.id, { serverWorldId: id, uploadState: 'uploading' });
   }
 
