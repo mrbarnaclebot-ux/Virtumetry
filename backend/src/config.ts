@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { captureConfig } from './capture-config.js';
 import {
   VIRTUMETRY_PROD_ENDPOINT_IDS,
   isDeniedBucket,
@@ -93,6 +94,8 @@ const baseSchema = z.object({
   // Default is an auto-mode resolution; owner to confirm before Phase 6.
   MONTHLY_CREDIT_BUDGET: numberFromEnv(10000),
   DAILY_SCAN_QUOTA: numberFromEnv(10),
+  // D-08: optional JSON overriding capture thresholds (src/capture-config.ts).
+  CAPTURE_CONFIG_JSON: z.string().optional(),
 
   // Worker loop poll interval (ms) between empty claim attempts.
   WORKER_POLL_MS: numberFromEnv(2000),
@@ -155,6 +158,7 @@ function checkDbUrl(name: DbVar, url: string, isProd: boolean): void {
 
 function refine(cfg: z.infer<typeof baseSchema>): Config {
   const isProd = cfg.NODE_ENV === 'production';
+  captureConfig(cfg); // D-08: a malformed CAPTURE_CONFIG_JSON fails boot
 
   // --- Isolation first (D-08, D-09): fires even with NODE_ENV unset. --------
   checkDbUrl('DATABASE_URL', cfg.DATABASE_URL, isProd);
