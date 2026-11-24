@@ -69,6 +69,11 @@ Out of scope (later phases): capture, upload reshaping (frame `.heic` presign �
 - Plan split / waves, file layout under `virtumetry/src/` (non-route code outside `src/app/`).
 - Visual details are fixed by the UI-SPEC (gsd-ui-phase), own Virtumetry branding.
 
+### Amendments after research (orchestrator, 2026-11-24)
+- **D-12a (supersedes the `.env` part of D-12):** commit `virtumetry/.env.development` (not `.env`) with `EXPO_PUBLIC_APP_ENV=development` + Railway dev API URL; add a `!.env.development` negation to the root and app `.gitignore`. Expo CLI loads it only in development mode (`npx expo start`), so `eas update`/production exports never pick it up. `eas.json` profile `env` remains the source for builds.
+- **D-15a:** keep the existing list field names (`heartbeat_at`, etc.); add `failure_stage/code/message`, `charged`, and a nullable `eta_seconds` (always null in Phase 3 → app shows "Usually 30 min – 2 h").
+- **D-13a:** the Dockerfile sets `NODE_ENV=production`; the Railway dev environment must override `NODE_ENV=development` as a service variable, and `trustedOrigins` must include `exp://` explicitly outside production (the expo plugin only auto-trusts it when NODE_ENV=development).
+
 </decisions>
 
 <canonical_refs>
