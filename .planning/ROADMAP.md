@@ -150,7 +150,7 @@ Plans:
   4. Processing starts only after the owner explicitly approves the displayed quote. The approved scan then reaches "ready" in the library via the mock provider *(automated end-to-end test against the mock backend + manual Expo Go run)*
   5. After a force-quit mid-upload, the next launch asks the server which frames are missing, re-sends only those, and uploads the manifest last *(automated upload-manager reconciliation tests + manual Expo Go force-quit check)*
 
-**Plans:** 4/9 plans executed
+**Plans:** 5/9 plans executed
 
 Plans:
 **Wave 1**
@@ -165,7 +165,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 04-03-PLAN.md — GET /v1/quote + GET /v1/capture/config, retire old .heic upload routes and migrate tests
-- [ ] 04-05-PLAN.md — Fixture capture source (bundled TUM session, scenarios) + persisted saved-on-phone store in the Library
+- [x] 04-05-PLAN.md — Fixture capture source (bundled TUM session, scenarios) + persisted saved-on-phone store in the Library
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -274,7 +274,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
 | 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
-| 4. $0 Capture-to-World Loop | 4/9 | In Progress|  |
+| 4. $0 Capture-to-World Loop | 5/9 | In Progress|  |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
 | 7. Native Build Readiness | 0/TBD | Not started | - |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-11-24T15:08:40.301Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-11-24T15:18:30.199Z"
 last_activity: 2026-11-24
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 32
-  completed_plans: 27
+  completed_plans: 28
   percent: 33
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 ## Current Position
 
 Phase: 4 ($0 Capture-to-World Loop) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-11-24
 
-Progress: [████████░░] 84%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 84%
 | Phase 03 P09 | 15min | 1 tasks | 7 files |
 | Phase 04 P01 | 25min | 3 tasks | 11 files |
 | Phase 04 P03 | 10min | 2 tasks | 10 files |
+| Phase 04 P05 | 25min | 2 tasks | 46 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 03-06: LibraryRow calls toDisplayState itself; row a11y label joins title/status/secondary; more button outside the accessible group
 - [Phase 03]: 03-07: Couldn't delete alert lives in useDeleteWorld.onError; RenameModal mounted with key=id (unmount closes)
 - [Phase 04]: 04-03: /v1/quote is read-only and shares spentCredits window SQL with reserveCredits
+- [Phase 04]: 04-05: fixture source writes frames via the sync File API (writeSync append, copySync) so frames.jsonl stays ordered
+- [Phase 04]: 04-05: local scans persist in Paths.document/sessions/index.json; Library hides a local row once its server row is past uploading
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-24T15:08:40.292Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-11-24T15:18:30.191Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
