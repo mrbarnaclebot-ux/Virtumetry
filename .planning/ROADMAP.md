@@ -150,7 +150,38 @@ Plans:
   4. Processing starts only after the owner explicitly approves the displayed quote. The approved scan then reaches "ready" in the library via the mock provider *(automated end-to-end test against the mock backend + manual Expo Go run)*
   5. After a force-quit mid-upload, the next launch asks the server which frames are missing, re-sends only those, and uploads the manifest last *(automated upload-manager reconciliation tests + manual Expo Go force-quit check)*
 
-**Plans**: TBD
+**Plans:** 9 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Server checks before credit: CAPTURE_CONFIG_JSON tuning + rules-driven validator (tracking/blur/coverage shares, pose jump, forward-vs-motion, intrinsics) + shared validateStored
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Session-format upload routes to ready: POST /v1/scans (approval ceiling), presign batch (6 h TTL), uploads:missing, :complete with checks, e2e to ready
+- [ ] 04-04-PLAN.md — App capture logic: CaptureSource types, readiness, cost, coverage, precheck, rules pinned to backend
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-03-PLAN.md — GET /v1/quote + GET /v1/capture/config, retire old .heic upload routes and migrate tests
+- [ ] 04-05-PLAN.md — Fixture capture source (bundled TUM session, scenarios) + persisted saved-on-phone store in the Library
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 04-06-PLAN.md — New scan entry, prep + camera priming, scan screen with live readiness/cost/coverage HUD
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 04-07-PLAN.md — Upload engine: scan API calls, server-reconciled uploader (force-quit resume, manifest last), app-scoped manager
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 04-08-PLAN.md — Review / quote / upload screen with explicit approval, Library local states and validate-stage mapping
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 04-09-PLAN.md — Dockerfile ships mock outputs, guarded budget:reset-dev, Railway dev env values, owner Expo Go UAT checklist, full gate
 **UI hint**: yes
 
 ### Phase 5: Viewer, Floor Plan, Measure & Share
