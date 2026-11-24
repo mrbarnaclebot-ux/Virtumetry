@@ -1,4 +1,4 @@
-# App CI: lint + typecheck for the Expo app.
+# App CI: lint + typecheck + unit tests for the Expo app.
 name: app
 
 on:
@@ -35,3 +35,4 @@ jobs:
       - run: printf '/// <reference types="expo/types" />\n' > expo-env.d.ts
       - run: npx expo lint
       - run: npx tsc --noEmit
+      - run: npx jest --ci
