@@ -27,7 +27,7 @@ jest.mock('@/lib/auth-client', () => ({ authClient: { getCookie: jest.fn(async (
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('expo-router', () => ({
-  router: { back: jest.fn() },
+  router: { back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: jest.fn(() => ({ id: 'w1' })),
 }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -146,6 +146,35 @@ it('network failure: retried twice, then Try again refetches', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
   await screen.findByTestId('world-viewer');
   expect(fetchMock).toHaveBeenCalledTimes(4);
+});
+
+describe('Share button (D-18)', () => {
+  const shareButton = () => screen.queryByRole('button', { name: 'Share this room' });
+
+  it('a ready world shows Share, which opens the share sheet', async () => {
+    const { router } = jest.requireMock('expo-router');
+    fetchMock.mockResolvedValue(ok({ world: world(), assets: ASSETS }));
+    await render(ui(newClient()));
+    await screen.findByTestId('world-viewer');
+    await fireEvent.press(shareButton()!);
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/world/[id]/share', params: { id: 'w1' } });
+  });
+
+  it.each([
+    ['loading', () => new Promise<Response>(() => {}), () => screen.findByTestId('world-loading')],
+    ['404', async () => fail(404, 'world_not_found'), () => screen.findByText("This scan isn't available")],
+    ['error', async () => fail(500, 'boom'), () => screen.findByText("Couldn't open this scan", {}, { timeout: 8000 })],
+    [
+      'not ready',
+      async () => ok({ world: world({ status: 'processing' }), assets: {} }),
+      () => screen.findByText("This scan isn't ready yet"),
+    ],
+  ])('%s: no Share', async (_label, impl, settled) => {
+    fetchMock.mockImplementation(impl);
+    await render(ui(newClient()));
+    await settled();
+    expect(shareButton()).toBeNull();
+  });
 });
 
 describe('crash recovery (D-13b)', () => {
