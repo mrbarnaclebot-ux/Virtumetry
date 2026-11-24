@@ -58,6 +58,15 @@ Then check these on the phone:
 
 If a step fails, note its number and the exact text on screen.
 
+## Test on your iPhone (Phase 4)
+
+Phase 4 runs a fixture scan in Expo Go (no real camera capture, mock processing, $0) from prep to a Ready room.
+
+1. Sign in and start the app as in Phase 3, steps 1, 2, 5 and 6 (use `<your-email>`, never commit it).
+2. The dev backend must have the Phase 4 dev variables and a fresh deploy. They're listed in `.planning/phases/04-0-capture-to-world-loop/04-HUMAN-UAT.md`.
+3. Work through the 11 checks in that file and fill in Status and Observed.
+4. If the dev budget runs out: `cd backend && npm run budget:reset-dev` (clears only today's mock spend on the dev database).
+
 ## Get a fresh project
 
 When you're ready, run:
