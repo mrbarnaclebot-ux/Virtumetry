@@ -349,9 +349,22 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
       cancelAnimationFrame(raf);
       controls.dispose();
       frameListeners.clear();
+      firstFrame.length = 0;
+      collider?.geometry.disposeBoundsTree?.();
       collider?.geometry.dispose();
-      splat?.dispose();
-      renderer.dispose();
+      // WR-02: the web page remounts the engine in the same document; free Spark's GPU targets/workers and the context.
+      if (splat) scene.remove(splat);
+      scene.remove(spark);
+      try {
+        splat?.dispose();
+        spark.dispose();
+        renderer.dispose();
+        renderer.forceContextLoss();
+      } catch {
+        // A lost context may refuse to dispose; it is garbage either way.
+      }
+      splat = null;
+      bytes = null;
     },
   };
 }

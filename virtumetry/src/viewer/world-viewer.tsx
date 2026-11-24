@@ -438,7 +438,8 @@ export default function WorldViewer(props: ViewerProps) {
     <div style={S.root}>
       <style>{CSS}</style>
       <canvas
-        key={attempt}
+        // A fresh canvas per engine: dispose() force-loses the old one's WebGL context (WR-02).
+        key={`${attempt}:${splatUrl}`}
         ref={canvasRef}
         role="img"
         aria-label={`3D view of ${title}`}
