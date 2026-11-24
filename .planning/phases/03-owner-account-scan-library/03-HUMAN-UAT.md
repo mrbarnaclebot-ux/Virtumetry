@@ -1,7 +1,7 @@
 ---
 phase: 03-owner-account-scan-library
 source: 03-09-PLAN.md Task 2
-status: pending
+status: passed
 device: iPhone 17 Pro, Expo Go
 backend: Railway dev (https://api-dev-d164ec0a.up.railway.app)
 ---
@@ -21,3 +21,7 @@ Setup steps are in `virtumetry/README.md`, under "Test on your iPhone (Phase 3)"
 | 7 | Settings + logout | Shows your email and "Virtumetry 1.0.0 · development". Log out, confirm, and you're back on sign-in | pending | |
 
 To record a failure, put the step number and the exact on-screen text in Observed.
+
+## Owner result (2026-11-24)
+
+Approved: the owner ran every step on iPhone 17 Pro in Expo Go against the Railway dev API (login, wrong-password message, library states with 5 seeded scans, rename, delete, force-quit persistence, logout). All worked.

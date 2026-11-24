@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards (completed 2026-11-23)
 - [x] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0 (completed 2026-11-23)
-- [ ] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md)
+- [x] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md) (completed 2026-11-24)
 - [ ] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
 - [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
 - [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
@@ -242,7 +242,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
-| 3. Owner Account & Scan Library | 9/9 | UAT pending |  |
+| 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
