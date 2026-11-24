@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-11-24T03:39:23.322Z"
+last_updated: "2026-11-24T03:56:39.881Z"
 last_activity: 2026-11-24
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 23
-  completed_plans: 18
+  completed_plans: 19
   percent: 22
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 ## Current Position
 
 Phase: 3 (Owner Account & Scan Library) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-11-24
 
-Progress: [████████░░] 78%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [████████░░] 78%
 | Phase 02 P06 | 25 min | 2 tasks | 4 files |
 | Phase 02 P07 | 25 min | 2 tasks | 6 files |
 | Phase 3 P05 | 30min | 3 tasks | 24 files |
+| Phase 3 P04 | 35min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Phase 2]: 02-04: mock 429/503 fire once per provider instance; bundle-check failures surface as FAILED+issues, never a thrown submit
 - [Phase 2]: 02-05: pipeline handlers resolve the world's latest capture (not the pack payload); provider progress 0..1 stored as 0-100; harness drain default 60 s for Neon latency
 - [Phase 02]: 02-07: export-pending re-check after min(TRACK_POLL_SECONDS,5)s; dead pipeline job does not yet fail its world (deferred to before Phase 6)
+- [Phase 3]: 03-04: purge hard-deletes soft-deleted worlds incl. the running purge job row (NOT NULL FK); credit_events kept with world_id NULL
+- [Phase 3]: 03-04: after hard delete a replayed client_request_id no longer 409s (Pitfall 5, accepted)
 
 ### Pending Todos
 
@@ -99,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-24T03:39:23.313Z
+Last session: 2026-11-24T03:56:33.959Z
 Stopped at: Phase 3 UI-SPEC approved
 Resume file: None
