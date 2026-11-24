@@ -2,209 +2,107 @@
 phase: 05-viewer-floor-plan-measure-share
 reviewed: 2026-11-25T00:00:00Z
 depth: standard
-files_reviewed: 37
+iteration: 2
+diff_base: 13976a6
+files_reviewed: 7
 files_reviewed_list:
-  - .dockerignore
-  - Dockerfile
-  - backend/drizzle/0004_share_links.sql
-  - backend/scripts/make-demo-room.ts
-  - backend/src/config.ts
-  - backend/src/db/schema.ts
-  - backend/src/pipeline.ts
-  - backend/src/provider/index.ts
-  - backend/src/provider/mock.ts
-  - backend/src/provider/types.ts
-  - backend/src/routes/index.ts
   - backend/src/routes/share.ts
-  - backend/src/routes/worlds.ts
-  - backend/src/share-password.ts
-  - virtumetry/app.json
-  - virtumetry/package.json
-  - virtumetry/src/app/(tabs)/index.tsx
-  - virtumetry/src/app/_layout.tsx
   - virtumetry/src/app/r/[slug].tsx
   - virtumetry/src/app/world/[id]/index.tsx
   - virtumetry/src/app/world/[id]/share.tsx
-  - virtumetry/src/app/world/_layout.tsx
-  - virtumetry/src/components/library-row.tsx
   - virtumetry/src/lib/api.ts
-  - virtumetry/src/lib/public-share.ts
-  - virtumetry/src/lib/shares.ts
-  - virtumetry/src/viewer/coords.ts
   - virtumetry/src/viewer/engine.ts
-  - virtumetry/src/viewer/floorplan.ts
-  - virtumetry/src/viewer/load-viewer.ts
-  - virtumetry/src/viewer/measure.ts
-  - virtumetry/src/viewer/progress.ts
-  - virtumetry/src/viewer/recovery.ts
-  - virtumetry/src/viewer/tokens.ts
-  - virtumetry/src/viewer/types.ts
-  - virtumetry/src/viewer/walk.ts
   - virtumetry/src/viewer/world-viewer.tsx
 findings:
-  critical: 1
-  warning: 5
-  info: 8
-  total: 14
+  critical: 0
+  warning: 2
+  info: 3
+  total: 5
 status: issues_found
 ---
 
-# Phase 05: Code Review Report
+# Phase 05: Code Review Report (Iteration 2)
 
 **Reviewed:** 2026-11-25
-**Depth:** standard
-**Files Reviewed:** 37 (diff base 5815141)
+**Depth:** standard (review-fix commits, 13976a6..HEAD)
+**Files Reviewed:** 7, plus the 3 touched test files and `backend/src/throttle.ts`
 **Status:** issues_found
 
 ## Summary
 
-The public share surface holds up. Slugs are 128-bit and regex-gated before any DB hit. Missing, revoked, not-ready and deleted links all return the same 404. scrypt params are bounded and compared with `timingSafeEqual`. `/s/:slug` escapes the title and URL in every attribute and in the `<script>` JSON, and its redirect target is built only from config plus the validated slug, so there is no open redirect. CORS covers `/v1/public` only and sends no credentials. Revoke is idempotent, and the open counter re-checks `revoked_at` in the same UPDATE. The coordinate math is correct: F·inv(C)·F, the quaternion branches, fallback yaw and walk yaw/right/forward.
+All six iteration-1 findings are fixed, and I found no regressions of the kinds I was asked to check:
+- **No mid-session refetch loop.** `useWorld` turns off focus and reconnect refetch. It has `gcTime: 0` and only one observer (the world screen; the share modal doesn't use it). `refetch()` runs only after `crash`, Reload, or `load_failed`, which are all points where the viewer is already dead or failed. A healthy walk never refetches.
+- **No canvas remount loop.** The key `${attempt}:${splatUrl}` comes only from a prop and a state that the engine effect never writes. The effect cleanup removes the `webglcontextlost` and `webglcontextrestored` listeners *before* `engine.dispose()` → `forceContextLoss()`. So the forced loss can't trigger `onError('context_lost')` and start a crash remount (native) or the "Reload page" block (web).
+- **The throttle reservation is released.** `record()` runs synchronously after `isBlocked()`, and a correct password calls `reset()`. A missing password returns 401 before it reserves a slot. A wrong password keeps its slot, which is the intended behaviour.
+- **The password length matches.** The backend has `SHARE_PASSWORD_MIN = 6` (zod `.min`, counting UTF-16 length). The app has `MIN = 6` (`password.length`) with matching copy. The visitor gate in `r/[slug].tsx` has no length check, so existing 4–5 character links still open.
+- The 3 touched jest suites pass (40/40).
 
-The real defects are in the **owner viewer's lifecycle**. The presigned URLs are cached forever, so every recovery path (crash remount, Reload, Try again, re-entering the screen) dead-ends once the 1 h TTL passes. The crash-reconnect overlay also never clears if the remount fails. Smaller issues: engine teardown leaks GPU/Spark resources on the web page, desktop walk keys get stuck on blur, and the password throttle can be raced and has a low floor.
+Two new warnings remain. Both are gaps around the edges of the CR-01 and WR-01 fixes.
 
-## Critical Issues
+## Iteration 1 findings
 
-### CR-01: Owner viewer reuses expired presigned URLs on every recovery path
+| ID | Title | Status | Notes |
+|----|-------|--------|-------|
+| CR-01 | Owner viewer reuses expired presigned URLs | Resolved | `staleTime` 50 min and `gcTime 0`. `freshen()` runs before crash and Reload, and `load_failed` refetches once the URLs are 50 min old. The new `splatUrl` reruns the engine effect. One leftover gap: the lazily loaded floor plan image (see WR-01 below). |
+| WR-01 | "Reconnecting viewer…" overlay never clears | Resolved | Any error other than `context_lost` dispatches `ready`. Test added. |
+| WR-02 | Engine dispose leaks SparkRenderer / WebGL context | Resolved | `scene.remove` + `spark.dispose()` + `forceContextLoss()`, with a fresh canvas for each engine. Small robustness gap noted in IN-01. |
+| WR-03 | Walk keys stuck after blur | Resolved | `stop()` runs on `blur`, on `visibilitychange` and in cleanup, and the listeners are removed symmetrically. |
+| WR-04 | Throttle race / 4-char floor | Resolved | The race is closed by reserving the slot before scrypt. The pg test covers the parallel burst. The floor was raised to 6, not the suggested 8, and no daily cap was added (see IN-02). |
+| WR-05 | Web re-open never refreshes `openedAt` | Resolved | `openedAt` resets on success. `reopened` is now only an in-flight guard (reset in `finally`). `REOPEN_MS` still blocks an immediate repeat. A failed re-open leaves `openedAt` alone, so the next user-driven Try again can retry. That retry is bounded by user action and the per-IP limits. |
 
-**File:** `virtumetry/src/lib/api.ts:77-88` (with `virtumetry/src/app/world/[id]/index.tsx:62-68,112-139`)
-**Issue:** `useWorld` sets `staleTime: Infinity`, `refetchOnMount: false` and turns off focus/reconnect refetch. The backend signs the asset URLs for `DOWNLOAD_TTL_SECONDS = 3600`. After 60 minutes, every way the viewer reloads still uses the dead URLs:
-- a WebView crash remount (`crash` bumps `mountKey`, D-13b),
-- "Reload viewer" after the cap,
-- the viewer's own "Try again" button (`setAttempt`),
-- leaving and re-entering the screen within the default 5-minute `gcTime`, because the cached data comes back with its old URLs and no refetch.
-
-Each of these hits R2, gets a 403 and lands in `load_failed`. The owner screen's `onError` ignores `load_failed`, so nothing ever refreshes the URLs. Long walk sessions on an iPhone are exactly when memory-pressure crashes happen, so the D-13 recovery feature fails in the case it was built for. The web share page has a re-open path for this (`REOPEN_MS`). The owner screen has none.
-**Fix:** Keep the URLs stable during a mount, but refresh them before any remount once they are old:
-```ts
-// index.tsx
-const { data, dataUpdatedAt, refetch } = useWorld(id);
-const URL_TTL_MS = 50 * 60_000;
-const fresh = () => (Date.now() - dataUpdatedAt > URL_TTL_MS ? refetch() : Promise.resolve());
-const crash = useCallback(() => { void fresh().then(() => dispatch({ type: 'crash', at: Date.now() })); }, [dataUpdatedAt]);
-const onError = useCallback(async (e) => {
-  setDomUp(true);
-  if (e.code === 'context_lost') crash();
-  else if (e.code === 'load_failed' && Date.now() - dataUpdatedAt > URL_TTL_MS) await refetch(); // new splatUrl → viewer effect reruns
-}, [crash, dataUpdatedAt]);
-```
-Also set `gcTime: 0` on `useWorld`, or `refetchOnMount: 'always'`, so re-entering the screen never reuses old URLs.
+Iteration-1 Info items IN-01..IN-08 were not applied (see 05-REVIEW-FIX.md). They carry over unchanged and are not repeated here.
 
 ## Warnings
 
-### WR-01: "Reconnecting viewer…" overlay never clears when the remount fails to load
+### WR-01: The floor plan image is fetched lazily and never refreshed. After URL expiry it disappears for the rest of the mount.
 
-**File:** `virtumetry/src/app/world/[id]/index.tsx:74-80,140-146`; `virtumetry/src/viewer/recovery.ts:36-39`
-**Issue:** `reconnecting` is set on `crash` and on `reload`, and only `ready` clears it. `ready` is dispatched only from `onProgress` and `onReady`. If the remounted viewer fails before its first progress event (a 403 from an expired URL, see CR-01, or any network error), `fetchWithProgress` throws before calling `onPct`. Only `onError('load_failed')` arrives, and that calls `setDomUp(true)` but never dispatches `ready`. The opaque RN overlay (no `pointerEvents="none"`) then covers the viewer's own "Couldn't load this room / Try again" UI forever. Back is the only way out.
-**Fix:** Clear the overlay on any terminal signal from the viewer:
+**File:** `virtumetry/src/viewer/world-viewer.tsx:90,498,526-534`
+**Issue:** The splat, collider and cameras are all fetched as soon as the viewer loads. The floor plan `<img src={props.floorplanUrl}>` is different: it only renders when the visitor first opens the plan (`ready && showPlan && planOpen`). If that first open happens after the presign expires, the image gets a 403. That takes 1 h in the app, but only **15 min on the web share page** (`PUBLIC_ASSET_TTL_SECONDS`), so it is the common case there. `onError` then sets `planFailed = true`. That hides the plan button for the rest of the mount (`showPlan` includes `!planFailed`). It never tells the host screen, so neither CR-01's refetch nor WR-05's re-open runs. `planFailed` is also never reset when `floorplanUrl` changes, so even a later URL refresh from a `load_failed` doesn't bring the plan back. CR-01 said the fix should cover "every path". This one is left.
+**Fix:** The smallest fix is to fetch the image while the URL is still fresh, and to reset the failure flag whenever the URL changes:
 ```ts
-const onError = useCallback(async (e) => {
-  setDomUp(true);
-  if (e.code === 'context_lost') crash();
-  else dispatch({ type: 'ready' }); // reveal the viewer's error + Try again
-}, [crash]);
+// in the load effect, right after the splat loads (URL is minutes old at most):
+const fp = propsRef.current.floorplanUrl;
+if (fp) new Image().src = fp; // warms the HTTP cache; <img> later hits the cache, not R2
+// and:
+useEffect(() => setPlanFailed(false), [props.floorplanUrl]);
 ```
+A more robust option is to decode it into a blob URL at load time. Either way, add a test in the viewer or screen suite.
 
-### WR-02: Engine dispose leaks the SparkRenderer and WebGL context (web share page remounts)
+### WR-02: The crash path waits for the network before showing "Reconnecting viewer…", and the refetch includes retry backoff
 
-**File:** `virtumetry/src/viewer/engine.ts:347-355`
-**Issue:** `dispose()` frees the controls, collider geometry, splat and renderer, but it never calls `spark.dispose()`, never removes `spark` from the scene and never calls `renderer.forceContextLoss()`. In the app, each remount replaces the whole WebView, so this mostly doesn't matter there. On the web page the same document remounts the engine on every "Try again" (`<canvas key={attempt}>`) and every `viewerKey` bump in `r/[slug].tsx`. Each remount then leaves behind a live WebGL context plus Spark's GPU targets and sort/LoD workers. iOS Safari caps live contexts and kills the oldest, which can fire `webglcontextlost` storms. Memory pressure can then cause the very crash the page reports.
-**Fix:**
+**File:** `virtumetry/src/app/world/[id]/index.tsx:64-66,74-77`; `virtumetry/src/lib/api.ts:93`
+**Issue:** `crash` now runs `freshen().then(() => dispatch({ type: 'crash' }))`. When the URLs are older than 50 min, `refetch()` uses `useWorld`'s `retry` (up to 2 retries with the default 1 s and 2 s backoff). That leaves the dead WKWebView on screen for the whole fetch with no feedback: `reconnecting` is still false, and `domUp` is already true. On a weak connection, which is common after a long walk, that is several seconds of a blank or frozen screen. The user is likely to press Back, which is the outcome D-13b exists to prevent. For `context_lost`, the WebView is still alive. The fresh `splatUrl` reaches the live viewer one render before the `mountKey` bump, so it disposes its engine and starts a download that gets thrown away straight after. That is harmless but wasteful.
+**Fix:** Show the overlay right away and mount the new viewer only once the URLs are settled. For example, add a `refreshing` flag:
 ```ts
-dispose() {
-  disposed = true;
-  cancelAnimationFrame(raf);
-  controls.dispose();
-  frameListeners.clear();
-  firstFrame.length = 0;
-  collider?.geometry.disposeBoundsTree?.();
-  collider?.geometry.dispose();
-  if (splat) { scene.remove(splat); splat.dispose(); }
-  scene.remove(spark); spark.dispose();
-  renderer.dispose();
-  renderer.forceContextLoss();
-  bytes = null;
-},
+const [refreshing, setRefreshing] = useState(false);
+const crash = useCallback(() => {
+  const at = Date.now();
+  if (!urlsStale()) return dispatch({ type: 'crash', at });
+  setRefreshing(true);
+  void refetch().finally(() => { setRefreshing(false); dispatch({ type: 'crash', at }); });
+}, [urlsStale, refetch]);
+// render: if (refreshing) show the "Reconnecting viewer…" block instead of <WorldViewer>
 ```
-
-### WR-03: Desktop walk keys stay held after window blur, so the camera walks forever
-
-**File:** `virtumetry/src/viewer/world-viewer.tsx:263-295`
-**Issue:** `held` only changes on `keydown`/`keyup`. If the visitor holds W and then alt-tabs, clicks the browser chrome or opens a system dialog, the `keyup` never reaches the window. `held` keeps `'f'` and the engine keeps walking every frame until the same key is pressed and released again.
-**Fix:** Clear input on blur and when the tab is hidden:
-```ts
-const stop = () => { held.clear(); engineRef.current?.setWalkInput(STILL); };
-window.addEventListener('blur', stop);
-document.addEventListener('visibilitychange', stop);
-// remove both in cleanup
-```
-
-### WR-04: Concurrent requests race past the per-slug password throttle; 4-character floor is brute-forceable
-
-**File:** `backend/src/routes/share.ts:182-191,36`
-**Issue:** `failures.isBlocked(slug)` is checked before the `await verifySharePassword(...)`, and `record()` runs only after scrypt finishes. A burst of N parallel wrong guesses all pass the check, so `SHARE_FAIL_MAX` (10 per window) only counts sequential guesses. Per-IP limits (20/min) times many IPs set the real ceiling. Even without the race, 10 guesses/min is 14,400/day, and the owner may choose a 4-character password (`min(4)`, same rule in the UI). A 4-digit PIN falls in under a day. For scans of private homes, that is weak.
-**Fix:** Count the attempt before doing the work, and raise the floor:
-```ts
-if (failures.isBlocked(slug)) return reply.code(429)...;
-failures.record(slug);                      // reserve the attempt up-front
-const ok = await verifySharePassword(pw, hash);
-if (!ok) return reply.code(401).send({ error: 'wrong_password' });
-failures.reset(slug);
-```
-Also set `min(8)` in `createBody` and in the share sheet, or add a longer daily window (for example 50 failures/day per slug).
-
-### WR-05: Web share re-open never refreshes `openedAt`, so a second expiry gets no recovery
-
-**File:** `virtumetry/src/app/r/[slug].tsx:128-143`
-**Issue:** The `onError` re-open calls `openPublicShare` directly and not `open()`. That leaves `openedAt.current` at the original time and `reopened.current = true` for the rest of the page's life. A visitor who keeps the tab open past a second 15-minute window, then hits a load failure (the viewer's "Try again" after a network drop, or a crash remount on native), gets no refresh. They see "Couldn't load this room" while the link is still live. The rate limits already bound abuse, so the one-shot latch adds failure without adding safety.
-**Fix:** Reset the clock on every successful re-open, and latch only for the current window:
-```ts
-const data = await openPublicShare(slug, keptPassword.current);
-openedAt.current = Date.now();
-reopened.current = false;
-```
-To guard against loops, rely on the `Date.now() - openedAt.current < REOPEN_MS` check, which already blocks an immediate repeat.
+Rendering the overlay instead of the viewer while `refreshing` also removes the wasted context-loss download. Do the same for the Reload button (see IN-03).
 
 ## Info
 
-### IN-01: og:image presign (7 days) outlives revocation
+### IN-01: dispose() uses one try block, so a throw from Spark skips the renderer cleanup
 
-**File:** `backend/src/routes/share.ts:235-238,254`
-**Issue:** Revoking stops new opens, but every thumbnail URL already handed to a messaging-app crawler stays valid for up to 7 days. Under the privacy constraint (private homes), revocation leaves the thumbnail public for that week. D-20 accepted this. It should be stated in the revoke copy or the retention policy, or the TTL shortened (for example 24 h, since crawlers fetch right away).
+**File:** `virtumetry/src/viewer/engine.ts:358-366`
+**Issue:** `splat.dispose()`, `spark.dispose()`, `renderer.dispose()` and `renderer.forceContextLoss()` all share one `try`. The comment says a lost context "may refuse to dispose". If Spark throws in that case, `renderer.dispose()` and `forceContextLoss()` never run, which is the leak WR-02 was fixing.
+**Fix:** Put `renderer.dispose(); renderer.forceContextLoss();` in a `finally`, or give each call its own try.
 
-### IN-02: Railway dev API allows `http://localhost:8081` as a CORS origin
+### IN-02: The password floor is 6 and no daily cap was added
 
-**File:** `backend/src/routes/share.ts:156`
-**Issue:** The localhost origin is added whenever `NODE_ENV !== 'production'`, and the Railway dev env runs with `NODE_ENV=development`. The risk is low because there are no credentials and the endpoints are public. A tighter gate is `!isProdLike(config)`.
+**File:** `backend/src/routes/share.ts:36-38,149`
+**Issue:** With `SHARE_FAIL_MAX` 10 per 60 s per slug, a 6-digit numeric PIN takes about 69 days to exhaust. That is acceptable for v1, but it is below the suggested 8, and no long-window cap exists. Separately, and already true before this fix: anyone who knows the slug can keep it in a 429 state. That also blocks visitors who have the correct password and the web page's automatic re-open, because `keptPassword` then gets a 429 that is silently ignored.
+**Fix:** This is a policy decision. Either raise the floor to 8 or add a per-slug daily window, and decide whether a correct password should bypass the lockout.
 
-### IN-03: open_count increments before presigning and on every re-open
+### IN-03: Tapping "Reload viewer" twice during the refresh queues two reloads
 
-**File:** `backend/src/routes/share.ts:196-209`; `virtumetry/src/app/r/[slug].tsx:88-100,135`
-**Issue:** If `presignDownload` throws, the count is already incremented and the visitor gets a 500. The 14-minute re-open and React StrictMode's double effect in dev also each count as an open. Presigning first and then counting would make the number reflect real deliveries.
-
-### IN-04: Renaming a world doesn't update a cached viewer title
-
-**File:** `virtumetry/src/lib/api.ts:77-88,100-102`
-**Issue:** Rename invalidates `['worlds']` but not `['world', id]`. With `staleTime: Infinity`, the viewer and share title show the old name until the cache entry is garbage-collected. Invalidate `['world', id]` in the rename mutation's `onSettled`.
-
-### IN-05: The viewer holds the splat bytes twice at peak, then keeps a full copy
-
-**File:** `virtumetry/src/viewer/progress.ts:15-35`; `virtumetry/src/viewer/engine.ts:64,181`
-**Issue:** `fetchWithProgress` holds every chunk plus the merged buffer, and then the engine keeps `bytes` for context-loss rebuild alongside Spark's decoded copy. With real Echo-3 splats (hundreds of MB), that raises the chance of the WebView memory kills that D-13 recovers from. Consider preallocating when Content-Length is known, and documenting the ceiling.
-
-### IN-06: Walk floor height is fixed at mode entry; horizontal surfaces never block
-
-**File:** `virtumetry/src/viewer/walk.ts:32-63`; `virtumetry/src/viewer/engine.ts:157-159`
-**Issue:** `walk.floorY` is computed only on enter or teleport. `resolveCapsule` ignores triangles whose closest-point offset is vertical, so table tops and low cabinets inside the capsule height are walked through. This follows D-09 (horizontal push-out only), but it is worth a `ponytail:` note naming the ceiling: no stairs, multi-level floors or furniture tops.
-
-### IN-07: Production image ships the 4 MB demo-room fixture
-
-**File:** `Dockerfile:31-32`; `.dockerignore:20`
-**Issue:** The fixture is dev-only data, and it is baked into every image, including production. It is harmless because `MOCK_OUTPUTS_SET` is a fixed enum, but it is dead weight in prod. Copying it in a dev-only stage would avoid that.
-
-### IN-08: `/s/:slug` builds og:url from the localhost default when PUBLIC_BASE_URL is unset
-
-**File:** `backend/src/routes/share.ts:222-242`
-**Issue:** The landing page and public routes check only `WEB_SHARE_ORIGIN`, not `shareConfigured()`. On a prod-like deploy where `PUBLIC_BASE_URL` was removed after links were created, existing links render `og:url="http://localhost:3000/s/..."`. Gating the landing page on `shareConfigured(config)` would keep it consistent with share creation.
+**File:** `virtumetry/src/app/world/[id]/index.tsx:135`
+**Issue:** `onRetry={() => void freshen().then(() => dispatch({ type: 'reload' }))}` has no in-flight guard. While the (possibly retrying) refetch is pending, the capped message stays on screen, and each tap adds another `reload`. Each one bumps `mountKey`, which causes an extra WebView remount. The `refreshing` flag from WR-02 fixes this too.
 
 ---
 
