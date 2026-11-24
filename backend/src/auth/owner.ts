@@ -13,7 +13,7 @@ export async function ensureOwnerCredential(
   const ctx = await auth.$context;
   const email = rawEmail.trim().toLowerCase();
   const hash = await ctx.password.hash(password);
-  const found = await ctx.internalAdapter.findUserByEmail(email);
+  const found = await ctx.internalAdapter.findUserByEmail(email, { includeAccounts: true });
   if (!found) {
     const u = await ctx.internalAdapter.createUser(
       { email, name: 'Owner', emailVerified: true },
@@ -37,5 +37,7 @@ export async function ensureOwnerCredential(
     return 'linked';
   }
   await ctx.internalAdapter.updatePassword(found.user.id, hash);
+  // A reset logs out every existing session (T-03-15: stolen-session recovery).
+  await ctx.internalAdapter.deleteUserSessions(found.user.id);
   return 'reset';
 }
