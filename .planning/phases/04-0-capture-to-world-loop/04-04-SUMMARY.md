@@ -55,7 +55,7 @@ Pure, config-driven capture logic: a CaptureSource contract, readiness (worst of
 ## Verification
 
 - RED: both test pairs failed on missing modules before implementation.
-- `npx jest --ci` (all app suites): 11 suites, 127 tests passed; the four plan files: 26 passed.
+- `npx jest --ci` (all app suites): 11 suites, 126 tests passed; the four plan files: 26 passed.
 - Fixture: `coverage()` gives seenCount 1, raw span >= 2 m, first heading (0, -1); precheck on the fixture with dev rules is `[]`.
 - Pin test: `BLUR_PX_THRESHOLD = 64`, `YAW_SECTORS = 12`, `MIN_HORIZONTAL_FORWARD = 0.3` and every readiness/precheck/pricing default found in the backend files with equal values.
 - `npx expo lint` clean. `npx tsc --noEmit`: only a pre-existing typed-routes error in `src/components/app-tabs.web.tsx` (logged in deferred-items.md).
