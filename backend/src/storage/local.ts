@@ -123,7 +123,13 @@ export function registerDevStorageRoutes(
   if (storage.kind !== 'local') return;
   const local = storage as LocalStorage;
 
-  // Accept raw bytes for any content-type on upload.
+  // Own scope so EVERY content-type arrives as raw bytes: the root JSON parser
+  // would otherwise reject a frames.jsonl PUT sent as application/json.
+  void app.register(async (scope) => devStorageRoutes(scope, local));
+}
+
+function devStorageRoutes(app: FastifyInstance, local: LocalStorage): void {
+  app.removeAllContentTypeParsers();
   app.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, body, done) => {
     done(null, body);
   });

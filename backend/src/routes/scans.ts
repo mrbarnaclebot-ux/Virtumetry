@@ -1,10 +1,13 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/client.js';
 import { captures, worlds, type World } from '../db/schema.js';
 import { chargeScanQuota, releaseScanQuota } from '../quota.js';
-import { MANIFEST_MAX_BYTES } from '../bundle/pack.js';
+import { BundleInvalidError, MANIFEST_MAX_BYTES, validateStored } from '../bundle/pack.js';
+import { captureConfig } from '../capture-config.js';
+import { failWorld } from '../pipeline.js';
+import { enqueue } from '../queue.js';
 import { createProvider } from '../provider/index.js';
 import { MAX_FRAME_BYTES, captureKey, type StorageDriver } from '../storage/index.js';
 import {
@@ -238,5 +241,66 @@ export function scansRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
     const state = await uploadState(storage, capture.id, capture.frameCount);
     return reply.send({ world: serializeWorld(world), ...state });
+  });
+
+  // POST /v1/scans/<uuid>:complete — the uuid regex keeps `:complete` out of
+  // the param (a plain `:id::complete` would capture "abc:complete").
+  // Checks run BEFORE any credit (D-17): a bad scan fails at 'validate' for
+  // free; a good one flips uploading -> packing with its pack job atomically.
+  // Credits are reserved later by submit, never here.
+  app.post<{ Params: { id: string } }>('/v1/scans/:id([0-9a-fA-F-]{36})::complete', async (req, reply) => {
+    const userId = requireUserId(req, reply);
+    if (!userId) return;
+    const db = getDb();
+    const world = await findOwnedWorld(db, req.params.id, userId);
+    if (!world) return reply.code(404).send({ error: 'world_not_found' });
+    // Replay-safe: past uploading, report the current state.
+    if (world.status !== 'uploading') return reply.send({ world: serializeWorld(world) });
+
+    const capture = await latestCapture(db, world.id);
+    if (!capture) return reply.code(404).send({ error: 'capture_not_found' });
+    const state = await uploadState(storage, capture.id, capture.frameCount);
+    if (state.missingFrames.length || !state.manifestPresent) {
+      return reply.code(409).send({
+        error: 'upload_incomplete',
+        missingFrames: state.missingFrames,
+        manifestPresent: state.manifestPresent,
+      });
+    }
+
+    const cc = captureConfig(config);
+    const limits = await provider.limits();
+    try {
+      await validateStored(storage, capture.id, {
+        minFrames: Math.max(cc.precheck.minFrames, limits.minFrames),
+        maxFrames: limits.maxFrames,
+        rules: cc.precheck,
+        expectedFrameCount: capture.frameCount,
+      });
+    } catch (err) {
+      if (!(err instanceof BundleInvalidError)) throw err;
+      const codes = [...new Set(err.issues.map((i) => i.code))];
+      await failWorld(db, world.id, ['uploading'], 'validate', codes[0]!, codes.join(', '));
+      req.log.info({ worldId: world.id, codes }, 'scan failed validation at complete');
+      const current = await findOwnedWorld(db, world.id, userId);
+      return reply.send({ world: serializeWorld(current ?? world), issues: codes });
+    }
+
+    const flipped = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(worlds)
+        .set({ status: 'packing', progress: null, updatedAt: new Date() })
+        .where(and(eq(worlds.id, world.id), eq(worlds.status, 'uploading'), isNull(worlds.deletedAt)))
+        .returning();
+      if (!row) return null;
+      await enqueue(tx, 'pack', world.id, { captureId: capture.id });
+      return row;
+    });
+    if (!flipped) {
+      const current = await findOwnedWorld(db, world.id, userId);
+      return reply.send({ world: serializeWorld(current ?? world) });
+    }
+    req.log.info({ worldId: world.id, captureId: capture.id }, 'scan complete, pack enqueued');
+    return reply.send({ world: serializeWorld(flipped) });
   });
 }
