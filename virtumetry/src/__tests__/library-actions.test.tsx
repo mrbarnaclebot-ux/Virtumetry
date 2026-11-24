@@ -166,3 +166,89 @@ describe('rename', () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 });
+
+describe('delete', () => {
+  const titles = () =>
+    screen.getAllByText(/^(Hallway|Kitchen|Bedroom|Garage)$/).map((n) => n.props.children as string);
+
+  async function confirmDeleteOf(title: string) {
+    await openMenu(title);
+    await press('Delete');
+  }
+
+  it('asks for confirmation naming the scan', async () => {
+    await renderLibrary();
+    await confirmDeleteOf('Bedroom');
+    expect(alertSpy).toHaveBeenLastCalledWith(
+      'Delete "Bedroom"?',
+      "This removes it from your phone, our servers and SpAItial. You can't undo this.",
+      expect.any(Array),
+    );
+    expect(lastButtons().map((b) => [b.text, b.style])).toEqual([
+      ['Cancel', 'cancel'],
+      ['Delete', 'destructive'],
+    ]);
+  });
+
+  it('removes the row before the DELETE resolves and keeps it gone on success', async () => {
+    let resolve!: (r: Response) => void;
+    mutate.mockReturnValue(new Promise<Response>((r) => (resolve = r)));
+    await renderLibrary();
+    await confirmDeleteOf('Bedroom');
+    await press('Delete');
+
+    expect(screen.queryByText('Bedroom')).toBeNull();
+    const calls = mutateCalls('DELETE');
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe('https://api.test.invalid/v1/worlds/w2');
+
+    server = server.filter((x) => x.id !== 'w2');
+    await act(async () => resolve(ok({ ok: true, job_id: 'j1' })));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, i]) => !i?.method).length).toBeGreaterThan(1));
+    expect(screen.queryByText('Bedroom')).toBeNull();
+    expect(titles()).toEqual(['Kitchen', 'Garage']);
+  });
+
+  it.each([
+    ['a server error', async () => fail(500)],
+    ['a network error', async () => Promise.reject(new TypeError('Network request failed'))],
+  ])('restores the row in place and says so on %s', async (_label, impl) => {
+    mutate.mockImplementation(impl);
+    await renderLibrary();
+    await confirmDeleteOf('Bedroom');
+    await press('Delete');
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenLastCalledWith(
+        "Couldn't delete",
+        'The scan is back in your library. Check your connection and try again.',
+        [{ text: 'Back to Library' }],
+      ),
+    );
+    expect(titles()).toEqual(['Kitchen', 'Bedroom', 'Garage']);
+  });
+
+  it('deletes a saved-on-phone scan locally without a request', async () => {
+    __setLocalScansForTest([{ id: 'l1', title: 'Hallway', createdAt: CREATED }]);
+    await renderLibrary();
+    await openMenu('Hallway');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Delete', 'Cancel']);
+    await press('Delete');
+    expect(alertSpy).toHaveBeenLastCalledWith(
+      'Delete "Hallway"?',
+      "This removes it from your phone. You can't undo this.",
+      expect.any(Array),
+    );
+    await press('Delete');
+    await waitFor(() => expect(screen.queryByText('Hallway')).toBeNull());
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('Cancel in the confirmation keeps the row and sends nothing', async () => {
+    await renderLibrary();
+    await confirmDeleteOf('Bedroom');
+    await press('Cancel');
+    expect(screen.getByText('Bedroom')).toBeTruthy();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+});
