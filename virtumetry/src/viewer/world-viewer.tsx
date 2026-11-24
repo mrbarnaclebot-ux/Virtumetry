@@ -284,13 +284,21 @@ export default function WorldViewer(props: ViewerProps) {
       setHint((h) => (h?.ms === HINT_MS ? null : h));
       push(e.shiftKey);
     };
+    // WR-03: a keyup lost to blur/tab switch would otherwise walk forever.
+    const stop = () => {
+      held.clear();
+      engineRef.current?.setWalkInput(STILL);
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', stop);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
-      held.clear();
-      engineRef.current?.setWalkInput(STILL);
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('visibilitychange', stop);
+      stop();
     };
   }, [mode]);
 
