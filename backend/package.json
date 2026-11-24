@@ -23,7 +23,8 @@
     "fixture:e2e": "node --env-file=.env --import tsx scripts/fixture-e2e.ts",
     "owner:create": "node --env-file=.env --import tsx scripts/owner-create.ts",
     "seed:library": "node --env-file=.env --import tsx scripts/seed-library.ts",
-    "budget:reset-dev": "node --env-file=.env --import tsx scripts/budget-reset-dev.ts"
+    "budget:reset-dev": "node --env-file=.env --import tsx scripts/budget-reset-dev.ts",
+    "demo-room": "node --import tsx scripts/make-demo-room.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1134.0",
