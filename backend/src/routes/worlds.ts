@@ -11,7 +11,7 @@ import type { RouteDeps } from './deps.js';
 const DOWNLOAD_TTL_SECONDS = 3600;
 
 /** Per-user scan quota refusal (spec §7.1). `message` is short display copy. */
-function sendScanQuotaExceeded(reply: FastifyReply, charge: QuotaChargeResult) {
+export function sendScanQuotaExceeded(reply: FastifyReply, charge: QuotaChargeResult) {
   return reply.code(429).send({
     error: 'scan_quota_exceeded',
     message: 'Daily scan limit reached.',
@@ -101,7 +101,7 @@ export const listQuery = z.object({
 /** PATCH /v1/worlds/:id body (D-16): title only, trimmed, 1-80 chars. */
 export const renameBody = z.object({ title: z.string().trim().min(1).max(80) }).strict();
 
-function requireUserId(req: FastifyRequest, reply: FastifyReply): string | null {
+export function requireUserId(req: FastifyRequest, reply: FastifyReply): string | null {
   if (!req.userId) {
     reply.code(401).send({ error: 'unauthenticated' });
     return null;
@@ -562,7 +562,7 @@ function hasPgCode(err: unknown, code: string): boolean {
 
 /** Look a world up by its owner's idempotency key, INCLUDING soft-deleted rows
  * (a replayed key must not silently resurrect or duplicate a deleted world). */
-async function findWorldByClientRequestId(
+export async function findWorldByClientRequestId(
   db: ReturnType<typeof getDb>,
   userId: string,
   clientRequestId: string,
@@ -635,7 +635,7 @@ async function replayCreate(
  * uuid is "nothing" too (see isInvalidTextRepresentation) rather than a 500 —
  * every caller already answers `404 world_not_found` on undefined.
  */
-async function findOwnedWorld(
+export async function findOwnedWorld(
   db: ReturnType<typeof getDb>,
   id: string,
   userId: string,

@@ -5,6 +5,7 @@ import { closeDb, getDb } from './db/client.js';
 import { createAuth } from './auth/better-auth.js';
 import { createStorage } from './storage/index.js';
 import { registerRoutes } from './routes/index.js';
+import { createProvider } from './provider/index.js';
 
 // Build a fully-wired Fastify instance. Does NOT connect to Postgres — the DB
 // pool is created lazily on first query (see db/client.ts), so boot and
@@ -28,7 +29,7 @@ export async function buildServer(config = getConfig()): Promise<FastifyInstance
   const storage = createStorage(config);
   // getDb() only builds a Pool (no connect), so boot without a DB still works.
   const auth = config.AUTH_MODE === 'session' ? createAuth({ db: getDb(), config }) : undefined;
-  await registerRoutes(app, { config, storage, auth });
+  await registerRoutes(app, { config, storage, auth, provider: createProvider(config) });
   return app;
 }
 

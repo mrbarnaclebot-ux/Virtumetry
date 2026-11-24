@@ -30,7 +30,7 @@ export function createS3Storage(config: Config): StorageDriver {
   return {
     kind: 's3',
 
-    async presignUpload(key, contentType, maxBytes, exactBytes): Promise<PresignedUpload> {
+    async presignUpload(key, contentType, maxBytes, exactBytes, ttlSeconds): Promise<PresignedUpload> {
       // Size enforcement (spec §10 R7). SigV4 can only bind an EXACT
       // Content-Length, not a ceiling, so:
       //  - client declared its size → sign Content-Length into the URL; R2/S3
@@ -46,7 +46,7 @@ export function createS3Storage(config: Config): StorageDriver {
         ...(signExact ? { ContentLength: exactBytes } : {}),
       });
       const url = await getSignedUrl(client, cmd, {
-        expiresIn: 900,
+        expiresIn: ttlSeconds ?? 900,
         // content-length must be named explicitly: the presigner signs only
         // `host` by default, so an unlisted header is not bound to the URL.
         ...(signExact ? { signableHeaders: new Set(['content-length']) } : {}),

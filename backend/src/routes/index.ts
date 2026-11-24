@@ -5,6 +5,7 @@ import { FailureThrottle } from '../throttle.js';
 import { registerDevStorageRoutes } from '../storage/index.js';
 import { healthRoutes } from './health.js';
 import { worldsRoutes } from './worlds.js';
+import { scansRoutes } from './scans.js';
 import { devicesRoutes } from './devices.js';
 import { accountRoutes } from './account.js';
 import { meRoutes } from './me.js';
@@ -76,6 +77,7 @@ export async function registerRoutes(
   await app.register(async (authed) => {
     authed.addHook('onRequest', makeAuthPreHandler(config, authFailures, deps.auth));
     worldsRoutes(authed, deps);
+    scansRoutes(authed, deps);
     devicesRoutes(authed);
     accountRoutes(authed, deps.auth);
     meRoutes(authed, deps);

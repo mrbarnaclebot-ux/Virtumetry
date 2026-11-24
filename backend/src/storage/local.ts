@@ -38,7 +38,7 @@ export function createLocalStorage(config: Config): LocalStorage {
     resolvePath,
     maxBytesFor: (key) => limits.get(key),
 
-    async presignUpload(key, _contentType, maxBytes, exactBytes): Promise<PresignedUpload> {
+    async presignUpload(key, _contentType, maxBytes, exactBytes, _ttlSeconds): Promise<PresignedUpload> {
       // Mirror the S3 driver's ceiling semantics (spec §10 R7): a declared exact
       // size is the tighter limit the /dev-storage PUT route enforces.
       const limit =

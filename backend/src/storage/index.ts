@@ -31,6 +31,8 @@ export interface StorageDriver {
     contentType: string,
     maxBytes: number,
     exactBytes?: number,
+    /** URL lifetime; S3 defaults to 900 s. The local driver ignores it. */
+    ttlSeconds?: number,
   ): Promise<PresignedUpload>;
   presignDownload(key: string, ttlSeconds: number): Promise<string>;
   putObject(key: string, bytes: Buffer): Promise<void>;
