@@ -10,7 +10,7 @@
 
 FROM node:24-trixie-slim AS build
 WORKDIR /app
-COPY backend/package.json backend/package-lock.json ./
+COPY backend/package.json backend/package-lock.json backend/.npmrc ./
 RUN npm ci
 COPY backend/tsconfig.json ./
 COPY backend/src ./src
