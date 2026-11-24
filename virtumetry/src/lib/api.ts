@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert } from 'react-native';
 
 import { API_URL } from '@/config/api';
 import { pollInterval, type LibraryItem } from '@/library/display-state';
@@ -61,5 +62,28 @@ export function useRenameWorld() {
       );
       qc.invalidateQueries({ queryKey: ['worlds'] });
     },
+  });
+}
+
+export const deleteWorld = (id: string) => apiFetch<{ ok: true; job_id: string }>(`/v1/worlds/${id}`, { method: 'DELETE' });
+
+/** Delete is optimistic: the row goes at once and comes back in place on any error (D-21, T-03-35). */
+export function useDeleteWorld() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteWorld,
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ['worlds'] });
+      const snapshot = qc.getQueryData<WorldsPage>(['worlds']);
+      qc.setQueryData<WorldsPage>(['worlds'], (old) => old && { ...old, worlds: old.worlds.filter((x) => x.id !== id) });
+      return { snapshot };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(['worlds'], ctx.snapshot);
+      Alert.alert("Couldn't delete", 'The scan is back in your library. Check your connection and try again.', [
+        { text: 'Back to Library' },
+      ]);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['worlds'] }),
   });
 }

@@ -10,12 +10,13 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { DisplayState } from '@/library/display-state';
 import { useLocalScans } from '@/library/local-scans';
-import { useWorlds } from '@/lib/api';
+import { useDeleteWorld, useWorlds } from '@/lib/api';
 
 export default function LibraryScreen() {
   const theme = useTheme();
   const { data, error, isPending, refetch } = useWorlds();
-  const { scans } = useLocalScans();
+  const { scans, remove: removeLocal } = useLocalScans();
+  const deleteWorld = useDeleteWorld();
   const [refreshing, setRefreshing] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
 
@@ -24,9 +25,27 @@ export default function LibraryScreen() {
     const title = state.displayTitle;
     Alert.alert(title, undefined, [
       ...('local' in item ? [] : [{ text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) }]),
-      { text: 'Delete', style: 'destructive' as const },
+      { text: 'Delete', style: 'destructive' as const, onPress: () => confirmDelete(item, title) },
       { text: 'Cancel', style: 'cancel' as const },
     ]);
+  };
+
+  const confirmDelete = (item: RowItem, title: string) => {
+    const local = 'local' in item;
+    Alert.alert(
+      `Delete "${title}"?`,
+      local
+        ? "This removes it from your phone. You can't undo this."
+        : "This removes it from your phone, our servers and SpAItial. You can't undo this.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => (local ? removeLocal(item.id) : deleteWorld.mutate(item.id)),
+        },
+      ],
+    );
   };
 
   // Only a user-started refresh shows the spinner; background polling never does.

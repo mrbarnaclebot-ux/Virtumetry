@@ -160,6 +160,8 @@ describe('library screen', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     await fireEvent.press(screen.getByRole('button', { name: 'More actions for Kitchen' }));
     expect(alertSpy).toHaveBeenCalledWith('Kitchen', undefined, [
+      expect.objectContaining({ text: 'Rename' }),
+      expect.objectContaining({ text: 'Delete', style: 'destructive' }),
       expect.objectContaining({ text: 'Cancel', style: 'cancel' }),
     ]);
   });
