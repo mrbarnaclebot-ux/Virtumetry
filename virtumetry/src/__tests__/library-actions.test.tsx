@@ -3,8 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { Alert, type AlertButton } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
-import type { LibraryItem } from '@/library/display-state';
-import { __setLocalScansForTest } from '@/library/local-scans';
+import { __setLocalScansForTest } from '@/capture/store';
+import type { LibraryItem, LocalScan } from '@/library/display-state';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
 jest.mock('@/lib/auth-client', () => ({
@@ -13,6 +13,21 @@ jest.mock('@/lib/auth-client', () => ({
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
 
 const CREATED = '2026-11-20T10:00:00.000Z';
+
+const local = (id: string, title: string): LocalScan => ({
+  id,
+  sessionId: id,
+  title,
+  createdAt: CREATED,
+  dir: `file:///mock/document/sessions/${id}`,
+  frameCount: 30,
+  durationS: 7.8,
+  imageW: 640,
+  imageH: 480,
+  readiness: 'green',
+  precheckIssues: [],
+  uploadState: 'saved',
+});
 
 function w(id: string, title: string): LibraryItem {
   return {
@@ -232,18 +247,18 @@ describe('delete', () => {
     expect(titles()).toEqual(['Kitchen', 'Bedroom', 'Garage']);
   });
 
-  it('deletes a saved-on-phone scan locally without a request', async () => {
-    __setLocalScansForTest([{ id: 'l1', title: 'Hallway', createdAt: CREATED }]);
+  it('discards a saved-on-phone scan locally without a request', async () => {
+    __setLocalScansForTest([local('l1', 'Hallway')]);
     await renderLibrary();
     await openMenu('Hallway');
-    expect(lastButtons().map((b) => b.text)).toEqual(['Delete', 'Cancel']);
-    await press('Delete');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Discard', 'Cancel']);
+    await press('Discard');
     expect(alertSpy).toHaveBeenLastCalledWith(
-      'Delete "Hallway"?',
-      "This removes it from your phone. You can't undo this.",
-      expect.any(Array),
+      'Discard this scan?',
+      "This deletes its 30 photos from your phone. You can't undo this.",
+      [expect.objectContaining({ text: 'Cancel', style: 'cancel' }), expect.objectContaining({ text: 'Discard', style: 'destructive' })],
     );
-    await press('Delete');
+    await press('Discard');
     await waitFor(() => expect(screen.queryByText('Hallway')).toBeNull());
     expect(mutate).not.toHaveBeenCalled();
   });

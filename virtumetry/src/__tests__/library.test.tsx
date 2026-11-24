@@ -3,8 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { Alert } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
-import type { LibraryItem } from '@/library/display-state';
-import { __setLocalScansForTest } from '@/library/local-scans';
+import { __setLocalScansForTest } from '@/capture/store';
+import type { LibraryItem, LocalScan } from '@/library/display-state';
 import { endSession } from '@/lib/session';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -17,6 +17,22 @@ const now = Date.now();
 const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
 const CREATED = '2026-11-20T10:00:00.000Z';
 const date = new Date(CREATED).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+const local = (id: string, title: string, over: Partial<LocalScan> = {}): LocalScan => ({
+  id,
+  sessionId: id,
+  title,
+  createdAt: CREATED,
+  dir: `file:///mock/document/sessions/${id}`,
+  frameCount: 30,
+  durationS: 7.8,
+  imageW: 640,
+  imageH: 480,
+  readiness: 'green',
+  precheckIssues: [],
+  uploadState: 'saved',
+  ...over,
+});
 
 function w(id: string, over: Partial<LibraryItem>): LibraryItem {
   return {
@@ -72,7 +88,7 @@ async function renderLibrary() {
 
 describe('library screen', () => {
   it('renders every state, with local scans first', async () => {
-    __setLocalScansForTest([{ id: 'l1', title: 'Hallway', createdAt: CREATED }]);
+    __setLocalScansForTest([local('l1', 'Hallway')]);
     fetchMock.mockResolvedValue(page(LIST));
     await renderLibrary();
 
@@ -170,5 +186,17 @@ describe('library screen', () => {
       expect.objectContaining({ text: 'Delete', style: 'destructive' }),
       expect.objectContaining({ text: 'Cancel', style: 'cancel' }),
     ]);
+  });
+
+  it('hides a local scan once the server row is past uploading', async () => {
+    __setLocalScansForTest([
+      local('l1', 'Hallway', { serverWorldId: 'Kitchen', uploadState: 'done' }),
+      local('l2', 'Porch', { serverWorldId: 'Bedroom', uploadState: 'uploading' }),
+    ]);
+    fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'processing' }), w('Bedroom', { status: 'uploading', progress: 10 })]));
+    await renderLibrary();
+    await screen.findByText('Kitchen');
+    expect(screen.queryByText('Hallway')).toBeNull();
+    expect(screen.getByText('Porch')).toBeTruthy();
   });
 });
