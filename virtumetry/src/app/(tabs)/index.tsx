@@ -1,5 +1,5 @@
 import { useCameraPermissions } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -51,6 +51,10 @@ export default function LibraryScreen() {
       pathname: '/capture/[id]',
       params: { id: scan.id, step: scan.uploadState === 'saved' ? 'review' : 'upload' },
     });
+
+  // Typegen lists the folder route as '/world/[id]/index'; the URL /world/<id> is what matches it.
+  const openWorld = (world: { id: string }) =>
+    router.push({ pathname: '/world/[id]', params: { id: world.id } } as unknown as Href);
 
   // Row action menu (D-21). Local scans: Discard only while nothing is on the server side
   // (saved/blocked/failed); once a server world exists, Delete removes both (CR-03).
@@ -205,7 +209,9 @@ export default function LibraryScreen() {
       <FlatList
         data={items}
         keyExtractor={(i) => ('local' in i ? `local-${i.id}` : i.id)}
-        renderItem={({ item }) => <LibraryRow item={item} onMore={openRowMenu} onOpen={openScan} />}
+        renderItem={({ item }) => (
+          <LibraryRow item={item} onMore={openRowMenu} onOpen={openScan} onOpenWorld={openWorld} />
+        )}
         ItemSeparatorComponent={() => (
           <View style={[styles.separator, { backgroundColor: theme.backgroundSelected }]} />
         )}

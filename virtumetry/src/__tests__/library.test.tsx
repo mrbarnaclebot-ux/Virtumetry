@@ -227,6 +227,19 @@ describe('library screen', () => {
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/capture/[id]', params: { id: 'l1', step: 'review' } });
     await fireEvent.press(screen.getByRole('button', { name: /^Porch, Uploading/ }));
     expect(router.push).toHaveBeenLastCalledWith({ pathname: '/capture/[id]', params: { id: 'l2', step: 'upload' } });
-    expect(screen.queryByRole('button', { name: /^Kitchen, Ready/ })).toBeNull();
+  });
+
+  it('a ready server row opens the viewer; other server rows stay disabled (D-14)', async () => {
+    fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'ready' }), w('Bedroom', { status: 'processing' })]));
+    await renderLibrary();
+    await screen.findByText('Ready');
+
+    const ready = screen.getByRole('button', { name: /^Kitchen, Ready/ });
+    expect(ready.props.accessibilityHint).toBe('Opens the room');
+    await fireEvent.press(ready);
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/world/[id]', params: { id: 'Kitchen' } });
+
+    expect(screen.queryByRole('button', { name: /^Bedroom, Processing/ })).toBeNull();
+    expect(screen.getByLabelText(/^Bedroom, Processing/)).toBeDisabled();
   });
 });

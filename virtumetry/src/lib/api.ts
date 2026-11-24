@@ -6,6 +6,7 @@ import { API_URL } from '@/config/api';
 import { pollInterval, type LibraryItem, type LocalScan } from '@/library/display-state';
 import { authClient } from '@/lib/auth-client';
 import { endSession } from '@/lib/session';
+import type { FloorplanMeta } from '@/viewer/types';
 
 /** `code` is the server body's `error` field: a bare status cannot tell our 404 from a proxy's (WR-01). */
 export class ApiError extends Error {
@@ -57,6 +58,32 @@ export function useWorlds({ forcePoll = false } = {}) {
     queryKey: ['worlds'],
     queryFn: listWorlds,
     refetchInterval: (q) => pollInterval(q.state.data?.worlds, forcePoll),
+  });
+}
+
+export type WorldAssets = {
+  splat_url?: string;
+  collider_url?: string;
+  floorplan_url?: string;
+  cameras_url?: string;
+  thumbnail_url?: string;
+};
+/** GET /v1/worlds/:id; floorplan_meta lands with 05-01 (optional until then). */
+export type WorldDetail = { world: LibraryItem & { floorplan_meta?: FloorplanMeta | null }; assets: WorldAssets };
+
+export const getWorld = (id: string) => apiFetch<WorldDetail>(`/v1/worlds/${encodeURIComponent(id)}`);
+
+/** Viewer query: never refetches, so the presigned URLs under the viewer never change mid-walk (research anti-pattern). */
+export function useWorld(id: string) {
+  return useQuery({
+    queryKey: ['world', id],
+    queryFn: () => getWorld(id),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    // A 4xx (404 world_not_found) is final: show it now instead of after 3 backoff retries.
+    retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2,
   });
 }
 

@@ -18,9 +18,11 @@ type Props = {
   onMore: (item: RowItem, state: DisplayState) => void;
   /** Local rows only: opens capture/[id] at review or upload (UI-SPEC §2). */
   onOpen?: (item: LocalScan & { local: true }) => void;
+  /** Ready server rows only: opens the viewer (D-14). */
+  onOpenWorld?: (item: LibraryItem) => void;
 };
 
-export function LibraryRow({ item, onMore, onOpen }: Props) {
+export function LibraryRow({ item, onMore, onOpen, onOpenWorld }: Props) {
   const theme = useTheme();
   const state = toDisplayState(item, new Date());
   const thumbnailUrl = 'local' in item ? undefined : item.assets?.thumbnail_url;
@@ -38,7 +40,13 @@ export function LibraryRow({ item, onMore, onOpen }: Props) {
               accessibilityHint: item.uploadState === 'saved' ? 'Opens review' : 'Shows upload',
               onPress: () => onOpen?.(item),
             }
-          : { disabled: true })}
+          : item.status === 'ready'
+            ? {
+                accessibilityRole: 'button' as const,
+                accessibilityHint: 'Opens the room',
+                onPress: () => onOpenWorld?.(item),
+              }
+            : { disabled: true })}
         style={({ pressed }) => [styles.main, pressed && { backgroundColor: theme.backgroundSelected }]}>
         <View accessible={false} style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
           {thumbnailUrl && !imageFailed ? (
