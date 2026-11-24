@@ -46,7 +46,7 @@ Sign in and start the app as in `virtumetry/README.md` "Test on your iPhone (Pha
 | 7 | Create link | In the viewer, tap Share (top right), then Create link: the iOS share sheet opens. Tap Copy | pending | |
 | 8 | Link preview | Paste the link in iMessage or WhatsApp: the preview shows the title and the thumbnail | pending | |
 | 9 | Open in browsers | Open the link in desktop Chrome or Safari and in iPhone Safari: the same room loads, and orbit, Walk, Plan and Measure work | pending | |
-| 10 | Password link | Turn on password, create a second link. Its preview has no image. The browser asks "This room is password protected"; a wrong password shows an error, the right one opens the room | pending | |
+| 10 | Password link | Turn on password (6–64 characters), create a second link. Its preview has no image. The browser asks "This room is password protected"; a wrong password shows an error, the right one opens the room | pending | |
 | 11 | Open counts | Back in the Share sheet, pull to refresh: the open counts went up after your browser opens | pending | |
 | 12 | Revoke | Revoke a link and confirm. An already open browser tab keeps what it loaded; a reload shows "This link is no longer available" | pending | |
 | 13 | noindex | View the source of `https://api-dev-d164ec0a.up.railway.app/s/<slug>` (and the `/r/<slug>` page): it has `<meta name="robots" content="noindex,nofollow">` | pending | |

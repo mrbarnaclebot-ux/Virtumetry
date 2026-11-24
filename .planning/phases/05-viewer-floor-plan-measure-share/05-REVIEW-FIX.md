@@ -2,9 +2,9 @@
 phase: 05-viewer-floor-plan-measure-share
 fixed_at: 2026-11-25T00:00:00Z
 review_path: .planning/phases/05-viewer-floor-plan-measure-share/05-REVIEW.md
-iteration: 1
-findings_in_scope: 6
-fixed: 6
+iteration: 2
+findings_in_scope: 8
+fixed: 8
 skipped: 0
 status: all_fixed
 ---
@@ -86,3 +86,41 @@ None of these was a safe one-liner:
 _Fixed: 2026-11-25_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+## Iteration 2
+
+Source: the iteration-2 `05-REVIEW.md` (0 critical, 2 warnings). Both warnings are fixed, and the two optional Info items IN-01 and IN-03 are fixed too. The frontmatter counts above now cover both iterations: 6 + 2 warnings, plus the 2 Info items.
+
+### WR-01: Floor-plan image goes dead after presign expiry
+
+**Files modified:** `virtumetry/src/viewer/world-viewer.tsx`
+**Commit:** 16ced78
+**Status:** fixed: requires human verification (no jest coverage for the DOM viewer)
+**Applied fix:**
+- An effect warms the plan image (`new Image().src = floorplanUrl`) whenever the URL changes, so it loads while the URL is still fresh.
+- The `planFailed` boolean is replaced by `planFailedUrl`, so a failure applies only to the URL that failed. Fresh URLs (from the owner screen's refetch or the web page's re-open) bring Plan back without a reset effect.
+
+### WR-02: Stale-URL crash waits for the refetch before showing "Reconnecting viewer…"
+
+**Files modified:** `virtumetry/src/app/world/[id]/index.tsx`, `virtumetry/src/__tests__/world-screen.test.tsx`
+**Commit:** 84fc71a (also covers IN-03)
+**Status:** fixed: requires human verification (state handling)
+**Applied fix:**
+- A `refreshing` flag is set while `freshen()` refetches. The reconnect overlay now shows on `rec.reconnecting || refreshing`.
+- On the capped screen, a `<Reconnecting />` view replaces "The viewer stopped working" during the refetch.
+- `freshen()` shares one in-flight refetch between callers.
+- New test: a crash with stale URLs shows "Reconnecting viewer…" at once and remounts only after the refetch, with the new URLs.
+
+### IN-03: Double "Reload viewer" tap queues two reloads
+
+**Commit:** 84fc71a
+**Applied fix:** A `reloading` ref ignores a second tap until the first refetch has resolved and its reload has been dispatched. New test: a double tap gives one refetch and one remount.
+
+### IN-01: A Spark dispose throw skips renderer cleanup
+
+**Files modified:** `virtumetry/src/viewer/engine.ts`
+**Commit:** 5cebf23
+**Applied fix:** `dispose()` now wraps each step in its own try (splat, spark, renderer, `forceContextLoss`) through a small `safely()` helper.
+
+_Iteration 2 fixed: 2026-11-25_
+
