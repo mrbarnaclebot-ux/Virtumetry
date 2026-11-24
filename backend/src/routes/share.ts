@@ -217,4 +217,96 @@ export async function publicShareRoutes(app: FastifyInstance, deps: RouteDeps): 
     },
     { prefix: '/v1/public' },
   );
+
+  // Link-preview landing (D-20). Root path, no CORS; never counts an open.
+  app.get<{ Params: { slug: string } }>(
+    '/s/:slug',
+    { config: perIp(config, config.RATE_LIMIT_LANDING_MAX, 'land') },
+    async (req, reply) => {
+      reply.header('X-Robots-Tag', 'noindex, nofollow').header('Cache-Control', 'no-store');
+      const origin = config.WEB_SHARE_ORIGIN;
+      if (!origin) return reply.code(503).send({ error: 'share_unavailable' });
+      reply.type('text/html; charset=utf-8');
+
+      const live = await findLiveShare(getDb(), req.params.slug);
+      if (!live) return reply.code(404).send(notFoundPage());
+      const { slug } = req.params; // regex-checked by findLiveShare
+      const locked = live.share.passwordHash !== null;
+      const image =
+        live.world.thumbnailKey && !locked
+          ? await storage.presignDownload(live.world.thumbnailKey, OG_IMAGE_TTL_SECONDS)
+          : null;
+      return reply.send(
+        landingPage({
+          title: live.world.title || 'Untitled scan',
+          url: `${config.PUBLIC_BASE_URL}/s/${slug}`,
+          // Built only from config + the validated slug: no open redirect (T-05-15).
+          target: `${origin}/r/${slug}`,
+          image,
+          locked,
+        }),
+      );
+    },
+  );
+}
+
+/** og:image presign TTL: 7 days, the S3 SigV4 maximum (D-20). */
+export const OG_IMAGE_TTL_SECONDS = 604800;
+
+const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+/** HTML-escape for text and double-quoted attributes (T-05-14). */
+export const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ESC[c]!);
+
+function shell(pageTitle: string, head: string, body: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="dark">
+<title>${esc(pageTitle)}</title>
+${head}
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:system-ui,-apple-system,sans-serif}
+main{max-width:400px;padding:24px;text-align:center}
+h1{font-size:20px;font-weight:600;margin:0 0 8px}
+p{font-size:16px;margin:0 0 8px}
+.lead{font-weight:600;color:#fff}
+.muted{color:#B0B4BA}
+a{color:#3CC8B4;font-size:16px}
+</style>
+</head>
+<body><main>${body}</main></body>
+</html>`;
+}
+
+function landingPage(o: { title: string; url: string; target: string; image: string | null; locked: boolean }) {
+  const description = o.locked
+    ? 'A password-protected 3D room, shared with Virtumetry.'
+    : 'A 3D room you can walk through, shared with Virtumetry.';
+  const head = [
+    '<meta property="og:type" content="website">',
+    `<meta property="og:title" content="${esc(o.title)}">`,
+    `<meta property="og:description" content="${esc(description)}">`,
+    `<meta property="og:url" content="${esc(o.url)}">`,
+    ...(o.image ? [`<meta property="og:image" content="${esc(o.image)}">`] : []),
+    `<meta name="twitter:card" content="${o.image ? 'summary_large_image' : 'summary'}">`,
+    `<meta http-equiv="refresh" content="0;url=${esc(o.target)}">`,
+    // JSON string with < escaped: cannot close the script element.
+    `<script>location.replace(${JSON.stringify(o.target).replace(/</g, '\\u003c')})</script>`,
+  ].join('\n');
+  return shell(
+    `${o.title} · Virtumetry`,
+    head,
+    `<p class="lead">Opening ${esc(o.title)}…</p><a href="${esc(o.target)}">Open the room</a>`,
+  );
+}
+
+function notFoundPage(): string {
+  return shell(
+    'Link unavailable · Virtumetry',
+    '',
+    '<h1>This link is no longer available</h1><p class="muted">The owner may have turned it off. Ask them for a new link.</p>',
+  );
 }
