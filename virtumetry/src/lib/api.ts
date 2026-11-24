@@ -73,15 +73,22 @@ export type WorldDetail = { world: LibraryItem & { floorplan_meta?: FloorplanMet
 
 export const getWorld = (id: string) => apiFetch<WorldDetail>(`/v1/worlds/${encodeURIComponent(id)}`);
 
-/** Viewer query: never refetches, so the presigned URLs under the viewer never change mid-walk (research anti-pattern). */
+/** Asset URLs are presigned for 1 h (backend DOWNLOAD_TTL_SECONDS); treat them as stale 10 min early (CR-01). */
+export const WORLD_URL_FRESH_MS = 50 * 60_000;
+
+/**
+ * Viewer query: no background refetch, so the presigned URLs under the viewer never change mid-walk.
+ * Dropped on unmount, so re-entering the screen never mounts the viewer on old URLs; while mounted, the screen
+ * refreshes them right before a viewer reload once they are WORLD_URL_FRESH_MS old (CR-01).
+ */
 export function useWorld(id: string) {
   return useQuery({
     queryKey: ['world', id],
     queryFn: () => getWorld(id),
-    staleTime: Infinity,
+    staleTime: WORLD_URL_FRESH_MS,
+    gcTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    refetchOnMount: false,
     // A 4xx (404 world_not_found) is final: show it now instead of after 3 backoff retries.
     retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2,
   });

@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -6,7 +7,7 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError, useWorld } from '@/lib/api';
+import { ApiError, useWorld, WORLD_URL_FRESH_MS } from '@/lib/api';
 import { initialRecovery, recoveryReducer } from '@/viewer/recovery';
 import { VT } from '@/viewer/tokens';
 import type { Pose } from '@/viewer/types';
@@ -54,6 +55,15 @@ export default function WorldScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const safe = useSafeAreaInsets();
   const { data, error, isPending, refetch } = useWorld(id);
+  const qc = useQueryClient();
+  // CR-01: presigned URLs expire after 1 h. Refresh them only right before a viewer (re)load, never mid-walk.
+  const urlsStale = useCallback(
+    () => Date.now() - (qc.getQueryState(['world', id])?.dataUpdatedAt ?? 0) > WORLD_URL_FRESH_MS,
+    [qc, id],
+  );
+  const freshen = useCallback(async () => {
+    if (urlsStale()) await refetch();
+  }, [urlsStale, refetch]);
   // Pitfall 12: the DOM bundle takes a moment to parse; keep a native spinner until it reports in.
   const [domUp, setDomUp] = useState(false);
   // Stable identities: every prop change re-renders the whole DOM tree.
@@ -61,7 +71,10 @@ export default function WorldScreen() {
 
   // D-13b: a killed WebView remounts (key bump) at the last pose; capped at 3 crashes / 60 s (T-05-22).
   const [rec, dispatch] = useReducer(recoveryReducer, initialRecovery);
-  const crash = useCallback(() => dispatch({ type: 'crash', at: Date.now() }), []);
+  const crash = useCallback(() => {
+    const at = Date.now();
+    void freshen().then(() => dispatch({ type: 'crash', at }));
+  }, [freshen]);
   const dom = useMemo(
     () => ({ scrollEnabled: false, onContentProcessDidTerminate: crash, onRenderProcessGone: crash }),
     [crash],
@@ -75,8 +88,10 @@ export default function WorldScreen() {
     async (e: { code: string }) => {
       setDomUp(true);
       if (e.code === 'context_lost') crash();
+      // Expired URLs: fresh ones change splatUrl, which reloads the viewer.
+      else if (e.code === 'load_failed' && urlsStale()) await refetch();
     },
-    [crash],
+    [crash, urlsStale, refetch],
   );
   useEffect(() => {
     if (rec.capped) AccessibilityInfo.announceForAccessibility('The viewer stopped working');
@@ -115,7 +130,7 @@ export default function WorldScreen() {
         heading="The viewer stopped working"
         body="This can happen when the phone is low on memory. Reload to try again."
         retryLabel="Reload viewer"
-        onRetry={() => dispatch({ type: 'reload' })}
+        onRetry={() => void freshen().then(() => dispatch({ type: 'reload' }))}
       />
     );
   } else {

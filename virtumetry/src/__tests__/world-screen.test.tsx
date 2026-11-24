@@ -86,7 +86,7 @@ it('shows a spinner and Back while the world loads', async () => {
   expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
 });
 
-it('passes the detail response to the viewer, and never refetches on remount', async () => {
+it('passes the detail response to the viewer, and refetches on re-entry (never a cached URL, CR-01)', async () => {
   fetchMock.mockResolvedValue(ok({ world: world(), assets: ASSETS }));
   const client = newClient();
   const first = await render(ui(client));
@@ -106,9 +106,10 @@ it('passes the detail response to the viewer, and never refetches on remount', a
   expect(screen.getByText('Kitchen')).toBeTruthy();
 
   await first.unmount();
+  await act(() => new Promise((r) => setTimeout(r, 0))); // gcTime 0 drops the entry
   await render(ui(client));
   await screen.findByTestId('world-viewer');
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
 it('falls back to "Untitled scan" and a null floor plan', async () => {
@@ -236,5 +237,75 @@ describe('crash recovery (D-13b)', () => {
     await act(async () => v().onError!({ code: 'context_lost' }));
     expect(mockMounts).toHaveLength(2);
     expect(v().startPose).toEqual(POSE);
+  });
+});
+
+describe('expired presigned URLs (CR-01)', () => {
+  const ASSETS2 = { ...ASSETS, splat_url: 'https://r2.test.invalid/splat-2.ply' };
+  const v = () => viewerProps.current!;
+  type Dom = { onContentProcessDidTerminate: () => void };
+  let now = 1_800_000_000_000;
+  beforeEach(() => {
+    now = 1_800_000_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  async function open(client = newClient()) {
+    fetchMock.mockResolvedValue(ok({ world: world(), assets: ASSETS }));
+    const r = await render(ui(client));
+    await screen.findByTestId('world-viewer');
+    fetchMock.mockResolvedValue(ok({ world: world(), assets: ASSETS2 }));
+    return r;
+  }
+  const MIN = 60_000;
+
+  it('load_failed with fresh URLs does not refetch', async () => {
+    await open();
+    now += 10 * MIN;
+    await act(async () => v().onError!({ code: 'load_failed' }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(v().splatUrl).toBe(ASSETS.splat_url);
+  });
+
+  it('load_failed after 50 min refetches, and the viewer gets the new URL', async () => {
+    await open();
+    now += 51 * MIN;
+    await act(async () => v().onError!({ code: 'load_failed' }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(v().splatUrl).toBe(ASSETS2.splat_url);
+  });
+
+  it('a crash after 50 min remounts with fresh URLs', async () => {
+    await open();
+    now += 51 * MIN;
+    await act(async () => (v().dom as unknown as Dom).onContentProcessDidTerminate());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockMounts).toHaveLength(2);
+    expect(mockMounts[1].splatUrl).toBe(ASSETS2.splat_url);
+  });
+
+  it('Reload viewer after 50 min remounts with fresh URLs', async () => {
+    await open();
+    for (let i = 0; i < 4; i++) await act(async () => (v().dom as unknown as Dom).onContentProcessDidTerminate());
+    expect(screen.getByText('The viewer stopped working')).toBeTruthy();
+    now += 51 * MIN;
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Reload viewer' })));
+    await screen.findByTestId('world-viewer');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(v().splatUrl).toBe(ASSETS2.splat_url);
+  });
+
+  it('re-entering the screen never mounts the viewer on cached URLs', async () => {
+    const client = newClient();
+    const first = await open(client);
+    await first.unmount();
+    await act(() => new Promise((r) => setTimeout(r, 0))); // gcTime 0 drops the entry
+    now += 51 * MIN;
+    mockMounts.length = 0;
+    await render(ui(client));
+    await screen.findByTestId('world-viewer');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockMounts.map((m) => m.splatUrl)).toEqual([ASSETS2.splat_url]);
   });
 });
