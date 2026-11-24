@@ -13,16 +13,8 @@ jest.mock('@/capture/store', () => ({
   updateLocalScan: jest.fn(),
 }));
 jest.mock('@/lib/api', () => {
-  class ApiError extends Error {
-    constructor(public status: number) {
-      super(`API error ${status}`);
-    }
-  }
-  class UnauthorizedError extends ApiError {
-    constructor() {
-      super(401);
-    }
-  }
+  class ApiError extends Error {}
+  class UnauthorizedError extends ApiError {}
   return {
     ApiError,
     UnauthorizedError,

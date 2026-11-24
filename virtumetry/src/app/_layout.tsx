@@ -6,6 +6,7 @@ import { AppState, Platform, useColorScheme } from 'react-native';
 
 import { authClient } from '@/lib/auth-client';
 import { queryClient } from '@/lib/query-client';
+import { startUploadManager, stopUploadManager } from '@/upload/manager';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -21,6 +22,14 @@ export default function RootLayout() {
   useEffect(() => {
     if (!isPending) SplashScreen.hideAsync();
   }, [isPending]);
+
+  // D-21: app-scoped uploads while signed in, not tied to a screen.
+  const signedIn = !!data;
+  useEffect(() => {
+    if (!signedIn) return;
+    startUploadManager();
+    return stopUploadManager;
+  }, [signedIn]);
 
   // Splash stays up while the stored session is read (UI-SPEC §1).
   if (isPending) return null;
