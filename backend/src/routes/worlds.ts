@@ -8,7 +8,7 @@ import type { QuotaChargeResult } from '../quota.js';
 import type { StorageDriver } from '../storage/index.js';
 import type { RouteDeps } from './deps.js';
 
-const DOWNLOAD_TTL_SECONDS = 3600;
+export const DOWNLOAD_TTL_SECONDS = 3600;
 
 /** Per-user scan quota refusal (spec §7.1). `message` is short display copy. */
 export function sendScanQuotaExceeded(reply: FastifyReply, charge: QuotaChargeResult) {
@@ -21,7 +21,7 @@ export function sendScanQuotaExceeded(reply: FastifyReply, charge: QuotaChargeRe
 
 // Asset columns that hold a storage key → the JSON field name we sign into.
 // Keys are re-hosted Echo-3 outputs (D-15/PROC-07).
-const ASSET_FIELDS = [
+export const ASSET_FIELDS = [
   ['splatKey', 'splat_url'],
   ['colliderKey', 'collider_url'],
   ['floorplanKey', 'floorplan_url'],
@@ -97,6 +97,19 @@ export async function serializeWorldListItem(
   return { ...serializeWorld(w), assets };
 }
 
+/**
+ * GET /v1/worlds/:id body: serializeWorld plus the floor-plan meta (detail only, the
+ * list stays lean) and every set asset key presigned.
+ */
+export async function serializeWorldDetail(w: World, storage: StorageDriver) {
+  const assets: Record<string, string> = {};
+  for (const [field, out] of ASSET_FIELDS) {
+    const key = w[field];
+    if (key) assets[out] = await storage.presignDownload(key, DOWNLOAD_TTL_SECONDS);
+  }
+  return { world: { ...serializeWorld(w), floorplan_meta: w.floorplanMeta ?? null }, assets };
+}
+
 export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { storage } = deps;
 
@@ -108,12 +121,7 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const world = await findOwnedWorld(db, req.params.id, userId);
     if (!world) return reply.code(404).send({ error: 'world_not_found' });
 
-    const assets: Record<string, string> = {};
-    for (const [field, out] of ASSET_FIELDS) {
-      const key = world[field];
-      if (key) assets[out] = await storage.presignDownload(key, DOWNLOAD_TTL_SECONDS);
-    }
-    return reply.send({ world: serializeWorld(world), assets });
+    return reply.send(await serializeWorldDetail(world, storage));
   });
 
   // GET /v1/worlds — owner's library, paginated, excluding soft-deleted.
