@@ -24,6 +24,7 @@ export type Uploader = {
 export type LocalStore = {
   update(id: string, patch: Partial<LocalScan>): void;
   deleteFiles(id: string): Promise<void>;
+  get?(id: string): LocalScan | undefined;
 };
 
 export type UploadProgress = { uploaded: number; total: number };
@@ -111,9 +112,11 @@ async function reconcileOnce(
     try {
       id = (await api.createScan(scan)).world.id;
     } catch (e) {
-      // Terminal and visible (iter-2 WR-02): retrying every 5 min can never succeed; the owner can Discard.
+      // A definite refusal (iter-3 WR-01): back to 'saved' so the owner can re-quote and re-approve
+      // with the same key (no world was created). Skip if an inline approve stored a world meanwhile.
       if (!refusedCreate(e)) throw e;
-      local.update(scan.id, { uploadState: 'failed', failureCode: String(codeOf(e)).toUpperCase() });
+      if (local.get?.(scan.id)?.serverWorldId) return { kind: 'incomplete' };
+      local.update(scan.id, { uploadState: 'saved', failureCode: String(codeOf(e)).toUpperCase() });
       return { kind: 'failed' };
     }
     local.update(scan.id, { serverWorldId: id, uploadState: 'uploading' });

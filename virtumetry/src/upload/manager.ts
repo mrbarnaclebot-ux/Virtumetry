@@ -45,7 +45,7 @@ async function deleteFiles(id: string) {
 const deps = {
   api: { createScan, presignUploads, getMissing, completeScan },
   uploader,
-  local: { update: updateLocalScan, deleteFiles },
+  local: { update: updateLocalScan, deleteFiles, get: getLocalScan },
 };
 
 /** True when some scan should be retried (paused, incomplete or errored). */
