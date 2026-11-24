@@ -2,7 +2,10 @@
 // track → ready on the REAL dev resources (virtumetry-dev R2 + Neon dev) with
 // the MOCK provider ($0). Prints ids, statuses, keys, sizes and timings only —
 // never presigned URLs or connection strings.
-// Usage: cd backend && npm run fixture:e2e [-- --keep]
+// Usage: cd backend && npm run fixture:e2e [-- --keep] [-- --remote]
+// --remote: only enqueue and poll; the deployed Railway dev worker runs every job.
+// Use it whenever that worker is up: it shares the Neon dev queue, and a job
+// split across two processes fails (the mock keeps request state in memory).
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -18,7 +21,8 @@ import { captureKey, createStorage } from '../src/storage/index.js';
 import { runOneJob, type WorkerDeps } from '../src/worker.js';
 
 const FIXTURE_DIR = fileURLToPath(new URL('../test/fixtures/tiny-session/', import.meta.url));
-const TIMEOUT_MS = 180_000;
+const REMOTE = process.argv.includes('--remote');
+const TIMEOUT_MS = REMOTE ? 420_000 : 180_000;
 const TERMINAL = new Set(['ready', 'failed', 'cancelled']);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -84,7 +88,8 @@ async function main(): Promise<number> {
     if (w!.status !== status) log(`status ${(status = w!.status)}`);
     if (TERMINAL.has(status)) break;
     if (Date.now() - t0 > TIMEOUT_MS) throw new Error(`timed out with world ${worldId} at ${status}`);
-    if (!(await runOneJob(deps))) await sleep(500);
+    if (REMOTE) await sleep(2000);
+    else if (!(await runOneJob(deps))) await sleep(500);
   }
 
   let code = 0;
@@ -106,10 +111,11 @@ async function main(): Promise<number> {
     const purgeId = await enqueue(db, 'purge', worldId);
     for (;;) {
       const [j] = await db.select().from(jobs).where(eq(jobs.id, purgeId));
-      if (j!.phase === 'done') break;
+      if (!j || j.phase === 'done') break; // a finished purge may remove its own row
       if (j!.phase === 'dead') throw new Error(`purge job ${purgeId} died`);
       if (Date.now() - t0 > TIMEOUT_MS + 60_000) throw new Error('purge timed out');
-      if (!(await runOneJob(deps))) await sleep(500);
+      if (REMOTE) await sleep(2000);
+      else if (!(await runOneJob(deps))) await sleep(500);
     }
     for (const prefix of [`captures/${captureId}/`, `bundles/${captureId}/`, `worlds/${worldId}/`]) {
       const left = (await storage.list(prefix)).length;

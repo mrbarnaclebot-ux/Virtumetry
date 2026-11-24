@@ -39,7 +39,7 @@ npm run dev               # http://localhost:8080/healthz
 | `db:migrate:dev` | apply migrations to the Neon **dev** branch only (`scripts/migrate-dev.mjs` refuses any other host) |
 | `test:pg` | Postgres integration suites on a throwaway schema in Neon dev (`scripts/test-pg.mjs`; pass a path to run one file) |
 | `test:r2` | gated R2 Range-preflight test against `virtumetry-dev` only |
-| `fixture:e2e` | drive the committed fixture through pack, submit, track and ready on `virtumetry-dev` R2 + Neon dev with the mock provider, then purge (`-- --keep` keeps it) |
+| `fixture:e2e` | drive the committed fixture through pack, submit, track and ready on `virtumetry-dev` R2 + Neon dev with the mock provider, then purge (`-- --keep` keeps it; `-- --remote` lets the deployed Railway dev worker run the jobs, required while that worker is up because both share the dev queue) |
 
 The four guarded scripts load `.env` with `node --env-file=.env` and refuse to
 run against anything but the dev resources. `fixture:e2e` also refuses unless
