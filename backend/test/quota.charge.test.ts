@@ -120,7 +120,8 @@ function storage(): StorageDriver {
 }
 
 function routeDb(quotaRows: Record<string, unknown>[], counter: { executes: number }) {
-  return {
+  const db = {
+    transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(db),
     select: () => ({
       from: () => {
         const chain = { where: () => chain, orderBy: () => chain, limit: async () => [] };
@@ -129,20 +130,23 @@ function routeDb(quotaRows: Record<string, unknown>[], counter: { executes: numb
     }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
     insert: (table: unknown) => ({
-      values: () => ({
-        returning: async () =>
+      values: () => {
+        const run = async () =>
           table === worlds
             ? [fakeWorld()]
             : table === captures
               ? [{ id: 'cap-1', worldId: 'w-1', frameCount: 1, r2FramesPrefix: null }]
-              : [{ id: 'x' }],
-      }),
+              : [{ id: 'x' }];
+        // Awaitable with or without .returning(), like a drizzle builder.
+        return { returning: run, then: (ok: (v: unknown) => unknown, err: (e: unknown) => unknown) => run().then(ok, err) };
+      },
     }),
     execute: async () => {
       counter.executes += 1;
       return { rows: quotaRows };
     },
   };
+  return db;
 }
 
 async function buildApp() {

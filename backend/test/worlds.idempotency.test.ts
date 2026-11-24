@@ -51,7 +51,8 @@ interface DbState {
 }
 
 function makeDb(state: DbState) {
-  return {
+  const db = {
+    transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(db),
     select: () => ({
       from: (table: unknown) => {
         const chain = {
@@ -77,30 +78,28 @@ function makeDb(state: DbState) {
     }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
     insert: (table: unknown) => ({
-      values: (vals: Record<string, unknown>) => ({
-        returning: async () => {
-          state.inserts.push({ table, ...vals });
-          if (table === worlds) {
-            if (state.insertError) {
-              if (state.raceWinner) {
-                state.byKey.set(KEY, state.raceWinner);
-              }
-              throw state.insertError;
+      values: (vals: Record<string, unknown>) => thenable(async () => {
+        state.inserts.push({ table, ...vals });
+        if (table === worlds) {
+          if (state.insertError) {
+            if (state.raceWinner) {
+              state.byKey.set(KEY, state.raceWinner);
             }
-            const created = fakeWorld({
-              clientRequestId: (vals['clientRequestId'] as string | null) ?? null,
-            });
-            if (created.clientRequestId) state.byKey.set(created.clientRequestId, created);
-            return [created];
+            throw state.insertError;
           }
-          state.capture = {
-            id: 'cap-1',
-            worldId: 'w-1',
-            frameCount: vals['frameCount'] as number,
-            r2FramesPrefix: 'captures/cap-1',
-          };
-          return [state.capture];
-        },
+          const created = fakeWorld({
+            clientRequestId: (vals['clientRequestId'] as string | null) ?? null,
+          });
+          if (created.clientRequestId) state.byKey.set(created.clientRequestId, created);
+          return [created];
+        }
+        state.capture = {
+          id: 'cap-1',
+          worldId: 'w-1',
+          frameCount: vals['frameCount'] as number,
+          r2FramesPrefix: 'captures/cap-1',
+        };
+        return [state.capture];
       }),
     }),
     execute: async (q: unknown) => {
@@ -118,6 +117,12 @@ function makeDb(state: DbState) {
       };
     },
   };
+  return db;
+}
+
+/** Drizzle builders are awaitable with or without .returning(). */
+function thenable<T>(run: () => Promise<T>) {
+  return { returning: run, then: (ok: (v: T) => unknown, err: (e: unknown) => unknown) => run().then(ok, err) };
 }
 
 function makeStorage() {
@@ -293,7 +298,8 @@ describe('POST /v1/scans with Idempotency-Key', () => {
     const res = await post(app, KEY);
 
     expect(res.statusCode).toBe(500);
-    expect(state.quotaReleases).toBe(0);
+    // CR-01: any failed create refunds its charge.
+    expect(state.quotaReleases).toBe(1);
     await app.close();
   });
 
