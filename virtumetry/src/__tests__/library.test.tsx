@@ -200,6 +200,8 @@ describe('library screen', () => {
     await screen.findByText('Kitchen');
     expect(screen.queryByText('Hallway')).toBeNull();
     expect(screen.getByText('Porch')).toBeTruthy();
+    // The uploading server row is not listed twice (WR-01).
+    expect(screen.queryByText('Bedroom')).toBeNull();
   });
 
   it('local rows open their capture step; server rows are not buttons', async () => {

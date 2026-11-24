@@ -115,9 +115,11 @@ export default function LibraryScreen() {
     const status = s.serverWorldId ? serverStatus.get(s.serverWorldId) : undefined;
     return status === undefined || status === 'uploading';
   });
+  // ...and while it is shown, the local row stands in for its server row (WR-01).
+  const shadowed = new Set(shownScans.map((s) => s.serverWorldId));
   const items: RowItem[] = [
     ...shownScans.map((s) => ({ ...s, local: true as const })),
-    ...(data?.worlds ?? []),
+    ...(data?.worlds ?? []).filter((w) => !shadowed.has(w.id)),
   ];
   const noCache = !data && shownScans.length === 0;
 
