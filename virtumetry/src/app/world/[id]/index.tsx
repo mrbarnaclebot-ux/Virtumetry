@@ -87,9 +87,11 @@ export default function WorldScreen() {
   const onError = useCallback(
     async (e: { code: string }) => {
       setDomUp(true);
-      if (e.code === 'context_lost') crash();
+      if (e.code === 'context_lost') return crash();
+      // WR-01: any other terminal error lifts "Reconnecting viewer…" so the viewer's own Try again shows.
+      dispatch({ type: 'ready' });
       // Expired URLs: fresh ones change splatUrl, which reloads the viewer.
-      else if (e.code === 'load_failed' && urlsStale()) await refetch();
+      if (e.code === 'load_failed' && urlsStale()) await refetch();
     },
     [crash, urlsStale, refetch],
   );

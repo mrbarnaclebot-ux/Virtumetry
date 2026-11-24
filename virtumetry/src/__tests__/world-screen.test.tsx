@@ -230,6 +230,15 @@ describe('crash recovery (D-13b)', () => {
     expect(v().startPose).toEqual(POSE);
   });
 
+  it('a remount that fails to load clears "Reconnecting viewer…" (WR-01)', async () => {
+    await open();
+    await act(async () => dom().onContentProcessDidTerminate());
+    expect(screen.getByText('Reconnecting viewer…')).toBeTruthy();
+    await act(async () => v().onError!({ code: 'load_failed' }));
+    expect(screen.queryByText('Reconnecting viewer…')).toBeNull();
+    expect(screen.getByTestId('world-viewer')).toBeTruthy();
+  });
+
   it('onError context_lost counts as a crash; other errors do not', async () => {
     await open();
     await act(async () => v().onError!({ code: 'load_failed' }));
