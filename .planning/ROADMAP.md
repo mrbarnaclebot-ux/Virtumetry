@@ -116,13 +116,13 @@ Plans:
   4. The owner can rename a scan, and deleting it removes it from the database and R2 and sends a deletion request to the provider (mock) *(automated deletion-cascade test + manual Expo Go check)*
   5. Each app build profile points only to its own API URL, and the dev profile refuses a production URL *(automated config test)*
 
-**Plans:** 9 plans
+**Plans:** 2/9 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — Package legitimacy gate for all Phase 3 installs (owner checkpoint)
+- [x] 03-01-PLAN.md — Package legitimacy gate for all Phase 3 installs (owner checkpoint)
 **Wave 2**
-- [ ] 03-02-PLAN.md — Backend sign-in slice: Better Auth + migration 0003 + session mode + auth guards
+- [x] 03-02-PLAN.md — Backend sign-in slice: Better Auth + migration 0003 + session mode + auth guards
 - [ ] 03-05-PLAN.md — App sign-in slice: jest infra, resolveApiUrl, auth client, session gate, sign-in, Settings log out
 **Wave 3**
 - [ ] 03-03-PLAN.md — Library API: list fields, PATCH rename, two-account 404s, owner:create script
@@ -242,7 +242,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
-| 3. Owner Account & Scan Library | 0/TBD | Not started | - |
+| 3. Owner Account & Scan Library | 2/9 | In Progress|  |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
