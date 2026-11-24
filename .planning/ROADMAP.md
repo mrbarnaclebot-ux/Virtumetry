@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Isolated Backend Fork** - VirtSpace backend copied into `backend/`, stripped, on its own Neon/Railway/R2, with CI and paid-provider guards (completed 2026-11-23)
 - [x] **Phase 2: Bundle Pipeline & Mock Provider** - A recorded session becomes a valid Echo-3 bundle on R2 and runs through the mock provider to a ready world, at $0 (completed 2026-11-23)
-- [ ] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state
+- [ ] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md)
 - [ ] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
 - [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
 - [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
@@ -116,7 +116,7 @@ Plans:
   4. The owner can rename a scan, and deleting it removes it from the database and R2 and sends a deletion request to the provider (mock) *(automated deletion-cascade test + manual Expo Go check)*
   5. Each app build profile points only to its own API URL, and the dev profile refuses a production URL *(automated config test)*
 
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 **Wave 1**
@@ -133,7 +133,7 @@ Plans:
 - [x] 03-07-PLAN.md — App rename modal + optimistic delete with rollback
 - [x] 03-08-PLAN.md — Railway dev environment + production session-auth redeploy
 **Wave 6**
-- [ ] 03-09-PLAN.md — Build profiles, .env.development, SC5 test, owner phone checklist (checkpoint)
+- [x] 03-09-PLAN.md — Build profiles, .env.development, SC5 test, owner phone checklist (checkpoint)
 **UI hint**: yes
 
 ### Phase 4: $0 Capture-to-World Loop
@@ -242,7 +242,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Isolated Backend Fork | 7/7 | Complete    | 2026-11-23 |
 | 2. Bundle Pipeline & Mock Provider | 7/7 | Complete    | 2026-11-23 |
-| 3. Owner Account & Scan Library | 8/9 | In Progress|  |
+| 3. Owner Account & Scan Library | 9/9 | UAT pending |  |
 | 4. $0 Capture-to-World Loop | 0/TBD | Not started | - |
 | 5. Viewer, Floor Plan, Measure & Share | 0/TBD | Not started | - |
 | 6. Live Echo-3 Provider | 0/TBD | Not started | - |
