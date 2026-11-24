@@ -30,16 +30,16 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 - [ ] **CAP-03**: Owner gets one live coaching prompt at a time (slow down, more light, look at the floor/ceiling line, turn around)
 - [ ] **CAP-04**: When ARKit tracking is lost, capture pauses automatically, tells the owner how to recover, and resumes only after tracking has been normal for a short warm-up
 - [ ] **CAP-05**: Owner sees a readiness meter (green/amber/red) combining frame count, coverage, blur and tracking quality, with thresholds that can be tuned without an app build
-- [ ] **CAP-06**: Owner sees a live cost meter showing the current Echo-3 cost (900 + frames credits, in $) while scanning
+- [x] **CAP-06**: Owner sees a live cost meter showing the current Echo-3 cost (900 + frames credits, in $) while scanning
 - [ ] **CAP-07**: Owner sees a top-down coverage mini-map of the path walked and directions looked
 - [ ] **CAP-08**: Capture enforces Echo-3 min/max frame limits and warns about heat or low storage before and during a scan
-- [ ] **CAP-09**: A finished scan is saved on the phone first; owner can review it (frame count, duration, cost, readiness) and choose upload or discard
+- [x] **CAP-09**: A finished scan is saved on the phone first; owner can review it (frame count, duration, cost, readiness) and choose upload or discard
 - [ ] **CAP-10**: In Expo Go and tests, a fixture capture source replays a recorded scan through the same interface as the native module
 
 ### Upload & Processing (PROC)
 
-- [ ] **PROC-01**: Before spending credits the app runs pre-upload checks (frame count, blur, coverage, tracking gaps) and the backend re-runs the same rules plus semantic checks (pose continuity, forward vector vs motion, intrinsics vs image size)
-- [ ] **PROC-02**: Owner sees the Echo-3 cost quote and must explicitly approve it before processing starts
+- [x] **PROC-01**: Before spending credits the app runs pre-upload checks (frame count, blur, coverage, tracking gaps) and the backend re-runs the same rules plus semantic checks (pose continuity, forward vector vs motion, intrinsics vs image size)
+- [x] **PROC-02**: Owner sees the Echo-3 cost quote and must explicitly approve it before processing starts
 - [ ] **PROC-03**: Uploads continue while the phone is locked or the app is suspended or terminated by iOS, and after a force-quit they resume on next launch by re-sending only the frames the server reports missing
 - [x] **PROC-04**: Backend converts ARKit poses to OpenCV `camera_from_world`, writes intrinsics and EXIF timestamps, and packs a valid Echo-3 capture-bundle ZIP on R2 with a Range-capable presigned URL valid ≥24 h
 - [ ] **PROC-05**: Backend submits to Echo-3 at most once per approved scan: idempotency key and exact request body are saved before the call; a retry after failure needs a new explicit owner approval
@@ -137,13 +137,13 @@ Deferred. Tracked, not in the current roadmap.
 | CAP-03 | Phase 8 | Pending |
 | CAP-04 | Phase 8 | Pending |
 | CAP-05 | Phase 4 | Pending |
-| CAP-06 | Phase 4 | Pending |
+| CAP-06 | Phase 4 | Complete |
 | CAP-07 | Phase 4 | Pending |
 | CAP-08 | Phase 8 | Pending |
-| CAP-09 | Phase 4 | Pending |
+| CAP-09 | Phase 4 | Complete |
 | CAP-10 | Phase 4 | Pending |
-| PROC-01 | Phase 4 | Pending |
-| PROC-02 | Phase 4 | Pending |
+| PROC-01 | Phase 4 | Complete |
+| PROC-02 | Phase 4 | Complete |
 | PROC-03 | Phase 4 | Pending |
 | PROC-04 | Phase 2 | Complete |
 | PROC-05 | Phase 6 | Pending |
