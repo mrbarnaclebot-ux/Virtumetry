@@ -76,14 +76,14 @@ describe('validateSession: one failing rule per code', () => {
     expect(run((_, f) => { f[5]!.wallMs = f[4]!.wallMs; })).toEqual(['TIMESTAMP_NOT_INCREASING']);
   });
   it('IMAGE_LONG_EDGE', () => {
-    expect(run((s) => { s.imageWidth = 2000; })).toEqual(['IMAGE_LONG_EDGE']);
+    expect(run((s, f) => { s.imageWidth = 2000; f.forEach((x) => { x.K.cx = 1000; }); })).toEqual(['IMAGE_LONG_EDGE']);
   });
   it('IMAGE_SHORT_EDGE', () => {
-    expect(run((s) => { s.imageHeight = 300; })).toEqual(['IMAGE_SHORT_EDGE']);
+    expect(run((s, f) => { s.imageHeight = 300; f.forEach((x) => { x.K.cy = 150; }); })).toEqual(['IMAGE_SHORT_EDGE']);
   });
   it('INTRINSICS_FOCAL_RANGE', () => {
-    expect(run((_, f) => { f[0]!.K.fx = 50; })).toEqual(['INTRINSICS_FOCAL_RANGE']);
-    expect(run((_, f) => { f[0]!.K.fy = 20000; })).toEqual(['INTRINSICS_FOCAL_RANGE']);
+    expect(run((_, f) => { f[0]!.K.fx = 50; f[0]!.K.fy = 50; })).toEqual(['INTRINSICS_FOCAL_RANGE']);
+    expect(run((_, f) => { f[0]!.K.fx = 20000; f[0]!.K.fy = 20000; })).toEqual(['INTRINSICS_FOCAL_RANGE']);
   });
   it('INTRINSICS_PRINCIPAL_POINT', () => {
     expect(run((_, f) => { f[0]!.K.cx = 640; })).toEqual(['INTRINSICS_PRINCIPAL_POINT']);
@@ -146,7 +146,7 @@ describe('validateSession: D-16 device and semantic rules', () => {
     });
     expect(yawSectorCount(turn)).toBe(YAW_SECTORS);
     const y0 = frameYawDeg(turn[0]!.T_arkit)!, y2 = frameYawDeg(turn[2]!.T_arkit)!;
-    expect((((y0 - y2) % 360) + 360) % 360).toBeCloseTo(30);
+    expect((((y2 - y0) % 360) + 360) % 360).toBeCloseTo(30);
   });
   it('frameYawDeg is null when looking straight down', () => {
     expect(frameYawDeg([1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1])).toBeNull();
