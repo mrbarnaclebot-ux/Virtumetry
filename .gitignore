@@ -1,4 +1,5 @@
 .env
 .env.*
+!virtumetry/.env.development
 !.env.example
 node_modules/

@@ -43,11 +43,14 @@ describe('resolveApiUrl', () => {
   });
 });
 
+declare const __dirname: string;
+
 // SC5: every build profile resolves to its own backend; dev/preview never reach production.
 describe('build profiles', () => {
+  // The app has no @types/node; these minimal shapes cover what the test uses.
   /* eslint-disable @typescript-eslint/no-require-imports */
-  const fs = require('fs') as typeof import('fs');
-  const path = require('path') as typeof import('path');
+  const fs = require('fs') as { readFileSync(file: string, enc: 'utf8'): string };
+  const path = require('path') as { join(...parts: string[]): string };
   /* eslint-enable @typescript-eslint/no-require-imports */
   const root = path.join(__dirname, '..', '..');
   const eas = JSON.parse(fs.readFileSync(path.join(root, 'eas.json'), 'utf8'));
