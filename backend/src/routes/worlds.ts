@@ -98,6 +98,9 @@ export const listQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+/** PATCH /v1/worlds/:id body (D-16): title only, trimmed, 1-80 chars. */
+export const renameBody = z.object({ title: z.string().trim().min(1).max(80) }).strict();
+
 function requireUserId(req: FastifyRequest, reply: FastifyReply): string | null {
   if (!req.userId) {
     reply.code(401).send({ error: 'unauthenticated' });
@@ -126,6 +129,12 @@ export function serializeWorld(w: World): Record<string, unknown> {
     provider: w.provider,
     credits_spent: w.creditsSpent,
     created_at: w.createdAt,
+    // D-15a: honest Library states. eta_seconds stays null until a real ETA exists.
+    failure_stage: w.failureStage,
+    failure_code: w.failureCode,
+    failure_message: w.failureMessage,
+    charged: w.charged,
+    eta_seconds: null,
   };
 }
 
@@ -431,6 +440,26 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
       // Kept alongside has_more for existing pagination consumers.
       next_offset: hasMore ? q.offset + q.limit : null,
     });
+  });
+
+  // PATCH /v1/worlds/:id — rename (D-16). Owner-only; title is the only
+  // writable field. The UPDATE re-checks owner + not-deleted itself.
+  app.patch<{ Params: { id: string } }>('/v1/worlds/:id', async (req, reply) => {
+    const userId = requireUserId(req, reply);
+    if (!userId) return;
+    const parsed = renameBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_body' });
+    const db = getDb();
+    const world = await findOwnedWorld(db, req.params.id, userId);
+    if (!world) return reply.code(404).send({ error: 'world_not_found' });
+
+    const [row] = await db
+      .update(worlds)
+      .set({ title: parsed.data.title, updatedAt: new Date() })
+      .where(and(eq(worlds.id, world.id), eq(worlds.ownerId, userId), isNull(worlds.deletedAt)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: 'world_not_found' });
+    return reply.send(serializeWorld(row));
   });
 
   // DELETE /v1/worlds/:id — soft delete + enqueue purge.
