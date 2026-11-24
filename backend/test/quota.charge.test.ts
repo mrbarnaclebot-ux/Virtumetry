@@ -7,7 +7,8 @@ let currentDb: unknown;
 vi.mock('../src/db/client.js', () => ({ getDb: () => currentDb }));
 
 import { chargeScanQuota } from '../src/quota.js';
-import { worldsRoutes } from '../src/routes/worlds.js';
+import { scansRoutes } from '../src/routes/scans.js';
+import { createMockProvider } from '../src/provider/mock.js';
 import { worlds, captures, type World } from '../src/db/schema.js';
 import { loadConfig } from '../src/config.js';
 import type { Db } from '../src/db/client.js';
@@ -149,12 +150,21 @@ async function buildApp() {
   app.addHook('preHandler', async (req) => {
     req.userId = 'user-1';
   });
-  worldsRoutes(app, { config, storage: storage() });
+  scansRoutes(app, { config, storage: storage(), provider: createMockProvider({}) });
   await app.ready();
   return app;
 }
 
-describe('POST /v1/worlds quota enforcement', () => {
+const SCAN = { frame_count: 1, image_w: 1920, image_h: 1440, approved_max_credits: 901 };
+const create = (app: Awaited<ReturnType<typeof buildApp>>) =>
+  app.inject({
+    method: 'POST',
+    url: '/v1/scans',
+    headers: { 'idempotency-key': '11111111-2222-4333-8444-555555555555' },
+    payload: SCAN,
+  });
+
+describe('POST /v1/scans quota enforcement', () => {
   it('creates the world when the charge succeeds, using exactly one quota statement', async () => {
     const counter = { executes: 0 };
     currentDb = routeDb(
@@ -163,7 +173,7 @@ describe('POST /v1/worlds quota enforcement', () => {
     );
     const app = await buildApp();
 
-    const res = await app.inject({ method: 'POST', url: '/v1/worlds', payload: { frame_count: 1 } });
+    const res = await create(app);
 
     expect(res.statusCode).toBe(201);
     expect(counter.executes).toBe(1);
@@ -176,7 +186,7 @@ describe('POST /v1/worlds quota enforcement', () => {
     currentDb = routeDb([{ user_id: 'user-1', new_count: null, reset_at: resetAt }], counter);
     const app = await buildApp();
 
-    const res = await app.inject({ method: 'POST', url: '/v1/worlds', payload: { frame_count: 1 } });
+    const res = await create(app);
 
     expect(res.statusCode).toBe(429);
     expect(res.json()).toEqual({
@@ -192,7 +202,7 @@ describe('POST /v1/worlds quota enforcement', () => {
     currentDb = routeDb([], counter);
     const app = await buildApp();
 
-    const res = await app.inject({ method: 'POST', url: '/v1/worlds', payload: { frame_count: 1 } });
+    const res = await create(app);
 
     expect(res.statusCode).toBe(401);
     expect(res.json()).toEqual({ error: 'unknown_user' });
