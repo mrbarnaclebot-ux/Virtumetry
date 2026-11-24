@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 5 context gathered
-last_updated: "2026-11-24T16:40:32.965Z"
+status: planning
+stopped_at: Phase 5 UI-SPEC approved
+last_updated: "2026-11-24T16:45:08.522Z"
 last_activity: 2026-11-24
 progress:
   total_phases: 9
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-23)
 
 **Core value:** A walk-through scan of a real room comes back as a faithful, walkable 3D world, reliably, without wasting paid processing on bad captures.
-**Current focus:** Phase 4 — $0 Capture-to-World Loop
+**Current focus:** Phase 5 — Viewer, Floor Plan, Measure & Share (Phase 4 complete 2026-11-24, owner UAT passed)
 
 ## Current Position
 
-Phase: 4 ($0 Capture-to-World Loop) — EXECUTING
-Plan: 9 of 9
-Status: Phase complete — ready for verification
+Phase: 5 (Viewer, Floor Plan, Measure & Share) — PLANNING
+Plan: 0 of TBD
+Status: Phase 4 complete (2026-11-24); Phase 5 planning
 Last activity: 2026-11-24
 
 Progress: [██████████] 100%
@@ -117,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-24T16:40:32.953Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-viewer-floor-plan-measure-share/05-CONTEXT.md
+Last session: 2026-11-24T16:45:08.512Z
+Stopped at: Phase 5 UI-SPEC approved
+Resume file: .planning/phases/05-viewer-floor-plan-measure-share/05-UI-SPEC.md
