@@ -134,13 +134,15 @@ it('shows the reload block when the viewer loses its context', async () => {
   expect(screen.getByRole('button', { name: 'Reload page' })).toBeTruthy();
 });
 
-it('re-opens once for fresh URLs when an asset fetch fails after 14 minutes', async () => {
+it('re-opens for fresh URLs when an asset fetch fails after 14 minutes, once per window (WR-05)', async () => {
   const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
   const fresh = { ...OPEN, assets: { ...OPEN.assets, splat_url: 'https://r2.test.invalid/splat2.ply' } };
+  const fresh3 = { ...OPEN, assets: { ...OPEN.assets, splat_url: 'https://r2.test.invalid/splat3.ply' } };
   fetchMock
     .mockResolvedValueOnce(ok({ title: 'Kitchen', needs_password: false }))
     .mockResolvedValueOnce(ok(OPEN))
-    .mockResolvedValueOnce(ok(fresh));
+    .mockResolvedValueOnce(ok(fresh))
+    .mockResolvedValueOnce(ok(fresh3));
   await render(<SharePage />);
   await screen.findByTestId('world-viewer');
 
@@ -150,6 +152,12 @@ it('re-opens once for fresh URLs when an asset fetch fails after 14 minutes', as
   expect(viewer.current!.splatUrl).toBe(fresh.assets.splat_url);
 
   await act(async () => viewer.current!.onError!({ code: 'load_failed' }));
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(fetchMock).toHaveBeenCalledTimes(3); // same window: no repeat
+
+  // A second expiry later in the same tab re-opens again.
+  now.mockReturnValue(1_000_000 + 30 * 60_000);
+  await act(async () => viewer.current!.onError!({ code: 'load_failed' }));
+  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(viewer.current!.splatUrl).toBe(fresh3.assets.splat_url);
   now.mockRestore();
 });

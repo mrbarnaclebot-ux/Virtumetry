@@ -130,13 +130,17 @@ export default function SharePage() {
       if (e.code === 'context_lost') return setCrashed(true);
       // Expired R2 403s carry no CORS headers, so any fetch failure after ~14 min means "re-open once".
       if (e.code !== 'load_failed' || reopened.current || Date.now() - openedAt.current < REOPEN_MS) return;
-      reopened.current = true;
+      reopened.current = true; // in-flight guard only
       try {
         const data = await openPublicShare(slug, keptPassword.current);
+        // WR-05: a fresh 15-min window, so a later expiry can re-open again (REOPEN_MS blocks an instant repeat).
+        openedAt.current = Date.now();
         setState({ k: 'opened', data });
         setViewerKey((k) => k + 1);
       } catch {
         // The viewer's own load error (B9) stays on screen.
+      } finally {
+        reopened.current = false;
       }
     },
     [slug],
