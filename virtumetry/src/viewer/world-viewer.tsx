@@ -87,7 +87,9 @@ export default function WorldViewer(props: ViewerProps) {
   const keys = useRef(new Set<Dir>());
   // Floor plan (D-11) and WebGL context loss (D-13a)
   const [planOpen, setPlanOpen] = useState(false);
-  const [planFailed, setPlanFailed] = useState(false);
+  // Failure is per URL: fresh URLs (owner refetch, web re-open) bring Plan back (review-2 WR-01).
+  const [planFailedUrl, setPlanFailedUrl] = useState<string | undefined>(undefined);
+  const planFailed = !!props.floorplanUrl && planFailedUrl === props.floorplanUrl;
   const planImgRef = useRef<HTMLDivElement>(null);
   const youRef = useRef<HTMLDivElement>(null);
   const planTap = useRef<{ id: number; x: number; y: number; t: number } | null>(null);
@@ -194,6 +196,12 @@ export default function WorldViewer(props: ViewerProps) {
       engineRef.current = null;
     };
   }, [splatUrl, attempt, reducedMotion, coarse]);
+
+  // The plan image is fetched lazily; warm it while its presigned URL is fresh (review-2 WR-01).
+  const { floorplanUrl } = props;
+  useEffect(() => {
+    if (floorplanUrl) new Image().src = floorplanUrl;
+  }, [floorplanUrl]);
 
   useEffect(() => {
     if (!hint?.ms) return;
@@ -529,7 +537,7 @@ export default function WorldViewer(props: ViewerProps) {
               draggable={false}
               style={S.planImg}
               onError={() => {
-                setPlanFailed(true);
+                setPlanFailedUrl(props.floorplanUrl);
                 setPlanOpen(false);
               }}
             />
