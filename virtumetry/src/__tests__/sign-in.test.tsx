@@ -66,9 +66,11 @@ describe('sign-in screen', () => {
     let resolve!: (v: unknown) => void;
     signInEmail.mockReturnValueOnce(new Promise((r) => (resolve = r)));
     await fill();
-    await fireEvent.press(screen.getByRole('button', { name: 'Log in' }));
-    expect(screen.getByText('Logging in…')).toBeTruthy();
+    // Don't await the press: its act() would wait on the still-pending sign-in.
+    const pressing = fireEvent.press(screen.getByRole('button', { name: 'Log in' }));
+    expect(await screen.findByText('Logging in…')).toBeTruthy();
     await act(async () => resolve({ data: {}, error: null }));
+    await pressing;
   });
 
   it('has no sign-up or forgot-password affordance', async () => {

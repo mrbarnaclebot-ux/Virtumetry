@@ -16,3 +16,6 @@ jest.mock('expo-secure-store', () => {
     deleteItemAsync: jest.fn(async (k: string) => void store.delete(k)),
   };
 });
+
+// theme.ts imports the web-only global stylesheet; jest can't parse CSS.
+jest.mock('@/global.css', () => ({}));
