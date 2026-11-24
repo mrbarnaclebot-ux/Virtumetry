@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { Alert } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
 import type { LibraryItem } from '@/library/display-state';
@@ -54,7 +54,7 @@ let fetchMock: jest.Mock;
 
 beforeEach(() => {
   fetchMock = jest.fn();
-  global.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
   (endSession as jest.Mock).mockClear();
   __setLocalScansForTest([]);
 });
@@ -114,7 +114,7 @@ describe('library screen', () => {
   it('shows a spinner on first load', async () => {
     fetchMock.mockReturnValue(new Promise(() => {}));
     await renderLibrary();
-    expect(screen.UNSAFE_getByType(ActivityIndicator)).toBeTruthy();
+    expect(screen.getByTestId('library-loading')).toBeTruthy();
   });
 
   it('shows the error block with no cache and retries on Try again', async () => {
@@ -131,13 +131,12 @@ describe('library screen', () => {
 
   it('keeps the list and shows the refresh error when a refresh fails', async () => {
     fetchMock.mockResolvedValueOnce(page([w('Kitchen', { status: 'ready' })]));
-    await renderLibrary();
+    const client = await renderLibrary();
     await screen.findByText('Ready');
 
     fetchMock.mockRejectedValueOnce(new TypeError('Network request failed'));
-    const refresh = screen.UNSAFE_getByType(RefreshControl);
     await act(async () => {
-      await refresh.props.onRefresh();
+      await client.refetchQueries({ queryKey: ['worlds'] });
     });
     await screen.findByText("Couldn't refresh. Showing your last saved list.");
     expect(screen.getByText('Ready')).toBeTruthy();
@@ -156,7 +155,7 @@ describe('library screen', () => {
 
     expect(screen.getByLabelText('Kitchen, Uploading · 40%')).toBeTruthy();
     expect(screen.getByLabelText(`Attic, Cancelled, ${date}`)).toBeTruthy();
-    expect(screen.getByRole('progressbar').props.accessibilityValue).toEqual({ min: 0, max: 100, now: 40 });
+    expect(screen.getByTestId('row-progress').props.accessibilityValue).toEqual({ min: 0, max: 100, now: 40 });
 
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     await fireEvent.press(screen.getByRole('button', { name: 'More actions for Kitchen' }));

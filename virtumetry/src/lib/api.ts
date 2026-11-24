@@ -1,0 +1,48 @@
+import { useQuery } from '@tanstack/react-query';
+
+import { API_URL } from '@/config/api';
+import { pollInterval, type LibraryItem } from '@/library/display-state';
+import { authClient } from '@/lib/auth-client';
+import { endSession } from '@/lib/session';
+
+export class ApiError extends Error {
+  constructor(public status: number) {
+    super(`API error ${status}`);
+  }
+}
+
+export class UnauthorizedError extends ApiError {
+  constructor() {
+    super(401);
+  }
+}
+
+/** Every /v1 call: explicit session cookie only, never ambient credentials (AUTH-05, T-03-30). */
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: 'omit',
+    headers: { ...(init.headers as Record<string, string>), Cookie: await authClient.getCookie(), 'content-type': 'application/json' },
+  });
+  if (res.status === 401) {
+    await endSession({ notice: true });
+    throw new UnauthorizedError();
+  }
+  if (!res.ok) throw new ApiError(res.status);
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+export type WorldsPage = { worlds: LibraryItem[]; has_more: boolean; next_offset: number | null };
+
+// ponytail: first 100 only; page with next_offset when an owner has more scans.
+export const listWorlds = () => apiFetch<WorldsPage>('/v1/worlds?limit=100');
+
+/** Library query: polls every 5 s only while something is in flight (D-20). */
+export function useWorlds() {
+  return useQuery({
+    queryKey: ['worlds'],
+    queryFn: listWorlds,
+    refetchInterval: (q) => pollInterval(q.state.data?.worlds),
+  });
+}
