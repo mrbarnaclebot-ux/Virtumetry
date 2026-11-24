@@ -1,5 +1,5 @@
 import { useCameraPermissions } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -13,13 +13,14 @@ import { useTheme } from '@/hooks/use-theme';
 import { getPrepFlags } from '@/capture/prep-flags';
 import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import { useLocalScans } from '@/capture/store';
-import type { DisplayState } from '@/library/display-state';
+import type { DisplayState, LocalScan } from '@/library/display-state';
 import { useDeleteWorld, useWorlds } from '@/lib/api';
 
 export default function LibraryScreen() {
   const theme = useTheme();
-  const { data, error, isPending, refetch } = useWorlds();
   const { scans, remove: removeLocal } = useLocalScans();
+  const forcePoll = scans.some((s) => s.uploadState === 'approved' || s.uploadState === 'uploading' || s.uploadState === 'paused');
+  const { data, error, isPending, refetch } = useWorlds({ forcePoll });
   const deleteWorld = useDeleteWorld();
   const [refreshing, setRefreshing] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
@@ -44,6 +45,12 @@ export default function LibraryScreen() {
       </ThemedText>
     </Pressable>
   );
+
+  const openScan = (scan: LocalScan) =>
+    router.push({
+      pathname: '/capture/[id]',
+      params: { id: scan.id, step: scan.uploadState === 'saved' ? 'review' : 'upload' },
+    } as unknown as Href);
 
   // Row action menu (D-21). Local scans have no server id: Discard only (UI-SPEC §2).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
@@ -173,7 +180,7 @@ export default function LibraryScreen() {
       <FlatList
         data={items}
         keyExtractor={(i) => ('local' in i ? `local-${i.id}` : i.id)}
-        renderItem={({ item }) => <LibraryRow item={item} onMore={openRowMenu} />}
+        renderItem={({ item }) => <LibraryRow item={item} onMore={openRowMenu} onOpen={openScan} />}
         ItemSeparatorComponent={() => (
           <View style={[styles.separator, { backgroundColor: theme.backgroundSelected }]} />
         )}

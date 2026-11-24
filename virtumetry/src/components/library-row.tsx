@@ -16,9 +16,11 @@ const SECONDARY_TONE = { muted: 'textSecondary', warning: 'warning' } as const;
 type Props = {
   item: RowItem;
   onMore: (item: RowItem, state: DisplayState) => void;
+  /** Local rows only: opens capture/[id] at review or upload (UI-SPEC §2). */
+  onOpen?: (item: LocalScan & { local: true }) => void;
 };
 
-export function LibraryRow({ item, onMore }: Props) {
+export function LibraryRow({ item, onMore, onOpen }: Props) {
   const theme = useTheme();
   const state = toDisplayState(item, new Date());
   const thumbnailUrl = 'local' in item ? undefined : item.assets?.thumbnail_url;
@@ -27,7 +29,17 @@ export function LibraryRow({ item, onMore }: Props) {
 
   return (
     <View style={[styles.row, { opacity: state.rowOpacity }]}>
-      <View accessible accessibilityLabel={label} style={styles.main}>
+      <Pressable
+        accessible
+        accessibilityLabel={label}
+        {...('local' in item
+          ? {
+              accessibilityRole: 'button' as const,
+              accessibilityHint: item.uploadState === 'saved' ? 'Opens review' : 'Shows upload',
+              onPress: () => onOpen?.(item),
+            }
+          : { disabled: true })}
+        style={({ pressed }) => [styles.main, pressed && { backgroundColor: theme.backgroundSelected }]}>
         <View accessible={false} style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
           {thumbnailUrl && !imageFailed ? (
             <Image
@@ -81,7 +93,7 @@ export function LibraryRow({ item, onMore }: Props) {
             </ThemedText>
           )}
         </View>
-      </View>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`More actions for ${state.displayTitle}`}

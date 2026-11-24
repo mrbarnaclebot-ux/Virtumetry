@@ -37,6 +37,8 @@ export type LocalScan = {
   imageW: number;
   imageH: number;
   readiness: Readiness['level'];
+  /** Readiness reason at Stop, shown again on review. */
+  readinessReason?: string;
   precheckIssues: PrecheckIssue[];
   approvedMaxCredits?: number;
   serverWorldId?: string;
@@ -62,8 +64,9 @@ const TERMINAL = new Set(['ready', 'failed', 'cancelled']);
 
 export const isTerminal = (status: string) => TERMINAL.has(status);
 
-export function pollInterval(items?: { status: string }[]): number | false {
-  return items?.some((i) => !isTerminal(i.status)) ? 5000 : false;
+/** `force`: a local scan is uploading, so keep polling until its server row takes over (UI-SPEC timing). */
+export function pollInterval(items?: { status: string }[], force = false): number | false {
+  return force || items?.some((i) => !isTerminal(i.status)) ? 5000 : false;
 }
 
 const PROCESSING_LINES: Record<string, string> = {
@@ -73,6 +76,7 @@ const PROCESSING_LINES: Record<string, string> = {
   importing: 'Processing · Finishing up',
 };
 
+const CHECKS = "Didn't pass checks";
 const UPLOAD = "Upload didn't finish";
 const REJECTED = "The scan couldn't be turned into a room";
 const TIMEOUT = 'Processing took too long';
@@ -85,6 +89,7 @@ const UPLOAD_CODE = /^(UPLOAD_STALE|BUNDLE_NOT_RANGEABLE|MANIFEST_|ZIP_|IMAGES_M
 
 function failureText(code: string | null, stage: string | null): string {
   const c = code ?? '';
+  if (stage === 'validate') return CHECKS; // ahead of the code families (IMAGE_* would read as upload)
   if (UPLOAD_CODE.test(c)) return UPLOAD;
   if (REJECTED_CODES.has(c)) return REJECTED;
   if (c.includes('TIMEOUT')) return TIMEOUT;
@@ -123,13 +128,45 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
   const displayTitle = item.title?.trim() || 'Untitled scan';
 
   if ('local' in item) {
+    const date = formatDate(item.createdAt);
+    switch (item.uploadState ?? 'saved') {
+      case 'saved':
+        return {
+          ...base,
+          kind: 'saved_on_phone',
+          displayTitle,
+          statusLine: `Saved on phone · ${item.precheckIssues?.length ? CHECKS : 'Not uploaded'}`,
+          secondaryLine: item.frameCount != null ? `${item.frameCount} frames · ${date}` : date,
+          icon: 'iphone',
+        };
+      case 'blocked':
+      case 'failed':
+        return {
+          ...base,
+          kind: 'failed',
+          displayTitle,
+          statusLine: `Failed · ${item.uploadState === 'blocked' ? CHECKS : failureText(item.failureCode ?? null, null)}`,
+          secondaryLine: `Not charged · ${date}`,
+          tone: 'destructive',
+          icon: 'exclamationmark.triangle.fill',
+        };
+      case 'done':
+        return { ...base, kind: 'processing', displayTitle, statusLine: 'Uploaded · Processing started', secondaryLine: null };
+    }
+    const p = item.progress;
+    const pct = p && p.total > 0 ? (p.uploaded / p.total) * 100 : null;
     return {
       ...base,
-      kind: 'saved_on_phone',
+      kind: 'uploading',
       displayTitle,
-      statusLine: 'Saved on phone · Not uploaded',
-      secondaryLine: formatDate(item.createdAt),
-      icon: 'iphone',
+      statusLine:
+        item.uploadState === 'paused'
+          ? 'Upload paused · Waiting for connection'
+          : pct != null
+            ? `Uploading · ${Math.round(pct)}%`
+            : 'Uploading…',
+      progress: pct,
+      secondaryLine: null,
     };
   }
 

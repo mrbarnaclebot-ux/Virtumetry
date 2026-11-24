@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
@@ -12,6 +13,7 @@ jest.mock('@/lib/auth-client', () => ({
   authClient: { getCookie: jest.fn(async () => 'better-auth.session_token=abc') },
 }));
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
 const now = Date.now();
 const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
@@ -198,5 +200,22 @@ describe('library screen', () => {
     await screen.findByText('Kitchen');
     expect(screen.queryByText('Hallway')).toBeNull();
     expect(screen.getByText('Porch')).toBeTruthy();
+  });
+
+  it('local rows open their capture step; server rows are not buttons', async () => {
+    __setLocalScansForTest([
+      local('l1', 'Hallway'),
+      local('l2', 'Porch', { uploadState: 'uploading', progress: { uploaded: 12, total: 32 } }),
+    ]);
+    fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'ready' })]));
+    await renderLibrary();
+    await screen.findByText('Ready');
+    expect(screen.getByText('Uploading · 38%')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: /^Hallway, Saved on phone/ }));
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/capture/[id]', params: { id: 'l1', step: 'review' } });
+    await fireEvent.press(screen.getByRole('button', { name: /^Porch, Uploading/ }));
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/capture/[id]', params: { id: 'l2', step: 'upload' } });
+    expect(screen.queryByRole('button', { name: /^Kitchen, Ready/ })).toBeNull();
   });
 });

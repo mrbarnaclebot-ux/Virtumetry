@@ -46,12 +46,12 @@ export type WorldsPage = { worlds: LibraryItem[]; has_more: boolean; next_offset
 // ponytail: first 100 only; page with next_offset when an owner has more scans.
 export const listWorlds = () => apiFetch<WorldsPage>('/v1/worlds?limit=100');
 
-/** Library query: polls every 5 s only while something is in flight (D-20). */
-export function useWorlds() {
+/** Library query: polls every 5 s only while something is in flight (D-20), or a local scan is uploading. */
+export function useWorlds({ forcePoll = false } = {}) {
   return useQuery({
     queryKey: ['worlds'],
     queryFn: listWorlds,
-    refetchInterval: (q) => pollInterval(q.state.data?.worlds),
+    refetchInterval: (q) => pollInterval(q.state.data?.worlds, forcePoll),
   });
 }
 
