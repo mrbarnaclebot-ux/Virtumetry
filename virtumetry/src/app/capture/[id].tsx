@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCaptureConfig } from '@/capture/capture-config';
 import { costFor, formatCost, formatCredits, formatUsd } from '@/capture/cost';
-import { checkReason } from '@/capture/precheck';
+import { checkReason, serverReason } from '@/capture/precheck';
 import { LABEL } from '@/capture/readiness';
 import { discardLocalScan, updateLocalScan, useLocalScan } from '@/capture/store';
 import { ReadinessPill } from '@/components/readiness-pill';
@@ -25,9 +25,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { LocalScan } from '@/library/display-state';
+import { toDisplayState, type LocalScan } from '@/library/display-state';
 import { createScan, getQuote } from '@/lib/api';
-import { kickUploadManager } from '@/upload/manager';
+import { kickUploadManager, useUploadProgress } from '@/upload/manager';
 
 // D-14..D-21: one route, three steps (review -> quote -> upload), system theme (UI-SPEC §5-§7).
 type Step = 'review' | 'quote' | 'upload';
@@ -390,9 +390,78 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
 // --- Upload (D-17/D-21, UI-SPEC §7) ---
 
 function Upload({ scan }: { scan: LocalScan }) {
+  const theme = useTheme();
+  const live = useUploadProgress(scan.id) ?? scan.progress;
+  const state = scan.uploadState;
+  const blocked = state === 'blocked';
+  const failed = state === 'failed';
+  const failedLine = failed ? toDisplayState({ ...scan, local: true }, new Date()).statusLine : null;
+  useAnnounce(blocked ? "Didn't pass checks" : failedLine);
+
+  const actions = <Neutral label="Back to Library" onPress={close} />;
+
+  if (blocked || failed) {
+    return (
+      <Layout title="Uploading" actions={actions}>
+        <View accessibilityLiveRegion="polite" style={styles.blocked}>
+          <View accessible={false}>
+            <SymbolView name="xmark.circle.fill" size={48} tintColor={theme.destructive} />
+          </View>
+          <ThemedText type="subtitle" accessibilityRole="header" maxFontSizeMultiplier={1.6} style={styles.blockedHeading}>
+            {blocked ? "Didn't pass checks" : failedLine}
+          </ThemedText>
+          {blocked && (
+            <ThemedText maxFontSizeMultiplier={1.6} style={[styles.center, styles.gap]}>
+              {serverReason(scan.failureCode ?? null)}
+            </ThemedText>
+          )}
+          <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.gap}>
+            Not charged
+          </ThemedText>
+        </View>
+      </Layout>
+    );
+  }
+
+  const done = state === 'done';
+  const pct = live && live.total > 0 ? Math.round((live.uploaded / live.total) * 100) : null;
+  const status = done
+    ? 'Uploaded · Processing started'
+    : state === 'paused'
+      ? 'Upload paused · Waiting for connection'
+      : pct != null
+        ? `Uploading · ${pct}%`
+        : 'Uploading…';
+  const fill = done ? 100 : pct;
+
   return (
-    <Layout title="Uploading" actions={<Neutral label="Back to Library" onPress={close} />}>
-      <ThemedText>{scan.uploadState}</ThemedText>
+    <Layout title="Uploading" actions={actions}>
+      <View style={styles.section}>
+        <ThemedText
+          type="smallBold"
+          themeColor={state === 'paused' ? 'textSecondary' : 'text'}
+          maxFontSizeMultiplier={1.6}
+          style={styles.tabular}>
+          {status}
+        </ThemedText>
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 0, max: 100, now: fill ?? 0 }}
+          style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
+          {fill != null && <View style={[styles.fill, { width: `${fill}%`, backgroundColor: theme.accent }]} />}
+        </View>
+        {live && !done && (
+          <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={[styles.gap, styles.tabular]}>
+            {`${live.uploaded} of ${live.total} files`}
+          </ThemedText>
+        )}
+      </View>
+      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.section}>
+        {done
+          ? "You'll see progress in your library."
+          : 'You can close this screen. The upload picks up where it left off when you open the app again.'}
+      </ThemedText>
     </Layout>
   );
 }
@@ -425,6 +494,11 @@ const styles = StyleSheet.create({
   retry: { marginTop: Spacing.three, minHeight: 44 },
   textButton: { marginTop: Spacing.three, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   tabular: { fontVariant: ['tabular-nums'] },
+  track: { height: 4, borderRadius: 2, marginTop: Spacing.one, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2 },
+  blocked: { alignItems: 'center', marginTop: Spacing.five },
+  blockedHeading: { marginTop: Spacing.three, textAlign: 'center' },
+  center: { textAlign: 'center' },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.8 },
 });

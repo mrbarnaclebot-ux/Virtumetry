@@ -56,7 +56,7 @@ beforeEach(() => {
 async function renderStep(step: 'quote' | 'upload', s: LocalScan = scan()) {
   (useLocalSearchParams as jest.Mock).mockReturnValue({ id: s.id, step });
   __setLocalScansForTest([s]);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
   await render(
     <QueryClientProvider client={client}>
       <CaptureScreen />
@@ -122,5 +122,48 @@ describe('quote step', () => {
     quoteResponse = async () => ok(QUOTE);
     await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByText('~930 credits');
+  });
+});
+
+describe('upload step', () => {
+  it('shows percent, bar and file count from live progress', async () => {
+    (useUploadProgress as jest.Mock).mockReturnValue({ uploaded: 12, total: 32 });
+    await renderStep('upload', scan({ uploadState: 'uploading', serverWorldId: 'w1' }));
+    expect(screen.getByText('Uploading · 38%')).toBeTruthy();
+    expect(screen.getByText('12 of 32 files')).toBeTruthy();
+    expect(screen.getByRole('progressbar').props.accessibilityValue).toMatchObject({ now: 38 });
+    expect(
+      screen.getByText('You can close this screen. The upload picks up where it left off when you open the app again.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to Library' })).toBeTruthy();
+  });
+
+  it('shows Uploading… before the first reconcile', async () => {
+    await renderStep('upload', scan({ uploadState: 'approved' }));
+    expect(screen.getByText('Uploading…')).toBeTruthy();
+  });
+
+  it('paused waits for a connection and keeps the stored progress', async () => {
+    await renderStep('upload', scan({ uploadState: 'paused', progress: { uploaded: 5, total: 32 } }));
+    expect(screen.getByText('Upload paused · Waiting for connection')).toBeTruthy();
+    expect(screen.getByText('5 of 32 files')).toBeTruthy();
+  });
+
+  it('done hands off to processing', async () => {
+    await renderStep('upload', scan({ uploadState: 'done' }));
+    expect(screen.getByText('Uploaded · Processing started')).toBeTruthy();
+    expect(screen.getByText("You'll see progress in your library.")).toBeTruthy();
+  });
+
+  it('blocked by checks shows the mapped reason and Not charged', async () => {
+    await renderStep('upload', scan({ uploadState: 'blocked', failureCode: 'CAMERA_JUMP' }));
+    expect(screen.getByText("Didn't pass checks")).toBeTruthy();
+    expect(screen.getByText('The camera position jumped during the scan. Scan again, moving slowly.')).toBeTruthy();
+    expect(screen.getByText('Not charged')).toBeTruthy();
+  });
+
+  it('other failures use the library failed copy', async () => {
+    await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'UPLOAD_STALE' }));
+    expect(screen.getByText("Failed · Upload didn't finish")).toBeTruthy();
   });
 });
