@@ -68,6 +68,7 @@ The mock provider can now return a synthetic 4 x 5 m demo room. It is determinis
 - `npx tsc --noEmit`: clean.
 - `npx vitest run`: 358 passed, 94 skipped (pg/s3 suites gated).
 - `npm run test:pg -- test/integration/pipeline.pg.test.ts`: 7/7 passed (Neon dev branch).
+- Full `npm run test:pg`: 14 files passed, 102 tests passed, 1 skipped.
 - Re-ran `npm run demo-room`: all 7 files byte-identical (sha1). `git status` on the fixture folder is clean.
 
 ## Deviations from Plan
