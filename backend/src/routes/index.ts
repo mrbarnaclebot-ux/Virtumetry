@@ -11,6 +11,7 @@ import { accountRoutes } from './account.js';
 import { meRoutes } from './me.js';
 import { webhookRoutes } from './webhooks.js';
 import { authHandlerRoutes } from './auth-handler.js';
+import { shareRoutes } from './share.js';
 import type { RouteDeps } from './deps.js';
 
 /**
@@ -81,5 +82,6 @@ export async function registerRoutes(
     devicesRoutes(authed);
     accountRoutes(authed, deps.auth);
     meRoutes(authed, deps);
+    shareRoutes(authed, deps);
   });
 }

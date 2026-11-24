@@ -359,3 +359,55 @@ describe('AUTH_MODE=session (D-05)', () => {
     ).toThrow(/BETTER_AUTH_URL/);
   });
 });
+
+describe('share URLs (D-20/D-21)', () => {
+  const railwayDev = {
+    NODE_ENV: 'development',
+    RAILWAY_ENVIRONMENT_ID: 'env-id',
+    DATABASE_URL: pooled(DEV_EP),
+    AUTH_MODE: 'session',
+    BETTER_AUTH_SECRET: 'x'.repeat(48),
+    BETTER_AUTH_URL: 'https://api-dev.example.com',
+    ...s3('virtumetry-dev'),
+  };
+
+  it('accepts an https origin and strips a trailing slash', () => {
+    expect(loadConfig(env({ ...base, WEB_SHARE_ORIGIN: 'https://share.example.com/' })).WEB_SHARE_ORIGIN).toBe(
+      'https://share.example.com',
+    );
+  });
+
+  it('rejects a non-URL or an origin with a path', () => {
+    expect(() => loadConfig(env({ ...base, WEB_SHARE_ORIGIN: 'not a url' }))).toThrow(/WEB_SHARE_ORIGIN/);
+    expect(() => loadConfig(env({ ...base, WEB_SHARE_ORIGIN: 'https://a.example.com/r' }))).toThrow(
+      /WEB_SHARE_ORIGIN/,
+    );
+  });
+
+  it('allows http://localhost locally', () => {
+    expect(loadConfig(env({ ...base, WEB_SHARE_ORIGIN: 'http://localhost:8081' })).WEB_SHARE_ORIGIN).toBe(
+      'http://localhost:8081',
+    );
+  });
+
+  it('requires https when set on Railway', () => {
+    expect(() => loadConfig(env({ ...railwayDev, WEB_SHARE_ORIGIN: 'http://share.example.com' }))).toThrow(
+      /WEB_SHARE_ORIGIN/,
+    );
+    expect(() => loadConfig(env({ ...railwayDev, PUBLIC_BASE_URL: 'http://api.example.com' }))).toThrow(
+      /PUBLIC_BASE_URL/,
+    );
+  });
+
+  it('boots on Railway with neither var set (sharing degrades to 503, no crash loop)', () => {
+    const cfg = loadConfig(env(railwayDev));
+    expect(cfg.WEB_SHARE_ORIGIN).toBeUndefined();
+    expect(cfg.PUBLIC_BASE_URL_EXPLICIT).toBe(false);
+  });
+
+  it('marks an env-provided PUBLIC_BASE_URL as explicit', () => {
+    expect(
+      loadConfig(env({ ...railwayDev, PUBLIC_BASE_URL: 'https://api-dev.example.com' })).PUBLIC_BASE_URL_EXPLICIT,
+    ).toBe(true);
+  });
+});

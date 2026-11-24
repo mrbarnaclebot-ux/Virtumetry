@@ -234,6 +234,10 @@ export const shareSlugs = pgTable('share_slugs', {
   slug: text('slug').notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  // D-15: optional scrypt hash (src/share-password.ts), open counter, last open.
+  passwordHash: text('password_hash'),
+  openCount: integer('open_count').notNull().default(0),
+  lastOpenedAt: timestamp('last_opened_at', { withTimezone: true }),
 });
 
 // --- Better Auth tables (D-01) -----------------------------------------------
@@ -321,3 +325,4 @@ export type Device = typeof devices.$inferSelect;
 export type Capture = typeof captures.$inferSelect;
 export type CreditEvent = typeof creditEvents.$inferSelect;
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
+export type ShareSlug = typeof shareSlugs.$inferSelect;

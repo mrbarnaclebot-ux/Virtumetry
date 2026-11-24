@@ -66,6 +66,9 @@ const baseSchema = z.object({
   LOCAL_STORAGE_DIR: z.string().default('./data'),
   // Base URL used to build dev-storage "presigned" links for the local driver.
   PUBLIC_BASE_URL: z.string().optional(),
+  // Origin (no path) of the web share page (D-20/D-21): CORS allow-origin for
+  // /v1/public/* and the /s/:slug redirect target. Unset = sharing answers 503.
+  WEB_SHARE_ORIGIN: z.string().optional(),
 
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().default('auto'),
@@ -120,6 +123,12 @@ const baseSchema = z.object({
   AUTH_FAIL_MAX: numberFromEnv(20),
   // Per IP on the provider webhook route (unauthenticated until HMAC verifies).
   RATE_LIMIT_WEBHOOK_MAX: numberFromEnv(120),
+  // Per IP on the public share routes (D-17/D-20, T-05-11).
+  RATE_LIMIT_PUBLIC_MAX: numberFromEnv(60),
+  RATE_LIMIT_SHARE_OPEN_MAX: numberFromEnv(20),
+  RATE_LIMIT_LANDING_MAX: numberFromEnv(120),
+  // Wrong share passwords per slug per window before that slug answers 429 (T-05-12).
+  SHARE_FAIL_MAX: numberFromEnv(10),
   // Reverse-proxy hops in front of the API. req.ip — the key for the per-IP
   // buckets above — is taken that many hops from the right of X-Forwarded-For.
   // A hop count, not `true`: trusting the whole header lets a client pick its
@@ -136,7 +145,11 @@ const baseSchema = z.object({
   REAPER_INTERVAL_MS: numberFromEnv(900000),
 });
 
-export type Config = z.infer<typeof baseSchema> & { PUBLIC_BASE_URL: string };
+export type Config = z.infer<typeof baseSchema> & {
+  PUBLIC_BASE_URL: string;
+  /** True when PUBLIC_BASE_URL came from the env, not the localhost default. */
+  PUBLIC_BASE_URL_EXPLICIT: boolean;
+};
 
 type DbVar = 'DATABASE_URL' | 'MIGRATE_DATABASE_URL';
 
@@ -217,6 +230,18 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
     throw new Error('AUTH_MODE=dev refused under NODE_ENV=production: set AUTH_MODE=session');
   }
 
+  // Share URLs (D-20/D-21): format-checked only when set. Never required at
+  // boot — a missing var degrades sharing to 503 share_unavailable instead.
+  if (cfg.WEB_SHARE_ORIGIN !== undefined) {
+    if (!URL.canParse(cfg.WEB_SHARE_ORIGIN)) throw new Error('WEB_SHARE_ORIGIN must be a valid URL');
+    if (new URL(cfg.WEB_SHARE_ORIGIN).origin !== cfg.WEB_SHARE_ORIGIN.replace(/\/$/, '')) {
+      throw new Error('WEB_SHARE_ORIGIN must be an origin (scheme://host[:port], no path)');
+    }
+  }
+  if (cfg.PUBLIC_BASE_URL !== undefined && !URL.canParse(cfg.PUBLIC_BASE_URL)) {
+    throw new Error('PUBLIC_BASE_URL must be a valid URL');
+  }
+
   // Any public deployment (production, or the Railway dev env with NODE_ENV=
   // development so exp:// stays trusted) holds a real owner credential (WR-05).
   if (isProd || cfg.RAILWAY_ENVIRONMENT_ID) {
@@ -231,6 +256,12 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
     // Session cookies must only ever travel over TLS.
     if (cfg.AUTH_MODE === 'session' && !cfg.BETTER_AUTH_URL?.startsWith('https://')) {
       throw new Error(`BETTER_AUTH_URL must be https under ${where}`);
+    }
+    if (cfg.WEB_SHARE_ORIGIN !== undefined && !cfg.WEB_SHARE_ORIGIN.startsWith('https://')) {
+      throw new Error(`WEB_SHARE_ORIGIN must be https under ${where}`);
+    }
+    if (cfg.PUBLIC_BASE_URL !== undefined && !cfg.PUBLIC_BASE_URL.startsWith('https://')) {
+      throw new Error(`PUBLIC_BASE_URL must be https under ${where}`);
     }
     // The local driver's /dev-storage route serves objects unauthenticated.
     if (cfg.STORAGE_DRIVER === 'local') {
@@ -255,7 +286,9 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
 
   return {
     ...cfg,
-    PUBLIC_BASE_URL: cfg.PUBLIC_BASE_URL ?? `http://localhost:${cfg.PORT}`,
+    WEB_SHARE_ORIGIN: cfg.WEB_SHARE_ORIGIN?.replace(/\/$/, ''),
+    PUBLIC_BASE_URL: (cfg.PUBLIC_BASE_URL ?? `http://localhost:${cfg.PORT}`).replace(/\/$/, ''),
+    PUBLIC_BASE_URL_EXPLICIT: cfg.PUBLIC_BASE_URL !== undefined,
   };
 }
 
