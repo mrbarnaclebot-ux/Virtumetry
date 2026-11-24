@@ -26,7 +26,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toDisplayState, type LocalScan } from '@/library/display-state';
-import { createScan, getQuote } from '@/lib/api';
+import { ApiError, createScan, getQuote } from '@/lib/api';
 import { kickUploadManager, useUploadProgress } from '@/upload/manager';
 
 // D-14..D-21: one route, three steps (review -> quote -> upload), system theme (UI-SPEC §5-§7).
@@ -289,12 +289,22 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
   });
   const data = quote.data;
 
-  // D-19: the only path that creates a billable scan.
+  // D-19: the only path that creates a billable scan. The approval is persisted first
+  // ('approved'), so a lost response or force-quit leaves the manager to finish the
+  // idempotent create (WR-02). Only a definite refusal (4xx) puts the scan back to saved.
   const approve = useMutation({
     mutationFn: async (credits: number) => {
-      updateLocalScan(scan.id, { approvedMaxCredits: credits });
-      const { world } = await createScan({ ...scan, approvedMaxCredits: credits });
-      updateLocalScan(scan.id, { serverWorldId: world.id, uploadState: 'uploading' });
+      updateLocalScan(scan.id, { approvedMaxCredits: credits, uploadState: 'approved' });
+      try {
+        const { world } = await createScan({ ...scan, approvedMaxCredits: credits });
+        updateLocalScan(scan.id, { serverWorldId: world.id, uploadState: 'uploading' });
+      } catch (e) {
+        if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+          updateLocalScan(scan.id, { uploadState: 'saved' });
+          throw e;
+        }
+        // Network error or 5xx: the outcome is unknown; the manager retries with the same key.
+      }
       kickUploadManager();
     },
     onSuccess: onApproved,

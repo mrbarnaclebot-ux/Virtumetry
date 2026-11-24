@@ -102,9 +102,9 @@ describe('quote step', () => {
     expect(scanPosts()).toHaveLength(0);
   });
 
-  it('a create error keeps the scan saved and says so', async () => {
+  it('a refused create (4xx) puts the scan back to saved and says so', async () => {
     fetchMock.mockImplementation(async (url: string) =>
-      url.includes('/v1/quote') ? ok(QUOTE) : { ok: false, status: 500, json: async () => ({}) },
+      url.includes('/v1/quote') ? ok(QUOTE) : { ok: false, status: 429, json: async () => ({}) },
     );
     await renderStep('quote');
     await screen.findByText('~930 credits');
@@ -112,6 +112,19 @@ describe('quote step', () => {
     await screen.findByText("Couldn't start the upload. Check your connection and try again.");
     expect(getLocalScan('s1')?.uploadState).toBe('saved');
     expect(kickUploadManager).not.toHaveBeenCalled();
+  });
+
+  it('a lost create response keeps the approval durable for the manager (WR-02)', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/v1/quote')) return ok(QUOTE);
+      throw new TypeError('Network request failed');
+    });
+    await renderStep('quote');
+    await screen.findByText('~930 credits');
+    await fireEvent.press(approve());
+    await waitFor(() => expect(kickUploadManager).toHaveBeenCalledTimes(1));
+    expect(getLocalScan('s1')).toMatchObject({ uploadState: 'approved', approvedMaxCredits: 930 });
+    expect(getLocalScan('s1')?.serverWorldId).toBeUndefined();
   });
 
   it('a quote error offers Try again', async () => {
