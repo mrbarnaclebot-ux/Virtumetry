@@ -35,7 +35,7 @@ const client = new S3Client({
 
 const lanOrigins = flag('--lan-any')
   ? ['*']
-  : ['http://192.168.*', 'http://10.*'];
+  : ['http://192.168.*', 'http://10.*', 'https://*.exp.direct']; // Expo Go LAN or --tunnel (Metro serves the DOM viewer)
 const rule = {
   AllowedOrigins: [origin, 'http://localhost:8081', 'http://localhost:8090', ...lanOrigins],
   AllowedMethods: ['GET', 'HEAD'],
@@ -75,7 +75,7 @@ try {
 
 const objectUrl = `${process.env.S3_ENDPOINT.replace(/\/$/, '')}/${bucket}/cors-preflight-probe`;
 let failed = false;
-for (const o of [origin, 'http://192.168.1.50:8081']) {
+for (const o of [origin, 'http://192.168.1.50:8081', 'https://abc-anonymous-8081.exp.direct']) {
   const res = await fetch(objectUrl, {
     method: 'OPTIONS',
     headers: { Origin: o, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'range' },
