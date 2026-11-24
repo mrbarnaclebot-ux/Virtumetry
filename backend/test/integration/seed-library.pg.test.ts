@@ -9,6 +9,7 @@ import { and, eq, like } from 'drizzle-orm';
 import { createTestSchema } from '../helpers/pg-schema.js';
 import { users, worlds } from '../../src/db/schema.js';
 import { createLocalStorage } from '../../src/storage/local.js';
+import { enqueue } from '../../src/queue.js';
 import type { StorageDriver } from '../../src/storage/index.js';
 import { resetSeeds, seedLibrary, THUMBNAIL_FIXTURE } from '../../scripts/seed-library.js';
 
@@ -70,6 +71,14 @@ describe.skipIf(!url)('seedLibrary / resetSeeds (real Postgres, local storage)',
     await seedLibrary({ db: schema.db, storage, ownerUserId: ownerId, thumbnailBytes });
     expect(await seeds()).toHaveLength(5);
     expect(await storage.list(`worlds/${oldReady.id}/`)).toEqual([]);
+  });
+
+  it('WR-03: reset still works once the reaper/a delete enqueued a purge job for a seed', async () => {
+    const uploading = (await seeds()).find((r) => r.status === 'uploading')!;
+    await enqueue(schema.db, 'purge', uploading.id, { framesOnly: true });
+    await resetSeeds(schema.db, storage, ownerId);
+    await seedLibrary({ db: schema.db, storage, ownerUserId: ownerId, thumbnailBytes });
+    expect(await seeds()).toHaveLength(5);
   });
 
   it('resetSeeds removes only seed worlds of that owner', async () => {

@@ -11,7 +11,7 @@ import pg from 'pg';
 import { and, eq, inArray, like } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '../src/db/schema.js';
-import { user, worlds } from '../src/db/schema.js';
+import { captures, jobs, user, worlds } from '../src/db/schema.js';
 import type { Db } from '../src/db/client.js';
 import { getConfig } from '../src/config.js';
 import { upsertUserBySub } from '../src/db/users.js';
@@ -28,9 +28,15 @@ export async function resetSeeds(db: Db, storage: StorageDriver, ownerUserId: st
     .from(worlds)
     .where(and(eq(worlds.ownerId, ownerUserId), like(worlds.clientRequestId, 'seed:%')));
   if (seeds.length === 0) return 0;
-  for (const s of seeds) await purgePrefix(storage, `worlds/${s.id}/`);
-  // Seed worlds never get captures/jobs/slugs/credit events, so the row is all there is.
-  await db.delete(worlds).where(inArray(worlds.id, seeds.map((s) => s.id)));
+  const ids = seeds.map((s) => s.id);
+  // The reaper (stale 'uploading') or a phone delete enqueues purge jobs, and
+  // jobs.world_id has no ON DELETE: drop dependents first, in one tx (WR-03).
+  await db.transaction(async (tx) => {
+    await tx.delete(jobs).where(inArray(jobs.worldId, ids));
+    await tx.delete(captures).where(inArray(captures.worldId, ids));
+    await tx.delete(worlds).where(inArray(worlds.id, ids));
+  });
+  for (const id of ids) await purgePrefix(storage, `worlds/${id}/`);
   return seeds.length;
 }
 
