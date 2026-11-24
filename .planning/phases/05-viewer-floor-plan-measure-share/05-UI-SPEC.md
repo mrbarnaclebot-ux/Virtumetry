@@ -284,7 +284,7 @@ row: [lock 14]? URL (16/400, middle ellipsis)   [⇪ 44] [Revoke 44]
 hairline separator (backgroundSelected)
 ```
 
-- Password: `secureTextEntry`, `autoComplete="new-password"`, `textContentType="newPassword"`, min 4 / max 64 characters **[default]**. Create link disabled (opacity 0.4) when the switch is on and the field has < 4 chars. Switch off clears the field.
+- Password: `secureTextEntry`, `autoComplete="new-password"`, `textContentType="newPassword"`, min 6 / max 64 characters **[default]** (raised from 4 by review WR-04). Create link disabled (opacity 0.4) when the switch is on and the field has < 6 chars. Switch off clears the field.
 - Creating: button label "Creating link…" with an `onAccent` `ActivityIndicator` left of it; not pressable. On success: the new link is inserted at the top of the list, the password field clears, the switch turns off, and `Share.share({ url, message: url })` opens immediately (iOS sheet includes Copy). If the user dismisses that sheet, nothing else happens.
 - Row: lock icon (`lock.fill` 14, `textSecondary`) before the URL only when `has_password`. Share icon button (`square.and.arrow.up` 20, `text`) → `Share.share`. "Revoke" text button (Label 14/600 `destructive`) → confirmation (E). Rows list only non-revoked links (client filters `revoked_at`), newest first **[default]**.
 - Revoke is optimistic: row removed on confirm; on API error it returns in place and the error line shows.
@@ -340,9 +340,9 @@ Voice (Phase 3): short, plain, second person, no exclamation marks. The user see
 | Primary CTA (web gate) | Open room / Opening… |
 | Share sheet title / close | Share / Done |
 | Password toggle | Protect with a password |
-| Password field label / placeholder | Password / At least 4 characters |
+| Password field label / placeholder | Password / At least 6 characters |
 | Password helper (switch on, idle) | Send the password separately. You can't see it again after you create the link. |
-| Password too short (if submitted via keyboard) | Use at least 4 characters. |
+| Password too short (if submitted via keyboard) | Use at least 6 characters. |
 | Links section title | Links |
 | Empty state heading | No links yet |
 | Empty state body | Create a link to let anyone who has it walk through this room in a browser. |
@@ -463,7 +463,7 @@ No UI dependency is added. Viewer runtime deps (`@sparkjsdev/spark@2.4.0`, `thre
 | 6 | `gestureEnabled: false` on the viewer screen | default |
 | 7 | Route folder `world/[id]/index.tsx` + `world/[id]/share.tsx` modal | default (D-14, D-18) |
 | 8 | "Downloading room" instead of "Downloading world" | Phase 3 copy rule |
-| 9 | Password min 4 / max 64; can't be shown again | default |
+| 9 | Password min 6 (WR-04) / max 64; can't be shown again | default |
 | 10 | Revoked links hidden from the list | default |
 | 11 | Password links: no `og:image` in previews | default (privacy) |
 | 12 | No `expo-clipboard`; `Share.share` covers Copy | default (no new deps) |

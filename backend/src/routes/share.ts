@@ -33,7 +33,9 @@ export function shareConfigured(config: Config): boolean {
   return !!config.WEB_SHARE_ORIGIN && (config.PUBLIC_BASE_URL_EXPLICIT || !isProdLike(config));
 }
 
-const createBody = z.object({ password: z.string().min(4).max(64).optional() }).strict();
+/** 6+ chars (WR-04): with SHARE_FAIL_MAX guesses per window, a 4-digit PIN fell in under a day. */
+export const SHARE_PASSWORD_MIN = 6;
+const createBody = z.object({ password: z.string().min(SHARE_PASSWORD_MIN).max(64).optional() }).strict();
 const shareIdParam = z.string().uuid();
 
 export function serializeShare(row: ShareSlug, config: Config) {
@@ -185,10 +187,9 @@ export async function publicShareRoutes(app: FastifyInstance, deps: RouteDeps): 
             }
             const pw = parsed.data.password;
             if (pw === undefined) return reply.code(401).send({ error: 'password_required' });
-            if (!(await verifySharePassword(pw, hash))) {
-              failures.record(slug);
-              return reply.code(401).send({ error: 'wrong_password' });
-            }
+            // WR-04: reserve the attempt before the async verify, so parallel guesses can't all pass the check.
+            failures.record(slug);
+            if (!(await verifySharePassword(pw, hash))) return reply.code(401).send({ error: 'wrong_password' });
             failures.reset(slug);
           }
 

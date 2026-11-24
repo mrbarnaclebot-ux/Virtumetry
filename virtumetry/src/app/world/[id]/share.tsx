@@ -20,7 +20,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { openCountLabel, useCreateShare, useRevokeShare, useShares, type Share } from '@/lib/shares';
 
-const MIN = 4;
+const MIN = 6; // matches the backend's SHARE_PASSWORD_MIN (WR-04)
 const shareUrl = (url: string) => RNShare.share({ url, message: url }); // URL only, never the password (T-05-27)
 const createdOn = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -77,7 +77,7 @@ export default function ShareSheet() {
     helper = "Couldn't create the link. Check your connection and try again.";
     helperError = true;
   } else if (protect && tooShort) {
-    helper = 'Use at least 4 characters.';
+    helper = 'Use at least 6 characters.';
     helperError = true;
   } else if (protect) {
     helper = "Send the password separately. You can't see it again after you create the link.";
@@ -212,7 +212,7 @@ export default function ShareSheet() {
                 autoCorrect={false}
                 maxLength={64}
                 returnKeyType="done"
-                placeholder="At least 4 characters"
+                placeholder="At least 6 characters"
                 accessibilityLabel="Password"
                 placeholderTextColor={theme.textSecondary}
                 onFocus={() => setFocused(true)}

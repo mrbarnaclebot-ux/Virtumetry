@@ -122,13 +122,13 @@ describe.skipIf(!url)('share links (real Postgres)', () => {
     });
 
     it('stores a scrypt hash for a password link', async () => {
-      const { res, json } = await create(worldA, { password: 'abcd' });
+      const { res, json } = await create(worldA, { password: 'abcdef' });
       expect(res.statusCode).toBe(201);
       expect(json.has_password).toBe(true);
       expect((await shareRow(json.id as string)).password_hash).toMatch(/^scrypt\$/);
     });
 
-    it.each([[{ password: 'abc' }], [{ password: 'a'.repeat(65) }], [{ extra: 1 }], [{ password: 5 }]])(
+    it.each([[{ password: 'abcde' }], [{ password: 'a'.repeat(65) }], [{ extra: 1 }], [{ password: 5 }]])(
       'rejects body %j with 400 invalid_body',
       async (body) => {
         const { res, json } = await create(worldA, body);
@@ -221,7 +221,7 @@ describe.skipIf(!url)('share links (real Postgres)', () => {
 
     it('GET returns title + needs_password for a live link', async () => {
       const plain = await slugOf(worldA);
-      const locked = await slugOf(worldA, { password: 'abcd' });
+      const locked = await slugOf(worldA, { password: 'abcdef' });
       const a = await pub('GET', `/v1/public/shares/${plain.slug}`);
       expect(a.statusCode).toBe(200);
       expect(JSON.parse(a.body)).toEqual({ title: 'Kitchen', needs_password: false });
@@ -297,6 +297,15 @@ describe.skipIf(!url)('share links (real Postgres)', () => {
       expect((await shareRow(id)).open_count).toBe(0);
     });
 
+    it('parallel wrong guesses cannot race past SHARE_FAIL_MAX=2 (WR-04)', async () => {
+      const { slug } = await slugOf(worldA, { password: 'hunter22' });
+      const codes = (await Promise.all(['y1', 'y2', 'y3', 'y4', 'y5'].map((pw) => open(slug, { password: pw })))).map(
+        (r) => r.statusCode,
+      );
+      expect(codes.filter((c) => c === 401)).toHaveLength(2);
+      expect(codes.filter((c) => c === 429)).toHaveLength(3);
+    });
+
     it('rejects an unknown body key with 400', async () => {
       const { slug } = await slugOf(worldA);
       expect((await open(slug, { password: 'x', extra: 1 })).statusCode).toBe(400);
@@ -335,7 +344,7 @@ describe.skipIf(!url)('share links (real Postgres)', () => {
     });
 
     it('password link: no og:image, summary card, private description', async () => {
-      const { json } = await create(worldA, { password: 'abcd' });
+      const { json } = await create(worldA, { password: 'abcdef' });
       const res = await land(json.slug as string);
       expect(res.statusCode).toBe(200);
       expect(res.body).not.toContain('og:image');

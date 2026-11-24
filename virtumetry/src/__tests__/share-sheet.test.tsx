@@ -142,7 +142,7 @@ describe('create', () => {
     expect(urls()[0]).toBe(created.url);
   });
 
-  it('with a password: needs 4+ chars, sends it, then clears the field and turns the switch off', async () => {
+  it('with a password: needs 6+ chars, sends it, then clears the field and turns the switch off', async () => {
     const created = share('s3', { has_password: true });
     mutate.mockImplementation(async () => res(201, created));
     await renderSheet();
@@ -157,18 +157,18 @@ describe('create', () => {
       screen.getByText("Send the password separately. You can't see it again after you create the link."),
     ).toBeTruthy();
 
-    await fireEvent.changeText(input, 'abc');
+    await fireEvent.changeText(input, 'abcde');
     expect(createButton().props.accessibilityState).toMatchObject({ disabled: true });
     await fireEvent(input, 'submitEditing');
-    expect(screen.getByText('Use at least 4 characters.')).toBeTruthy();
+    expect(screen.getByText('Use at least 6 characters.')).toBeTruthy();
     expect(mutate).not.toHaveBeenCalled();
 
-    await fireEvent.changeText(input, 'abcd');
+    await fireEvent.changeText(input, 'abcdef');
     expect(createButton().props.accessibilityState).toMatchObject({ disabled: false });
     await fireEvent.press(createButton());
 
     await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ url: created.url, message: created.url }));
-    expect(JSON.parse(calls('POST')[0][1].body as string)).toEqual({ password: 'abcd' });
+    expect(JSON.parse(calls('POST')[0][1].body as string)).toEqual({ password: 'abcdef' });
     expect(screen.queryByLabelText('Password')).toBeNull();
     expect(screen.getByLabelText('Protect with a password').props.value).toBe(false);
   });
