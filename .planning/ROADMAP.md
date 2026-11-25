@@ -20,7 +20,9 @@ Decimal phases appear between their surrounding integers in numeric order.
  (completed 2026-11-24)
 - [x] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link (completed 2026-11-25)
  (executed 2026-11-25; awaiting owner UAT)
-- [x] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry (completed 2026-11-25)
+- [x] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
+ (completed 2026-11-25)
+- [ ] **Phase 6.1: UI/UX Makeover** (INSERTED) - Brand design system on the owner's palette, every screen redesigned, onboarding, coach marks, toasts, motion and haptics, no zombie UI
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
 - [ ] **Phase 8: Native ARKit Capture & Sign in with Apple** - Owner consents, then scans a real room with the iPhone and it comes back as a walkable world
 - [ ] **Phase 9: Privacy & Retention Hardening** - Enforced retention and purge, plus the on-device upload-survival matrix
@@ -264,6 +266,24 @@ Plans:
 - [x] 06-08-PLAN.md — Mock-mode Railway dev deploy + 06-HUMAN-UAT.md (paid-run runbook, $0 Expo Go checklist)
 **UI hint**: yes
 
+### Phase 06.1: UI/UX Makeover (INSERTED)
+
+**Goal**: Before native work starts, the whole app and the web share page get one coherent Virtumetry brand look built on the owner's palette (text #e7f2f2, background #060a0a, primary #a2cccb, secondary #3e4a71, accent #6b6cae). Every screen is redesigned on a single design system with motion, haptics, modern icons, first-run onboarding, contextual coach marks and one toast system, and no "zombie UI" remains: every control works and every loading, empty, error and offline state is real and honest. Everything ships in Expo Go (JS/assets only, no EAS build).
+**Mode:** mvp
+**Depends on**: Phase 6
+**Requirements**: UX-01, UX-02, UX-03, UX-04, UX-05, UX-06, UX-07, UX-08
+**Success Criteria** (what must be TRUE):
+
+  1. One token module (colors from the palette with derived surfaces/borders/states, type scale, spacing, radii, elevation, motion) drives the app and the viewer chrome; the old `constants/theme.ts` and viewer VT tokens are unified, and all text/background pairs meet WCAG AA *(automated contrast test + grep for stray hex literals)*
+  2. Every screen (sign-in, library + empty/error/offline, capture prep/HUD/review/quote/upload, viewer chrome + modes, floor plan, measure, share sheet, retry sheet, settings, budget banner, web share page + password gate) uses the design system and matches 06.1-UI-SPEC.md *(UI review + manual Expo Go/browser check)*
+  3. A first-run onboarding explains scan → upload → walk/share, shows once, can be skipped and replayed from Settings; coach marks appear once on capture prep and viewer modes *(RNTL gating tests)*
+  4. One toast system reports success/error/info across the app; destructive actions keep confirmations *(RNTL tests + manual check)*
+  5. Micro-interactions and screen transitions respect Reduce Motion; key actions give haptic feedback; touch targets are ≥44pt with accessibility labels and capped Dynamic Type *(tests + manual check)*
+  6. No dead buttons, placeholder screens or fake controls remain; any native-only polish is deferred to Phase 7 and listed *(no-dead-control test + UI review)*
+
+**Plans**: TBD
+**UI hint**: yes
+
 ### Phase 7: Native Build Readiness
 
 **Goal**: Native work can start without wasting builds. The owner buys the Apple Developer membership at the start. A stub `virtumetry-capture` module compiles green on macOS CI, and the first EAS dev build runs on the iPhone with push notifications and crash reporting.
@@ -324,6 +344,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
 | 5. Viewer, Floor Plan, Measure & Share | 8/8 | Awaiting UAT | - |
 | 6. Live Echo-3 Provider | 8/8 | Complete   | 2026-11-25 |
+| 6.1. UI/UX Makeover (INSERTED) | 0/TBD | Not started | - |
 | 7. Native Build Readiness | 0/TBD | Not started | - |
 | 8. Native ARKit Capture & Sign in with Apple | 0/TBD | Not started | - |
 | 9. Privacy & Retention Hardening | 0/TBD | Not started | - |

@@ -72,6 +72,17 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 - [x] **SHARE-04**: Owner can optionally protect a link with a password
 - [x] **SHARE-05**: Owner can see how many times each link was opened
 
+### UI/UX (UX)
+
+- [ ] **UX-01**: One design system (palette tokens with derived surfaces/borders/states at WCAG AA, type scale, spacing, radii, elevation, motion with reduced-motion support) drives the app, the viewer chrome and the web share page
+- [ ] **UX-02**: Every screen and sheet is redesigned on the design system with a distinct Virtumetry brand look (not a copy of SpAItial), modern icons and branded app icon/splash
+- [ ] **UX-03**: A first-run onboarding explains scan → upload → walk/share, shows once, is skippable and can be replayed from Settings
+- [ ] **UX-04**: Contextual coach marks explain capture prep and viewer modes the first time they are seen
+- [ ] **UX-05**: One toast system reports success, error and info; destructive actions keep explicit confirmations
+- [ ] **UX-06**: Micro-interactions, transitions and visual guides animate with Reduce Motion respected, and key actions give haptic feedback
+- [ ] **UX-07**: No zombie UI: every control works, and every loading, empty, error and offline state is real and honest
+- [ ] **UX-08**: Accessibility holds across the redesign: labels, ≥44pt targets, capped Dynamic Type, AA contrast
+
 ### Native Build & Privacy (OPS)
 
 - [ ] **OPS-01**: A macOS GitHub Actions job runs `expo prebuild` and an unsigned `xcodebuild` so Swift compile errors are caught before any EAS build
@@ -166,6 +177,14 @@ Deferred. Tracked, not in the current roadmap.
 | SHARE-03 | Phase 5 | Complete |
 | SHARE-04 | Phase 5 | Complete |
 | SHARE-05 | Phase 5 | Complete |
+| UX-01 | Phase 6.1 | Pending |
+| UX-02 | Phase 6.1 | Pending |
+| UX-03 | Phase 6.1 | Pending |
+| UX-04 | Phase 6.1 | Pending |
+| UX-05 | Phase 6.1 | Pending |
+| UX-06 | Phase 6.1 | Pending |
+| UX-07 | Phase 6.1 | Pending |
+| UX-08 | Phase 6.1 | Pending |
 | OPS-01 | Phase 7 | Pending |
 | OPS-02 | Phase 7 | Pending |
 | OPS-03 | Phase 9 | Pending |
@@ -174,8 +193,8 @@ Deferred. Tracked, not in the current roadmap.
 | OPS-06 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 50 total
-- Mapped to phases: 50
+- v1 requirements: 58 total
+- Mapped to phases: 58
 - Unmapped: 0
 
 ---

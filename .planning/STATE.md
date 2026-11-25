@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: executing
 stopped_at: "Phase 6 executed, reviewed (3 iterations, clean), deployed to dev in mock mode; verification human_needed (06-HUMAN-UAT.md: $0 Expo Go checks + owner-only paid-run runbook)"
-last_updated: "2026-11-25T04:00:56.405Z"
+last_updated: "2026-11-25T15:46:57.431Z"
 last_activity: 2026-11-25 -- Phase 6 execution started
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 6
   total_plans: 48
   completed_plans: 48
-  percent: 67
+  percent: 60
 ---
 
 # Project State
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-23)
 
 **Core value:** A walk-through scan of a real room comes back as a faithful, walkable 3D world, reliably, without wasting paid processing on bad captures.
-**Current focus:** Phase 6 — Live Echo-3 Provider
+**Current focus:** Phase 6.1 — UI/UX Makeover (INSERTED)
 
 ## Current Position
 
-Phase: 6 (Live Echo-3 Provider) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 6
+Phase: 6.1 (UI/UX Makeover, INSERTED) — DISCUSSING
+Plan: 0 of TBD
+Status: Phase 6.1 inserted; discuss → ui-phase → plan → execute
 Last activity: 2026-11-25 -- Phase 6 execution started
 
 Progress: [██████████] 100%
@@ -71,6 +71,10 @@ Progress: [██████████] 100%
 | Phase 04 P09 | 15min | 2 tasks | 9 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 6.1 inserted after Phase 6: UI/UX Makeover (URGENT)
 
 ### Decisions
 
