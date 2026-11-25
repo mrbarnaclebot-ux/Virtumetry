@@ -52,7 +52,7 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 ### Library (LIB)
 
 - [x] **LIB-01**: Owner sees all scans with clear states: saved on phone, uploading (with progress), processing (with estimate), ready, failed
-- [ ] **LIB-02**: Owner can retry a failed scan only when the failure is retryable, after re-confirming the cost
+- [x] **LIB-02**: Owner can retry a failed scan only when the failure is retryable, after re-confirming the cost
 - [x] **LIB-03**: Owner can rename and delete a scan; deleting removes it from our database and storage and requests deletion at SpAItial
 
 ### Viewer (VIEW)
@@ -153,7 +153,7 @@ Deferred. Tracked, not in the current roadmap.
 | PROC-09 | Phase 7 | Pending |
 | PROC-10 | Phase 2 | Complete |
 | LIB-01 | Phase 3 | Complete |
-| LIB-02 | Phase 6 | Pending |
+| LIB-02 | Phase 6 | Complete |
 | LIB-03 | Phase 3 | Complete |
 | VIEW-01 | Phase 5 | Complete |
 | VIEW-02 | Phase 5 | Complete |

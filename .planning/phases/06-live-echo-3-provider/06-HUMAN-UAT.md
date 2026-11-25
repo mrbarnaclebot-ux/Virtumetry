@@ -1,7 +1,7 @@
 ---
 phase: 06-live-echo-3-provider
 source: 06-08-PLAN.md Task 2
-status: pending
+status: partial
 device: iPhone 17 Pro, Expo Go
 backend: Railway dev
 ---
@@ -38,16 +38,16 @@ Start the app as in `virtumetry/README.md` ("Test on your iPhone", Phase 3 steps
 
 | # | Check | Expected | Status | Observed |
 |---|-------|----------|--------|----------|
-| R1 | Retryable failure | Run `railway variable set MOCK_SCENARIO=failed -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` and wait for the redeploy. Run a fixture scan | The Library row ends as "Failed · …" with "Something went wrong while processing" and "Not charged" | pending | |
-| R2 | Retry sheet | Tap the failed row | The "Retry processing" sheet opens. After "Getting quote…" it shows "This retry will use ~930 credits ≈ $9.30", the credits left today/this month, the footnote "This is a new paid run. Nothing is charged until you approve." and the "Approve and retry" button | pending | |
-| R3 | Cancel | Tap Cancel | The sheet closes. The row is unchanged (still Failed) | pending | |
-| R4 | Approve and retry | Run `railway variable set MOCK_SCENARIO=happy -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` and wait for the redeploy. Reopen the failed row and tap "Approve and retry" | "Retry started" is announced and the sheet closes. The row goes Processing → Ready, and tapping it opens the room in the viewer | pending | |
-| R5 | Row menu | With another retryable failure (repeat R1, then switch back to `happy` as in R4 afterwards), open the row's "•••" menu | "Retry…" is the first item, followed by Rename, Delete, Cancel. "Retry…" opens the same sheet as R2 | pending | |
-| R6 | Non-retryable failure | Run `railway variable set MOCK_SCENARIO=409 -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3`, wait, run a fixture scan, then tap the failed row | The "Scan failed" sheet with "We can't tell if this run was charged, so it can't be retried from the app. Scan the room again to get a new one." and a "Scan again" button. No quote and no retry button. The row menu has no "Retry…". Then restore: `railway variable set MOCK_SCENARIO=happy -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` | pending | |
-| B1 | Budget banner | Run `npm run budget:reset-dev`. In the Railway dashboard (dev), note the current `DAILY_CREDIT_BUDGET` on api and worker (blank means the default 2000). Run `railway variable set DAILY_CREDIT_BUDGET=1100 -s api -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` and the same with `-s worker`, wait for both redeploys, then run one fixture scan | When the scan starts processing, the Library shows "You've used 84% of today's processing budget." and "New scans may wait until tomorrow." (930 / 1100). The worker log (Railway dashboard → worker → Deployments → logs) shows one `[budget-alert]` line with `"window":"daily"` and one `[push:stub]` line | pending | |
-| B2 | Dismiss | Tap the dismiss button ("Dismiss budget alert") | The banner hides and stays hidden while the app runs. It comes back after you force-quit and reopen Expo Go | pending | |
-| B3 | Restore budget | Run `npm run budget:reset-dev`. Set `DAILY_CREDIT_BUDGET` back to the value from B1 on **both** services (if it was blank, delete the variable in the dashboard on both) | After the redeploys and a pull-to-refresh the banner is gone | pending | |
-| Z | Back to normal | In the Railway dashboard (dev) check both services | `MOCK_SCENARIO` is `happy` or deleted, `DAILY_CREDIT_BUDGET` is back to its original value on both, and there is no `PROVIDER_MODE` or `ALLOW_PAID_PROVIDER` anywhere | pending | |
+| R1 | Retryable failure | Run `railway variable set MOCK_SCENARIO=failed -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` and wait for the redeploy. Run a fixture scan | The Library row ends as "Failed · …" with "Something went wrong while processing" and "Not charged" | passed | |
+| R2 | Retry sheet | Tap the failed row | The "Retry processing" sheet opens. After "Getting quote…" it shows "This retry will use ~930 credits ≈ $9.30", the credits left today/this month, the footnote "This is a new paid run. Nothing is charged until you approve." and the "Approve and retry" button | passed | |
+| R3 | Cancel | Tap Cancel | The sheet closes. The row is unchanged (still Failed) | passed | |
+| R4 | Approve and retry | Run `railway variable set MOCK_SCENARIO=happy -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` and wait for the redeploy. Reopen the failed row and tap "Approve and retry" | "Retry started" is announced and the sheet closes. The row goes Processing → Ready, and tapping it opens the room in the viewer | passed | |
+| R5 | Row menu | With another retryable failure (repeat R1, then switch back to `happy` as in R4 afterwards), open the row's "•••" menu | "Retry…" is the first item, followed by Rename, Delete, Cancel. "Retry…" opens the same sheet as R2 | passed | |
+| R6 | Non-retryable failure | Run `railway variable set MOCK_SCENARIO=409 -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3`, wait, run a fixture scan, then tap the failed row | The "Scan failed" sheet with "We can't tell if this run was charged, so it can't be retried from the app. Scan the room again to get a new one." and a "Scan again" button. No quote and no retry button. The row menu has no "Retry…". Then restore: `railway variable set MOCK_SCENARIO=happy -s worker -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` | passed | |
+| B1 | Budget banner | Run `npm run budget:reset-dev`. In the Railway dashboard (dev), note the current `DAILY_CREDIT_BUDGET` on api and worker (blank means the default 2000). Run `railway variable set DAILY_CREDIT_BUDGET=1100 -s api -e dev -p 162ef8a1-afac-4a01-8253-4e3f75d8b3b3` and the same with `-s worker`, wait for both redeploys, then run one fixture scan | When the scan starts processing, the Library shows "You've used 84% of today's processing budget." and "New scans may wait until tomorrow." (930 / 1100). The worker log (Railway dashboard → worker → Deployments → logs) shows one `[budget-alert]` line with `"window":"daily"` and one `[push:stub]` line | passed | |
+| B2 | Dismiss | Tap the dismiss button ("Dismiss budget alert") | The banner hides and stays hidden while the app runs. It comes back after you force-quit and reopen Expo Go | passed | |
+| B3 | Restore budget | Run `npm run budget:reset-dev`. Set `DAILY_CREDIT_BUDGET` back to the value from B1 on **both** services (if it was blank, delete the variable in the dashboard on both) | After the redeploys and a pull-to-refresh the banner is gone | passed | |
+| Z | Back to normal | In the Railway dashboard (dev) check both services | `MOCK_SCENARIO` is `happy` or deleted, `DAILY_CREDIT_BUDGET` is back to its original value on both, and there is no `PROVIDER_MODE` or `ALLOW_PAID_PROVIDER` anywhere | passed | |
 
 Notes for B1:
 - The `[budget-alert]` log line and the push fire **once per UTC day** (and once per month) for mock. If a mock alert already fired today, the banner still shows but there's no new log line. That's expected.
@@ -208,3 +208,7 @@ Then confirm:
 | Success criterion 2, live half: the first paid run reaches Ready exactly once, and the recorded replay set is committed | pending (owner, runbook above) |
 | Success criterion 4, live half: the budget alert observed on a live run | pending (owner, runbook (f)) |
 | $0 checks R1–R6, B1–B3, Z | pending (owner, Expo Go) |
+
+## Owner result (2026-11-25)
+
+$0 checks R1-R6, B1-B3, Z passed on iPhone 17 Pro (Expo Go) against Railway dev; orchestrator toggled MOCK_SCENARIO/DAILY_CREDIT_BUDGET and restored them (both services: DAILY_CREDIT_BUDGET=10000, MOCK_SCENARIO=happy, PROVIDER_MODE=mock, no ALLOW_PAID_PROVIDER/SPAITIAL_*). Worker logged one [budget-alert] and one [push:stub]. Fixed: push said 85% vs banner 84% (round vs floor) -> push now floors too. The paid run (PROC-05) is still pending the owner decision.

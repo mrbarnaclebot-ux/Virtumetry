@@ -258,7 +258,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
       onAlert: (alerts) => {
         for (const a of alerts) {
           console.warn('[budget-alert]', JSON.stringify({ mode: provider.mode, window: a.window, spent: a.spent, budget: a.budget, share: a.share, worldId }));
-          const pct = Math.round((a.spent / a.budget) * 100);
+          const pct = Math.floor((a.spent / a.budget) * 100);
           const span = a.window === 'daily' ? "today's" : "this month's";
           void Promise.resolve()
             .then(() => deps.push(w!.ownerId, 'Processing budget', `You've used ${pct}% of ${span} processing budget`))
