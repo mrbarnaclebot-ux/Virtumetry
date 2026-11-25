@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
  (completed 2026-11-24)
 - [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
  (executed 2026-11-25; awaiting owner UAT)
-- [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
+- [x] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry (completed 2026-11-25)
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
 - [ ] **Phase 8: Native ARKit Capture & Sign in with Apple** - Owner consents, then scans a real room with the iPhone and it comes back as a walkable world
 - [ ] **Phase 9: Privacy & Retention Hardening** - Enforced retention and purge, plus the on-device upload-survival matrix
@@ -240,7 +240,7 @@ Plans:
   3. A failed scan shows a retry button only when the failure is retryable, and retrying needs a fresh explicit cost approval *(RNTL + backend tests + manual Expo Go check)*
   4. The owner is alerted when spend crosses the configured share of the daily or monthly budget *(automated threshold test + manual check of the alert during the live run)*
 
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -261,7 +261,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 06-08-PLAN.md — Mock-mode Railway dev deploy + 06-HUMAN-UAT.md (paid-run runbook, $0 Expo Go checklist)
+- [x] 06-08-PLAN.md — Mock-mode Railway dev deploy + 06-HUMAN-UAT.md (paid-run runbook, $0 Expo Go checklist)
 **UI hint**: yes
 
 ### Phase 7: Native Build Readiness
@@ -323,7 +323,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
 | 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
 | 5. Viewer, Floor Plan, Measure & Share | 8/8 | Awaiting UAT | - |
-| 6. Live Echo-3 Provider | 7/8 | In Progress|  |
+| 6. Live Echo-3 Provider | 8/8 | Complete   | 2026-11-25 |
 | 7. Native Build Readiness | 0/TBD | Not started | - |
 | 8. Native ARKit Capture & Sign in with Apple | 0/TBD | Not started | - |
 | 9. Privacy & Retention Hardening | 0/TBD | Not started | - |
