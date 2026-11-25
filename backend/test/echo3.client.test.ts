@@ -310,7 +310,51 @@ describe('WR-02 download SSRF guard', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('follows a redirect to a public https host without auth and without following further hops', async () => {
+  /** API 302 → `hops[0]`; each storage hop i answers 302 → hops[i+1]; the last answers 200. */
+  const chain = (hops: string[]) => {
+    const seen: { url: string; init?: RequestInit }[] = [];
+    const p = createEcho3Provider({
+      apiKey: KEY,
+      baseUrl: 'https://api.example.com',
+      webhookSecret: SECRET,
+      fetch: (async (input: string | URL, init?: RequestInit) => {
+        seen.push({ url: String(input), init });
+        const next = hops[seen.length - 1];
+        return next ? new Response(null, { status: 307, headers: { location: next } }) : new Response('bytes');
+      }) as typeof fetch,
+    });
+    const a: Artifact = { kind: 'splat', name: 'splat.spz', contentType: 'application/octet-stream', ref: '/v1/worlds/requests/req_a/splat' };
+    return { open: () => p.open(a), seen };
+  };
+
+  it('iter2 WR-03: follows storage redirects (relative too) with the host check and no auth on every hop', async () => {
+    const { open, seen } = chain(['https://s3.amazonaws.com/b/obj?sig=1', 'https://b.s3.eu-west-1.amazonaws.com/obj?sig=1', '/obj2?sig=2']);
+    expect((await bytes(await open())).toString()).toBe('bytes');
+    expect(seen.map((s) => s.url)).toEqual([
+      'https://api.example.com/v1/worlds/requests/req_a/splat',
+      'https://s3.amazonaws.com/b/obj?sig=1',
+      'https://b.s3.eu-west-1.amazonaws.com/obj?sig=1',
+      'https://b.s3.eu-west-1.amazonaws.com/obj2?sig=2',
+    ]);
+    for (const s of seen.slice(1)) {
+      expect(s.init?.redirect).toBe('manual');
+      expect(s.init?.headers).toBeUndefined();
+    }
+  });
+
+  it('iter2 WR-03: refuses a second hop to a metadata IP without fetching it', async () => {
+    const { open, seen } = chain(['https://storage.example.com/obj?sig=1', 'http://169.254.169.254/latest/meta-data']);
+    await expect(open()).rejects.toThrow(/refusing download host/);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('iter2 WR-03: stops after 3 storage hops', async () => {
+    const { open, seen } = chain(['https://a.example.com/1', 'https://a.example.com/2', 'https://a.example.com/3', 'https://a.example.com/4', 'https://a.example.com/5']);
+    await expect(open()).rejects.toThrow(/download 307/);
+    expect(seen).toHaveLength(5); // API + first storage URL + 3 followed hops; the 4th redirect is not followed
+  });
+
+  it('follows a redirect to a public https host without auth', async () => {
     const { open, seen } = redirectTo('https://storage.example.com/obj?sig=1');
     expect((await bytes(await open())).toString()).toBe('bytes');
     expect(seen[1]!.url).toBe('https://storage.example.com/obj?sig=1');

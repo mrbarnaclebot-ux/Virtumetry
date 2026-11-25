@@ -36,6 +36,9 @@ function isThumbnailUrl(u: unknown): u is string {
   return url.protocol === 'https:' && url.hostname.endsWith('.spaitial.ai');
 }
 
+/** Storage-side redirects followed after the API's own 302 (iter2 WR-03). */
+const MAX_DOWNLOAD_HOPS = 3;
+
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 /**
@@ -125,24 +128,38 @@ export function createEcho3Provider(o: {
     return Readable.fromWeb(res.body as unknown as WebReadableStream);
   };
 
-  /** GET without any credentials (signed storage URLs, public thumbnails). */
+  /**
+   * GET without any credentials (signed storage URLs, public thumbnails).
+   * iter2 WR-03: follows up to MAX_DOWNLOAD_HOPS redirects by hand so the host
+   * check runs on every hop (fetch's own follow would skip it); one timeout
+   * covers all hops. Never sends Authorization.
+   */
   async function bareGet(endpoint: string, url: URL): Promise<Readable> {
-    if (!downloadAllowed(url, loopbackOk)) {
-      throw new ProviderError(`${endpoint}: refusing download host`, { endpoint });
+    const signal = AbortSignal.timeout(tDownload);
+    for (let hop = 0; ; hop++) {
+      if (!downloadAllowed(url, loopbackOk)) {
+        throw new ProviderError(`${endpoint}: refusing download host`, { endpoint });
+      }
+      let res: Response;
+      try {
+        res = await f(url, { redirect: 'manual', signal });
+      } catch (err) {
+        if ((err as Error)?.name === 'TimeoutError') throw new ProviderTimeoutError(`${endpoint} timed out`, endpoint);
+        throw new ProviderError(`${endpoint} network error`, { endpoint, cause: err });
+      }
+      if (res.status >= 300 && res.status < 400 && hop < MAX_DOWNLOAD_HOPS) {
+        const loc = res.headers.get('location');
+        await res.body?.cancel();
+        if (!loc) throw new ProviderError(`${endpoint} redirect without location`, { status: res.status, endpoint });
+        url = new URL(loc, url);
+        continue;
+      }
+      if (!res.ok) {
+        await res.body?.cancel();
+        throw new ProviderError(`${endpoint} ${res.status}`, { status: res.status, endpoint, code: `HTTP_${res.status}` });
+      }
+      return stream(res, endpoint);
     }
-    let res: Response;
-    try {
-      // No redirect is followed: each hop would skip the host check above.
-      res = await f(url, { redirect: 'manual', signal: AbortSignal.timeout(tDownload) });
-    } catch (err) {
-      if ((err as Error)?.name === 'TimeoutError') throw new ProviderTimeoutError(`${endpoint} timed out`, endpoint);
-      throw new ProviderError(`${endpoint} network error`, { endpoint, cause: err });
-    }
-    if (!res.ok) {
-      await res.body?.cancel();
-      throw new ProviderError(`${endpoint} ${res.status}`, { status: res.status, endpoint, code: `HTTP_${res.status}` });
-    }
-    return stream(res, endpoint);
   }
 
   const cancel = async (requestId: string): Promise<void> => {
