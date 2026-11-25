@@ -1,9 +1,9 @@
 ---
 phase: 6
 slug: live-echo-3-provider
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-11-25
 ---
 
@@ -38,22 +38,22 @@ created: 2026-11-25
 
 | ID | Requirement | Behavior | Test Type | Automated Command | File Exists | Status |
 |----|-------------|----------|-----------|-------------------|-------------|--------|
-| V1 | PROC-05 | echo3 client: auth header, exact body bytes, error/Retry-After mapping, timeout, 302 w/o auth, ref allowlist | unit (fake http) | `npx vitest run test/echo3.client.test.ts` | ❌ W0 | ⬜ pending |
-| V2 | PROC-05 | kill mid-submit → billed 1, same request id, one reserve | pg | `node --env-file=.env scripts/test-pg.mjs test/integration/echo3-contract.pg.test.ts` | ❌ | ⬜ pending |
-| V3 | PROC-05 | concurrent double handleSubmit → billed 1 | pg | same | ❌ | ⬜ pending |
-| V4 | PROC-05 | drop-after-accept/timeout/429/503 → billed 1; 409 parks; 401 definitive + released | pg | same | ❌ | ⬜ pending |
-| V5 | PROC-05 | kill mid-submit against the mock | pg | `… test/integration/scenarios.pg.test.ts` | ✅ extend | ⬜ pending |
-| V6 | SC2 (automated) | replay set submit → track → import → ready | pg | `… echo3-contract.pg.test.ts -t replay` | ❌ | ⬜ pending |
-| V7 | LIB-02 | `isRetryable` truth table | unit | `npx vitest run test/retryable.test.ts` | ❌ | ⬜ pending |
-| V8 | LIB-02 | retry route: ownership, not-retryable, ledger-held, below quote, success reset + new key + attempt row, idempotent replay, concurrent → one wins | pg | `… test/integration/retry.pg.test.ts` | ❌ | ⬜ pending |
-| V9 | OPS-06 | alert once per window, push+warn after commit, push failure non-fatal, `budgetAlert` in API | pg + unit | `… test/integration/budget-alert.pg.test.ts` | ❌ | ⬜ pending |
-| V10 | LIB-02 | Library failed row → "Retry…" only when retryable | RNTL | `npx jest src/__tests__/library-actions.test.tsx` | ✅ extend | ⬜ pending |
-| V11 | LIB-02 | retry sheet: fresh quote, over-budget disabled, stable Idempotency-Key, 409, non-retryable "Scan again" | RNTL | `npx jest src/__tests__/world-retry.test.tsx` | ❌ | ⬜ pending |
-| V12 | OPS-06 | banner from `budgetAlert`, dismiss per window per session | RNTL | `npx jest src/__tests__/library.test.tsx` | ✅ extend | ⬜ pending |
-| V13 | money rule | live needs ALLOW + keys + https base; any test fetch to `*.spaitial.ai` throws | unit | `npx vitest run test/config.test.ts` | ✅ extend + W0 | ⬜ pending |
-| V14 | LIB-03 regression | purge deletes `world_attempts` + provider-deletes archived request ids | pg | `… test/integration/purge-cascade.pg.test.ts` | ✅ extend | ⬜ pending |
+| V1 | PROC-05 | echo3 client: auth header, exact body bytes, error/Retry-After mapping, timeout, 302 w/o auth, ref allowlist | unit (fake http) | `npx vitest run test/echo3.client.test.ts` | ❌ W0 | ✅ green |
+| V2 | PROC-05 | kill mid-submit → billed 1, same request id, one reserve | pg | `node --env-file=.env scripts/test-pg.mjs test/integration/echo3-contract.pg.test.ts` | ❌ | ✅ green |
+| V3 | PROC-05 | concurrent double handleSubmit → billed 1 | pg | same | ❌ | ✅ green |
+| V4 | PROC-05 | drop-after-accept/timeout/429/503 → billed 1; 409 parks; 401 definitive + released | pg | same | ❌ | ✅ green |
+| V5 | PROC-05 | kill mid-submit against the mock | pg | `… test/integration/scenarios.pg.test.ts` | ✅ extend | ✅ green |
+| V6 | SC2 (automated) | replay set submit → track → import → ready | pg | `… echo3-contract.pg.test.ts -t replay` | ❌ | ✅ green |
+| V7 | LIB-02 | `isRetryable` truth table | unit | `npx vitest run test/retryable.test.ts` | ❌ | ✅ green |
+| V8 | LIB-02 | retry route: ownership, not-retryable, ledger-held, below quote, success reset + new key + attempt row, idempotent replay, concurrent → one wins | pg | `… test/integration/retry.pg.test.ts` | ❌ | ✅ green |
+| V9 | OPS-06 | alert once per window, push+warn after commit, push failure non-fatal, `budgetAlert` in API | pg + unit | `… test/integration/budget-alert.pg.test.ts` | ❌ | ✅ green |
+| V10 | LIB-02 | Library failed row → "Retry…" only when retryable | RNTL | `npx jest src/__tests__/library-actions.test.tsx` | ✅ extend | ✅ green |
+| V11 | LIB-02 | retry sheet: fresh quote, over-budget disabled, stable Idempotency-Key, 409, non-retryable "Scan again" | RNTL | `npx jest src/__tests__/world-retry.test.tsx` | ❌ | ✅ green |
+| V12 | OPS-06 | banner from `budgetAlert`, dismiss per window per session | RNTL | `npx jest src/__tests__/library.test.tsx` | ✅ extend | ✅ green |
+| V13 | money rule | live needs ALLOW + keys + https base; any test fetch to `*.spaitial.ai` throws | unit | `npx vitest run test/config.test.ts` | ✅ extend + W0 | ✅ green |
+| V14 | LIB-03 regression | purge deletes `world_attempts` + provider-deletes archived request ids | pg | `… test/integration/purge-cascade.pg.test.ts` | ✅ extend | ✅ green |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: ✅ green · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
@@ -86,4 +86,4 @@ created: 2026-11-25
 - [ ] Feedback latency < 180s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-11-25 (automated V1-V14 green; M1-M3 manual in 06-HUMAN-UAT.md)
