@@ -323,3 +323,38 @@ describe('WR-02 download SSRF guard', () => {
     expect(downloadAllowed(new URL('http://10.0.0.1/x'), true)).toBe(false);
   });
 });
+
+describe('WR-03 response shape validation', () => {
+  const json = (body: unknown) => {
+    let calls = 0;
+    const p = createEcho3Provider({
+      apiKey: KEY,
+      baseUrl: 'http://127.0.0.1:1',
+      webhookSecret: SECRET,
+      fetch: (async () => {
+        calls++;
+        return Response.json(body);
+      }) as typeof fetch,
+    });
+    return { p, calls: () => calls };
+  };
+
+  it.each([{}, { required_credits: '930', available_credits: 1 }, { required_credits: 0, available_credits: 1 }, { required_credits: 930 }])(
+    'quote %j → ProviderError with no status',
+    async (body) => {
+      const e = await reject(json(body).p.quote(30));
+      expect(e).toBeInstanceOf(ProviderError);
+      expect(e.status).toBeUndefined();
+    },
+  );
+
+  it.each([{}, { min_frames: 10 }, { min_frames: 10, max_frames: 5 }, { min_frames: 1.5, max_frames: 5 }])(
+    'limits %j → ProviderError, not cached',
+    async (body) => {
+      const { p, calls } = json(body);
+      await expect(p.limits()).rejects.toBeInstanceOf(ProviderError);
+      await expect(p.limits()).rejects.toBeInstanceOf(ProviderError);
+      expect(calls()).toBe(2);
+    },
+  );
+});

@@ -54,6 +54,8 @@ export function downloadAllowed(url: URL, loopbackOk = false): boolean {
   return h.includes('.') && !/(^|\.)(localhost|local|localdomain|internal|home\.arpa)$/.test(h);
 }
 
+const posInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
+
 type Envelope = {
   world?: { thumbnail_url?: unknown } | null;
   validation?: { issues?: { code?: string; message?: string }[] } | null;
@@ -158,16 +160,24 @@ export function createEcho3Provider(o: {
 
     async limits() {
       if (limitsCache && Date.now() - limitsCache.at < LIMITS_TTL_MS) return limitsCache.value;
-      const b = await getJson<{ min_frames: number; max_frames: number }>('limits', '/v1/captures/limits');
+      const b = await getJson<{ min_frames: unknown; max_frames: unknown }>('limits', '/v1/captures/limits');
+      // WR-03: a drifted shape must not become NaN limits (cached for an hour).
+      if (!posInt(b.min_frames) || !posInt(b.max_frames) || b.min_frames > b.max_frames) {
+        throw new ProviderError('limits: bad response shape', { endpoint: 'limits' });
+      }
       limitsCache = { value: { minFrames: b.min_frames, maxFrames: b.max_frames }, at: Date.now() };
       return limitsCache.value;
     },
 
     async quote(frameCount) {
-      const b = await getJson<{ required_credits: number; available_credits: number }>(
+      const b = await getJson<{ required_credits: unknown; available_credits: unknown }>(
         'quote',
         `/v1/captures/process-quote?model=echo-3&frame_count=${encodeURIComponent(frameCount)}`,
       );
+      // WR-03: `undefined > approved` is false, so a missing quote would pass every ceiling check.
+      if (!posInt(b.required_credits) || typeof b.available_credits !== 'number') {
+        throw new ProviderError('quote: bad response shape', { endpoint: 'quote' });
+      }
       return { credits: b.required_credits, available: b.available_credits };
     },
 
