@@ -1,6 +1,7 @@
 import {
   chargeLine,
   failureGuidance,
+  failureText,
   isTerminal,
   pollInterval,
   STALLED_MS,
@@ -311,6 +312,29 @@ describe('failureGuidance', () => {
     [null, null, false, OTHER],
   ] as const)('(%s, %s, %s)', (stage, code, charged, copy) => {
     expect(failureGuidance(stage, code, charged)).toBe(copy);
+  });
+});
+
+describe('WR-08: retryable failures never read as not retryable', () => {
+  const LIMIT = 'Your spending limit or credits stopped this run. Check the cost below before you try again.';
+  const PROVIDER = 'The processing service had a problem on its side. Trying again often works.';
+  it.each([
+    ['processing', 'INTERNAL_ERROR', 'Something went wrong while processing', PROVIDER],
+    ['processing', 'WORLD_GENERATION_FAILED', 'Something went wrong while processing', PROVIDER],
+    ['submit', 'RATE_LIMITED', 'Something went wrong while processing', PROVIDER],
+    ['submit', 'HTTP_402', 'Stopped by your spending limit', LIMIT],
+    ['submit', 'BUDGET_EXCEEDED', 'Stopped by your spending limit', LIMIT],
+  ] as const)('retryable (%s, %s) → headline + guidance agree', (stage, code, text, guide) => {
+    expect(failureText(code, stage, true)).toBe(text);
+    expect(failureGuidance(stage, code, false, true)).toBe(guide);
+  });
+
+  it('the Library row uses the same retryable headline', () => {
+    const s = toDisplayState(
+      { ...item({ status: 'failed', failure_stage: 'processing', failure_code: 'WORLD_GENERATION_FAILED', charged: false }), retryable: true },
+      NOW,
+    );
+    expect(s.statusLine).toBe('Failed · Something went wrong while processing');
   });
 });
 

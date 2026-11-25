@@ -77,8 +77,8 @@ export default function RetrySheet() {
 
 function ReasonCard({ world }: { world: LibraryItem }) {
   const theme = useTheme();
-  const reason = failureText(world.failure_code, world.failure_stage);
-  const guidance = failureGuidance(world.failure_stage, world.failure_code, world.charged);
+  const reason = failureText(world.failure_code, world.failure_stage, world.retryable === true);
+  const guidance = failureGuidance(world.failure_stage, world.failure_code, world.charged, world.retryable === true);
   const charge = chargeLine(world.charged);
   return (
     <ThemedView

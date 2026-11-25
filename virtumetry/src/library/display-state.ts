@@ -99,8 +99,10 @@ const LIMIT_CODES = new Set([
 ]);
 const UPLOAD_CODE = /^(UPLOAD_STALE|BUNDLE_NOT_RANGEABLE|MANIFEST_|ZIP_|IMAGES_MISSING|IMAGE_|EXIF_|CAMERA_FILE_INVALID_JSON|PER_FRAME_INTRINSICS_)/;
 
-export function failureText(code: string | null, stage: string | null): string {
+/** `retryable` (server, D-08) wins: a retryable run is never worded as a bad capture (WR-08). */
+export function failureText(code: string | null, stage: string | null, retryable = false): string {
   const c = code ?? '';
+  if (retryable) return LIMIT_CODES.has(c) || GUIDE_LIMIT.has(c) ? LIMIT : UNKNOWN;
   if (stage === 'validate') return CHECKS; // ahead of the code families (IMAGE_* would read as upload)
   if (UPLOAD_CODE.test(c)) return UPLOAD;
   if (REJECTED_CODES.has(c)) return REJECTED;
@@ -123,8 +125,15 @@ const GUIDE_UNCERTAIN = new Set(['SUBMIT_UNCERTAIN', 'IDEMPOTENCY_KEY_REUSED']);
 const CAPTURE_CODE = /^(IMAGES_MISSING|ZIP_|EXIF_)/;
 
 /** Failure sheet guidance body (06-UI-SPEC copy table). Never shows a code. */
-export function failureGuidance(stage: string | null, code: string | null, charged: boolean | null | undefined): string {
+export function failureGuidance(
+  stage: string | null,
+  code: string | null,
+  charged: boolean | null | undefined,
+  retryable = false,
+): string {
   const c = code ?? '';
+  // WR-08: the sheet shows "Approve and retry" exactly when retryable, so the copy must invite a retry.
+  if (retryable) return GUIDE_LIMIT.has(c) ? G_LIMIT : G_PROVIDER;
   if (stage === 'validate' || stage === 'pack' || stage === 'upload' || CAPTURE_CODE.test(c)) return G_CAPTURE;
   if (GUIDE_UNCERTAIN.has(c)) return G_UNCERTAIN;
   if (GUIDE_LIMIT.has(c)) return G_LIMIT;
@@ -223,7 +232,7 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
         ...base,
         kind: 'failed',
         displayTitle,
-        statusLine: `Failed · ${failureText(item.failure_code, item.failure_stage)}`,
+        statusLine: `Failed · ${failureText(item.failure_code, item.failure_stage, item.retryable === true)}`,
         secondaryLine: `${charge} · ${date}`,
         tone: 'destructive',
         icon: 'exclamationmark.triangle.fill',
