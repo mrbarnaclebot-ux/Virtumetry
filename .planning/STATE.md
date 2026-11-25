@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 6 UI-SPEC approved
-last_updated: "2026-11-25T01:32:59.079Z"
-last_activity: 2026-11-25 -- Phase 6 planning complete
+last_updated: "2026-11-25T01:40:02.698Z"
+last_activity: 2026-11-25 -- Phase 6 execution started
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 48
-  completed_plans: 40
+  completed_plans: 43
   percent: 56
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-23)
 
 **Core value:** A walk-through scan of a real room comes back as a faithful, walkable 3D world, reliably, without wasting paid processing on bad captures.
-**Current focus:** Phase 5 — Viewer, Floor Plan, Measure & Share
+**Current focus:** Phase 6 — Live Echo-3 Provider
 
 ## Current Position
 
-Phase: 5 (Viewer, Floor Plan, Measure & Share) — VERIFYING
-Plan: 8 of 8
-Status: Ready to execute
-Last activity: 2026-11-25 -- Phase 6 planning complete
+Phase: 6 (Live Echo-3 Provider) — EXECUTING
+Plan: 1 of 8
+Status: Executing Phase 6
+Last activity: 2026-11-25 -- Phase 6 execution started
 
 Progress: [██████████] 100%
 
