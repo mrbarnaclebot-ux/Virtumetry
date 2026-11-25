@@ -57,20 +57,20 @@ v1 = single room, owner-only testing, iPhone first. Each requirement maps to one
 
 ### Viewer (VIEW)
 
-- [ ] **VIEW-01**: Owner can open a ready world and orbit it smoothly on iPhone 17 Pro (level-of-detail splat budget, honest loading progress)
-- [ ] **VIEW-02**: The world opens from a sensible start viewpoint, and the owner can reset the view
-- [ ] **VIEW-03**: Owner can switch to walk mode and move first-person with collision against the Echo-3 collider mesh
-- [ ] **VIEW-04**: Owner can open the floor plan, see "you are here", and tap a spot to teleport there
-- [ ] **VIEW-05**: Owner can measure the distance between two tapped points, labelled as approximate
-- [ ] **VIEW-06**: The viewer recovers automatically if the WebView or WebGL context crashes
+- [x] **VIEW-01**: Owner can open a ready world and orbit it smoothly on iPhone 17 Pro (level-of-detail splat budget, honest loading progress)
+- [x] **VIEW-02**: The world opens from a sensible start viewpoint, and the owner can reset the view
+- [x] **VIEW-03**: Owner can switch to walk mode and move first-person with collision against the Echo-3 collider mesh
+- [x] **VIEW-04**: Owner can open the floor plan, see "you are here", and tap a spot to teleport there
+- [x] **VIEW-05**: Owner can measure the distance between two tapped points, labelled as approximate
+- [x] **VIEW-06**: The viewer recovers automatically if the WebView or WebGL context crashes
 
 ### Sharing (SHARE)
 
-- [ ] **SHARE-01**: Owner can create a public link (unguessable slug) that opens the world in any browser using the same viewer
-- [ ] **SHARE-02**: Owner can revoke a link and it stops working immediately
-- [ ] **SHARE-03**: Shared links show a preview (thumbnail + title) when pasted into messaging apps, and are `noindex`
-- [ ] **SHARE-04**: Owner can optionally protect a link with a password
-- [ ] **SHARE-05**: Owner can see how many times each link was opened
+- [x] **SHARE-01**: Owner can create a public link (unguessable slug) that opens the world in any browser using the same viewer
+- [x] **SHARE-02**: Owner can revoke a link and it stops working immediately
+- [x] **SHARE-03**: Shared links show a preview (thumbnail + title) when pasted into messaging apps, and are `noindex`
+- [x] **SHARE-04**: Owner can optionally protect a link with a password
+- [x] **SHARE-05**: Owner can see how many times each link was opened
 
 ### Native Build & Privacy (OPS)
 
@@ -155,17 +155,17 @@ Deferred. Tracked, not in the current roadmap.
 | LIB-01 | Phase 3 | Complete |
 | LIB-02 | Phase 6 | Pending |
 | LIB-03 | Phase 3 | Complete |
-| VIEW-01 | Phase 5 | Pending |
-| VIEW-02 | Phase 5 | Pending |
-| VIEW-03 | Phase 5 | Pending |
-| VIEW-04 | Phase 5 | Pending |
-| VIEW-05 | Phase 5 | Pending |
-| VIEW-06 | Phase 5 | Pending |
-| SHARE-01 | Phase 5 | Pending |
-| SHARE-02 | Phase 5 | Pending |
-| SHARE-03 | Phase 5 | Pending |
-| SHARE-04 | Phase 5 | Pending |
-| SHARE-05 | Phase 5 | Pending |
+| VIEW-01 | Phase 5 | Complete |
+| VIEW-02 | Phase 5 | Complete |
+| VIEW-03 | Phase 5 | Complete |
+| VIEW-04 | Phase 5 | Complete |
+| VIEW-05 | Phase 5 | Complete |
+| VIEW-06 | Phase 5 | Complete |
+| SHARE-01 | Phase 5 | Complete |
+| SHARE-02 | Phase 5 | Complete |
+| SHARE-03 | Phase 5 | Complete |
+| SHARE-04 | Phase 5 | Complete |
+| SHARE-05 | Phase 5 | Complete |
 | OPS-01 | Phase 7 | Pending |
 | OPS-02 | Phase 7 | Pending |
 | OPS-03 | Phase 9 | Pending |

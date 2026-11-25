@@ -1,7 +1,7 @@
 ---
 phase: 05-viewer-floor-plan-measure-share
 source: 05-08-PLAN.md Task 3
-status: pending
+status: passed
 device: iPhone 17 Pro, Expo Go + desktop browser (Chrome or Safari)
 backend: Railway dev
 ---
@@ -52,3 +52,7 @@ Sign in and start the app as in `virtumetry/README.md` "Test on your iPhone (Pha
 | 13 | noindex | View the source of `https://api-dev-d164ec0a.up.railway.app/s/<slug>` (and the `/r/<slug>` page): it has `<meta name="robots" content="noindex,nofollow">` | pending | |
 
 To record a failure, put the step number and the exact on-screen text in Observed.
+
+## Owner result (2026-11-25)
+
+Owner ran the checklist on iPhone 17 Pro (Expo Go) + browser against Railway dev: all passed. Issue found and fixed during UAT: iOS share sheet pasted the URL twice (url+message) -> 6ef821c shares one field on iOS. Expo Go dev overlay covered Share (Expo Go only; hide via dev menu). Benign dev-only console error "Unable to find the DomWebView view with tag" on leaving the viewer (Expo DOM bridge race).
