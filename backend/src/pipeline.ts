@@ -178,10 +178,16 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   // quote that the reservation was made for is never rewritten.
   if (w.submitBody == null) {
     const quote = await provider.quote(cap.frameCount);
-    if (quote.credits > w.approvedMaxCredits) {
+    // WR-05: a racing run of this job may have persisted the body (and reserved
+    // the old quote) since we read the world: then neither rewrite nor refuse.
+    const [quoted] = await db
+      .update(worlds)
+      .set({ quotedCredits: quote.credits })
+      .where(and(eq(worlds.id, worldId), isNull(worlds.submitBody)))
+      .returning({ id: worlds.id });
+    if (quoted && quote.credits > w.approvedMaxCredits) {
       return refuse('QUOTE_ABOVE_APPROVAL', `quote ${quote.credits} > approved ${w.approvedMaxCredits}`);
     }
-    await db.update(worlds).set({ quotedCredits: quote.credits }).where(eq(worlds.id, worldId));
   }
 
   // Persist-before-spend (D-17): the key is minted once, ever; a retry reuses it.

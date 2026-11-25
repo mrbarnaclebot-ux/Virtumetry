@@ -4,7 +4,8 @@ import type { MockScenario } from '../../src/provider/mock.js';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
 import { failWorldForDeadJob, LeaseLostError, runOneJob } from '../../src/worker.js';
 import { ProviderError } from '../../src/provider/index.js';
-import { MAX_ATTEMPTS } from '../../src/queue.js';
+import { claimNextJob, MAX_ATTEMPTS } from '../../src/queue.js';
+import { handleSubmit } from '../../src/pipeline.js';
 
 // PROC-10 scenario matrix (ROADMAP SC4) + concurrent over-budget refusal (SC5,
 // PROC-08). Every scripted failure must end in its documented state with no
@@ -349,6 +350,28 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(w.quotedCredits).toBe(900 + frameCount);
     expect(w.creditsSpent).toBe(900 + frameCount);
     expect(pl.provider.calls.submit).toHaveLength(2);
+  }, 120_000);
+
+  it('WR-05: a racing run that quotes after the body was persisted neither rewrites the quote nor refuses', async () => {
+    const pl = await start('happy');
+    const { worldId, frameCount } = await pl.seedScan();
+    await pl.drain({ worldId, until: (w) => w.status === 'submitting' });
+    const job = (await claimNextJob(pl.db, ['submit'], 'it-worker-a'))!;
+    const quote = pl.provider.quote.bind(pl.provider);
+    let n = 0;
+    pl.provider.quote = async (fc) => {
+      if (n++ > 0) return quote(fc);
+      // Run B is quoting from a stale read; run A persists the body, reserves and sends meanwhile.
+      await handleSubmit({ ...pl.deps, workerId: 'it-worker-a' }, { ...job });
+      return { credits: 4000, available: Number.POSITIVE_INFINITY }; // under the 5000 approval, != the reserved quote
+    };
+    await handleSubmit({ ...pl.deps, workerId: 'it-worker-b' }, { ...job });
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('ready');
+    expect(w.quotedCredits).toBe(900 + frameCount);
+    expect(w.creditsSpent).toBe(900 + frameCount);
+    expect(pl.provider.calls.submit).toHaveLength(1);
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
   }, 120_000);
 
   it('WR-02: a world failed mid-submit is still tracked once the request is confirmed', async () => {
