@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import { eq } from 'drizzle-orm';
 import { loadConfig } from '../../src/config.js';
+import type { Config } from '../../src/config.js';
 import { captures, users, worlds, type World } from '../../src/db/schema.js';
 import { enqueue } from '../../src/queue.js';
 import { createMockProvider, type MockScenario } from '../../src/provider/mock.js';
+import type { ReconProvider } from '../../src/provider/types.js';
 import { createLocalStorage, registerDevStorageRoutes } from '../../src/storage/local.js';
-import { captureKey } from '../../src/storage/index.js';
+import { captureKey, type StorageDriver } from '../../src/storage/index.js';
 import { runOneJob, type WorkerDeps } from '../../src/worker.js';
 import { createTestSchema } from './pg-schema.js';
 
@@ -44,6 +46,8 @@ export async function startPipeline(
     trackPollSeconds?: number;
     daily?: number;
     monthly?: number;
+    /** Build a non-mock provider (06-06: the live echo3.ts client against the fake server). */
+    provider?: (ctx: { config: Config; storage: StorageDriver }) => ReconProvider;
   } = {},
 ) {
   const url = process.env.TEST_DATABASE_URL;
@@ -83,13 +87,17 @@ export async function startPipeline(
     /** Set by webhook tests (02-06) to receive the mock's signed deliveries. */
     onWebhook: undefined as undefined | ((raw: Buffer, headers: Record<string, string>) => Promise<unknown>),
   };
-  const provider = createMockProvider({
-    scenario: opts.scenario,
-    processingSeconds: opts.processingSeconds ?? 1,
-    retryAfterS: opts.retryAfterS ?? 0,
-    webhookSecret: TEST_WEBHOOK_SECRET,
-    deliver: (raw, h) => (ctx.onWebhook ? ctx.onWebhook(raw, h) : Promise.resolve()),
-  });
+  // Typed as the mock so existing callers keep `.calls`. With `opts.provider` the
+  // object is really whatever the factory built: such tests only use the
+  // ReconProvider surface (or their own reference) and never touch `.calls`.
+  const provider = (opts.provider?.({ config, storage }) ??
+    createMockProvider({
+      scenario: opts.scenario,
+      processingSeconds: opts.processingSeconds ?? 1,
+      retryAfterS: opts.retryAfterS ?? 0,
+      webhookSecret: TEST_WEBHOOK_SECRET,
+      deliver: (raw, h) => (ctx.onWebhook ? ctx.onWebhook(raw, h) : Promise.resolve()),
+    })) as ReturnType<typeof createMockProvider>;
   const deps: WorkerDeps = {
     db: schema.db,
     storage,
