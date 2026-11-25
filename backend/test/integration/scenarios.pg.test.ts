@@ -85,6 +85,29 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     ]);
   }, 120_000);
 
+  it('iter2 WR-04: a submit refusal releases and fails the world in one tx (a failing flip keeps the reserve)', async () => {
+    const pl = await start('402');
+    const { worldId, frameCount } = await pl.seedScan();
+    await pl.drain({ worldId, until: (w) => w.status === 'submitting' });
+    // Crash at the flip: the release must roll back with it (before WR-04 it had already committed).
+    await pl.pool.query(`CREATE FUNCTION wr04_boom() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$ LANGUAGE plpgsql`);
+    await pl.pool.query(`CREATE TRIGGER wr04 BEFORE UPDATE ON worlds FOR EACH ROW WHEN (NEW.status = 'failed') EXECUTE FUNCTION wr04_boom()`);
+    const job = (await claimNextJob(pl.db, ['submit'], 'it-worker-a'))!;
+    await expect(handleSubmit({ ...pl.deps, workerId: 'it-worker-a' }, job)).rejects.toThrow();
+    const mid = await pl.getWorld(worldId);
+    expect(mid.status).toBe('submitting');
+    expect((await ledger(mid.submissionKey!)).map((r) => r.kind)).toEqual(['reserve']);
+
+    await pl.pool.query('DROP TRIGGER wr04 ON worlds');
+    await pl.pool.query("UPDATE jobs SET locked_at = now() - interval '1 hour' WHERE world_id = $1 AND kind = 'submit'", [worldId]);
+    const w = await drainNow(pl, worldId);
+    expect([w.status, w.failureCode]).toEqual(['failed', 'INSUFFICIENT_CREDITS']);
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([
+      ['reserve', 900 + frameCount],
+      ['release', -(900 + frameCount)],
+    ]);
+  }, 120_000);
+
   it("'402': insufficient credits → failed/submit, reservation released", async () => {
     const { w, submits, quote, rows } = await run('402');
     expect(w.status).toBe('failed');

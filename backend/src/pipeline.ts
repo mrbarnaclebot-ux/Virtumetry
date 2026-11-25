@@ -169,9 +169,12 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   // a run that stalled across a retry can't fail, re-quote or re-body the new attempt.
   const thisAttempt = eq(worlds.submitAttempt, w.submitAttempt);
   // One tx (CR-01): a crash between the two used to leave a retryable failed
-  // world with a live submit job that a retry would then race.
-  const refuse = (code: string, message: string) =>
+  // world with a live submit job that a retry would then race. iter2 WR-04: a
+  // known-not-charged release commits with the failure, never before it (a crash
+  // between them left a released key that the resume would re-send).
+  const refuse = (code: string, message: string, release?: string) =>
     db.transaction(async (tx) => {
+      if (release) await releaseCredits(tx, release);
       await failWorld(tx, worldId, ['submitting'], 'submit', code, message, thisAttempt);
       await completeJob(tx as unknown as Db, job.id, job.lockedBy);
     });
@@ -302,8 +305,8 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
         // reservation and use a non-retryable code so the world isn't retried.
         return refuse('SUBMIT_UNCERTAIN', `provider refused submit (${status} ${code ?? ''}) after an uncertain attempt`);
       }
-      await releaseCredits(db, key); // known not charged
-      return refuse(status === 401 ? 'PROVIDER_AUTH' : (code ?? `HTTP_${status}`), `provider refused submit (${status})`);
+      // known not charged
+      return refuse(status === 401 ? 'PROVIDER_AUTH' : (code ?? `HTTP_${status}`), `provider refused submit (${status})`, key);
     }
     if (status === 409) {
       // Never mint a new key; the reservation stays (it may be billed).
@@ -317,8 +320,8 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
         throw new RetryLaterError(`submit ${status}, retrying with the same key`, delay + Math.round(Math.random()));
       }
       if (!uncertain) {
-        await releaseCredits(db, key); // never accepted
-        return refuse(status === 429 ? 'RATE_LIMITED' : 'PROVIDER_UNAVAILABLE', `submit ${status} after ${job.attempts} attempts`);
+        // never accepted
+        return refuse(status === 429 ? 'RATE_LIMITED' : 'PROVIDER_UNAVAILABLE', `submit ${status} after ${job.attempts} attempts`, key);
       }
     }
     // 5xx / timeout / network: the request may exist and be billed — keep the reservation.
