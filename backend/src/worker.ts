@@ -8,6 +8,7 @@ import {
   creditEvents,
   jobs,
   shareSlugs,
+  worldAttempts,
   worlds,
   type Job,
   type JobKind,
@@ -139,11 +140,19 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
   if (!world) return void (await completeJob(db, job.id, job.lockedBy)); // already hard-deleted
   const hardDelete = !framesOnly && Boolean(world.deletedAt);
 
-  if (hardDelete && world.providerRequestId) {
-    try {
-      await deps.provider.deleteWorld(world.providerRequestId);
-    } catch (err) {
-      if (!(err instanceof ProviderError && err.status === 404)) throw err; // retryable
+  if (hardDelete) {
+    // A-05: the current request plus every archived retry attempt's request.
+    const archived = await db
+      .select({ rid: worldAttempts.providerRequestId })
+      .from(worldAttempts)
+      .where(and(eq(worldAttempts.worldId, worldId), isNotNull(worldAttempts.providerRequestId)));
+    const rids = [world.providerRequestId, ...archived.map((a) => a.rid)].filter((r): r is string => Boolean(r));
+    for (const rid of rids) {
+      try {
+        await deps.provider.deleteWorld(rid);
+      } catch (err) {
+        if (!(err instanceof ProviderError && err.status === 404)) throw err; // retryable
+      }
     }
   }
 
@@ -187,6 +196,7 @@ async function handlePurge(deps: WorkerDeps, job: Job): Promise<void> {
     await tx.update(creditEvents).set({ worldId: null }).where(eq(creditEvents.worldId, worldId));
     await tx.delete(jobs).where(eq(jobs.worldId, worldId));
     await tx.delete(captures).where(eq(captures.worldId, worldId));
+    await tx.delete(worldAttempts).where(eq(worldAttempts.worldId, worldId));
     await tx.delete(worlds).where(and(eq(worlds.id, worldId), isNotNull(worlds.deletedAt)));
   });
 }

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
-import { captures, creditEvents, shareSlugs, users, worlds } from '../../src/db/schema.js';
+import { captures, creditEvents, shareSlugs, users, worldAttempts, worlds } from '../../src/db/schema.js';
+import { ProviderError } from '../../src/provider/index.js';
 import { releaseCredits } from '../../src/budget.js';
 import { enqueue } from '../../src/queue.js';
 import { reapStaleUploads, runOneJob } from '../../src/worker.js';
@@ -113,6 +114,48 @@ describe.skipIf(!url)('purge cascade (mock provider, real Postgres)', () => {
     expect(failed).toBe(true);
     expect(p.provider.calls.deleteWorld.slice(before)).toEqual([rid, rid]);
     for (const t of ['worlds', 'captures', 'jobs']) expect(await count(t, worldId)).toBe(0);
+  }, 90_000);
+
+  /** A ready world with two archived attempts: one reached the provider, one did not. */
+  const worldWithAttempts = async () => {
+    const { worldId } = await p.seedScan();
+    const w = await p.drain({ worldId });
+    expect(w.status).toBe('ready');
+    await p.db.insert(worldAttempts).values([
+      { worldId, attempt: 1, providerRequestId: 'req_old', failureStage: 'processing', failureCode: 'INTERNAL_ERROR' },
+      { worldId, attempt: 2, failureStage: 'submit', failureCode: 'RATE_LIMITED' },
+    ]);
+    return { worldId, rid: w.providerRequestId! };
+  };
+
+  it('A-05: archived attempts deleted at the provider and in the DB', async () => {
+    const { worldId, rid } = await worldWithAttempts();
+    const before = p.provider.calls.deleteWorld.length;
+    await deleteScan(worldId);
+    await runAll();
+    expect(p.provider.calls.deleteWorld.slice(before)).toEqual([rid, 'req_old']);
+    expect(await count('world_attempts', worldId)).toBe(0);
+    expect(await count('worlds', worldId)).toBe(0);
+  }, 90_000);
+
+  it('A-05: archived request already gone (404) does not block the purge', async () => {
+    const { worldId } = await worldWithAttempts();
+    const del = p.provider.deleteWorld.bind(p.provider);
+    const seen: string[] = [];
+    p.provider.deleteWorld = async (id) => {
+      seen.push(id);
+      if (id === 'req_old') throw new ProviderError('gone', { status: 404, code: 'NOT_FOUND' });
+      return del(id);
+    };
+    try {
+      await deleteScan(worldId);
+      await runAll();
+    } finally {
+      p.provider.deleteWorld = del;
+    }
+    expect(seen).toContain('req_old');
+    expect(await count('world_attempts', worldId)).toBe(0);
+    expect(await count('worlds', worldId)).toBe(0);
   }, 90_000);
 
   /** A world mid-submit: key minted, reservation held, no request id (5xx/timeout snooze). */
