@@ -45,7 +45,7 @@ describe('GET /v1/quote', () => {
     const res = await app.inject({ method: 'GET', url: '/v1/quote?frames=30' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      credits: 930, usd: 9.3, budgetRemaining: 10000, budgetWindow: 'daily', withinBudget: true,
+      credits: 930, usd: 9.3, budgetRemaining: 10000, budgetWindow: 'daily', withinBudget: true, budgetAlert: null,
     });
     expect(executes).toBe(1); // one read, no reservation
     await app.close();

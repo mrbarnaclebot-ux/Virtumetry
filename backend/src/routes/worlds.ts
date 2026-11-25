@@ -1,10 +1,13 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/client.js';
-import { worlds, type World } from '../db/schema.js';
+import { captures, worldAttempts, worlds, type World } from '../db/schema.js';
 import { enqueue } from '../queue.js';
 import type { QuotaChargeResult } from '../quota.js';
+import { budgetAlertFor, spentCredits } from '../budget.js';
+import { createProvider } from '../provider/index.js';
+import { applyRetry, heldReserveSql, isRetryable, ledgerClear } from '../retry.js';
 import type { StorageDriver } from '../storage/index.js';
 import type { RouteDeps } from './deps.js';
 
@@ -46,7 +49,15 @@ export function requireUserId(req: FastifyRequest, reply: FastifyReply): string 
   return req.userId;
 }
 
-export function serializeWorld(w: World): Record<string, unknown> {
+/** Per-world facts the payload needs beyond the row: latest capture's frames (A-03), held reserve (A-02). */
+export type WorldExtra = { frameCount?: number | null; ledgerHeld?: boolean };
+
+/** POST /v1/worlds/:id/retry body (D-09): the fresh explicit approval. */
+export const retryBody = z
+  .object({ approved_max_credits: z.number().int().positive().max(2_000_000_000) })
+  .strict();
+
+export function serializeWorld(w: World, extra?: WorldExtra): Record<string, unknown> {
   return {
     id: w.id,
     title: w.title,
@@ -72,6 +83,10 @@ export function serializeWorld(w: World): Record<string, unknown> {
     failure_message: w.failureMessage,
     charged: w.charged,
     eta_seconds: null,
+    // D-08/A-02: the only source of the Retry button. Held reserve = maybe billed.
+    retryable: isRetryable(w) && !extra?.ledgerHeld,
+    submit_attempt: w.submitAttempt,
+    frame_count: extra?.frameCount ?? null,
   };
 }
 
@@ -86,6 +101,7 @@ export function serializeWorld(w: World): Record<string, unknown> {
 export async function serializeWorldListItem(
   w: World,
   storage: StorageDriver,
+  extra?: WorldExtra,
 ): Promise<Record<string, unknown>> {
   const assets: { thumbnail_url?: string } = {};
   if (w.thumbnailKey) {
@@ -94,24 +110,25 @@ export async function serializeWorldListItem(
       DOWNLOAD_TTL_SECONDS,
     );
   }
-  return { ...serializeWorld(w), assets };
+  return { ...serializeWorld(w, extra), assets };
 }
 
 /**
  * GET /v1/worlds/:id body: serializeWorld plus the floor-plan meta (detail only, the
  * list stays lean) and every set asset key presigned.
  */
-export async function serializeWorldDetail(w: World, storage: StorageDriver) {
+export async function serializeWorldDetail(w: World, storage: StorageDriver, extra?: WorldExtra) {
   const assets: Record<string, string> = {};
   for (const [field, out] of ASSET_FIELDS) {
     const key = w[field];
     if (key) assets[out] = await storage.presignDownload(key, DOWNLOAD_TTL_SECONDS);
   }
-  return { world: { ...serializeWorld(w), floorplan_meta: w.floorplanMeta ?? null }, assets };
+  return { world: { ...serializeWorld(w, extra), floorplan_meta: w.floorplanMeta ?? null }, assets };
 }
 
 export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  const { storage } = deps;
+  const { config, storage } = deps;
+  const provider = deps.provider ?? createProvider(config);
 
   // GET /v1/worlds/:id — status/phase + signed asset URLs.
   app.get<{ Params: { id: string } }>('/v1/worlds/:id', async (req, reply) => {
@@ -121,7 +138,11 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const world = await findOwnedWorld(db, req.params.id, userId);
     if (!world) return reply.code(404).send({ error: 'world_not_found' });
 
-    return reply.send(await serializeWorldDetail(world, storage));
+    const cap = await latestCapture(db, world.id);
+    const ledgerHeld = !(await ledgerClear(db, world.submissionKey));
+    return reply.send(
+      await serializeWorldDetail(world, storage, { frameCount: cap?.frameCount ?? null, ledgerHeld }),
+    );
   });
 
   // GET /v1/worlds — owner's library, paginated, excluding soft-deleted.
@@ -139,8 +160,14 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
     const q = parsedQuery.data;
     const db = getDb();
+    // One query (A-03): latest capture's frame count + WR-01 held reserve per row.
+    // Raw `worlds.submission_key`: an unqualified column would bind to credit_events r.
     const rows = await db
-      .select()
+      .select({
+        world: worlds,
+        frameCount: sql<number | null>`(SELECT c.frame_count FROM captures c WHERE c.world_id = worlds.id ORDER BY c.created_at DESC LIMIT 1)`,
+        ledgerHeld: sql<boolean>`EXISTS(${heldReserveSql(sql`worlds.submission_key`)})`,
+      })
       .from(worlds)
       .where(and(eq(worlds.ownerId, userId), isNull(worlds.deletedAt)))
       .orderBy(desc(worlds.createdAt))
@@ -153,14 +180,101 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     // serializeWorldListItem. Presigning is pure crypto (no I/O), so the
     // per-item Promise.all is cheap.
     const items = await Promise.all(
-      page.map((w) => serializeWorldListItem(w, storage)),
+      page.map((r) =>
+        serializeWorldListItem(r.world, storage, {
+          frameCount: r.frameCount == null ? null : Number(r.frameCount),
+          ledgerHeld: r.ledgerHeld === true,
+        }),
+      ),
     );
+    const budgetAlert = budgetAlertFor(await spentCredits(db, provider.mode), {
+      daily: config.DAILY_CREDIT_BUDGET,
+      monthly: config.MONTHLY_CREDIT_BUDGET,
+      share: config.BUDGET_ALERT_SHARE,
+    });
     return reply.send({
       worlds: items,
       has_more: hasMore,
       // Kept alongside has_more for existing pagination consumers.
       next_offset: hasMore ? q.offset + q.limit : null,
+      budgetAlert,
     });
+  });
+
+  // POST /v1/worlds/:id/retry — D-09: a fresh explicit approval turns a
+  // retryable failure into exactly one new attempt with a new submission key.
+  // Never charges the scan quota (A-04). Logs the world id only.
+  app.post<{ Params: { id: string } }>('/v1/worlds/:id/retry', {
+    config: {
+      rateLimit: {
+        max: config.RATE_LIMIT_CREATE_MAX,
+        timeWindow: config.RATE_LIMIT_WINDOW_MS,
+        keyGenerator: (req: FastifyRequest) => `create:${req.userId ?? req.ip}`,
+      },
+    },
+  }, async (req, reply) => {
+    const userId = requireUserId(req, reply);
+    if (!userId) return;
+    const parsed = retryBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_body', issues: parsed.error.issues });
+    }
+    const keyHeader = req.headers['idempotency-key'];
+    const rawKey = Array.isArray(keyHeader) ? keyHeader[0] : keyHeader;
+    if (rawKey === undefined) return reply.code(400).send({ error: 'missing_idempotency_key' });
+    const key = z.guid().safeParse(rawKey.trim());
+    if (!key.success) {
+      return reply.code(400).send({ error: 'invalid_idempotency_key', detail: 'expected a UUID' });
+    }
+    const clientRequestId = key.data;
+
+    const db = getDb();
+    const world = await findOwnedWorld(db, req.params.id, userId);
+    if (!world) return reply.code(404).send({ error: 'world_not_found' });
+
+    // Idempotency-Key replay: this key already archived an attempt → current world.
+    const replay = async () => {
+      const [hit] = await db
+        .select({ id: worldAttempts.id })
+        .from(worldAttempts)
+        .where(and(eq(worldAttempts.worldId, world.id), eq(worldAttempts.clientRequestId, clientRequestId)))
+        .limit(1);
+      if (!hit) return null;
+      const current = (await findOwnedWorld(db, world.id, userId)) ?? world;
+      const cap = await latestCapture(db, world.id);
+      return { world: serializeWorld(current, { frameCount: cap?.frameCount ?? null }) };
+    };
+    const replayed = await replay();
+    if (replayed) return reply.send(replayed);
+
+    if (!isRetryable(world) || !(await ledgerClear(db, world.submissionKey))) {
+      return reply.code(409).send({ error: 'not_retryable' });
+    }
+    const cap = await latestCapture(db, world.id);
+    if (!cap) return reply.code(409).send({ error: 'not_retryable' });
+    const quote = await provider.quote(cap.frameCount);
+    if (parsed.data.approved_max_credits < quote.credits) {
+      return reply.code(400).send({ error: 'approval_below_quote', quote_credits: quote.credits });
+    }
+
+    let row: World | null;
+    try {
+      row = await applyRetry(db, world, {
+        approvedMaxCredits: parsed.data.approved_max_credits,
+        clientRequestId,
+        bundlePresent: !!cap.bundleKey,
+        captureId: cap.id,
+      });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      // Same key raced itself → replay; a different key took this attempt → 409.
+      const raced = await replay();
+      if (raced) return reply.send(raced);
+      return reply.code(409).send({ error: 'not_retryable' });
+    }
+    if (!row) return reply.code(409).send({ error: 'not_retryable' });
+    req.log.info({ worldId: world.id }, 'retry approved');
+    return reply.send({ world: serializeWorld(row, { frameCount: cap.frameCount }) });
   });
 
   // PATCH /v1/worlds/:id — rename (D-16). Owner-only; title is the only
@@ -238,6 +352,17 @@ function hasPgCode(err: unknown, code: string): boolean {
     cur = (cur as { cause?: unknown }).cause;
   }
   return false;
+}
+
+/** The world's newest capture (captures ordered by created_at desc). Shared with scans.ts. */
+export async function latestCapture(db: ReturnType<typeof getDb>, worldId: string) {
+  const [capture] = await db
+    .select()
+    .from(captures)
+    .where(eq(captures.worldId, worldId))
+    .orderBy(desc(captures.createdAt))
+    .limit(1);
+  return capture;
 }
 
 /** Look a world up by its owner's idempotency key, INCLUDING soft-deleted rows

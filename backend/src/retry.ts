@@ -1,4 +1,8 @@
-import type { World } from './db/schema.js';
+import { randomUUID } from 'node:crypto';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import type { Db } from './db/client.js';
+import { worldAttempts, worlds, type World } from './db/schema.js';
+import { enqueue } from './queue.js';
 
 // Submit-stage codes D-08 marks retryable: the provider refused before billing.
 const SUBMIT_RETRYABLE = new Set([
@@ -30,4 +34,80 @@ export function isRetryable(
   if (!code || code === 'FAILED') return false;
   const tokens = [code, ...(w.failureMessage ?? '').split(/[,\s]+/)].filter(Boolean);
   return !tokens.some((t) => VALIDATION.test(t));
+}
+
+/** WR-01 held reservation (same query as worker.ts): a reserve row for `key` with no release. */
+export const heldReserveSql = (key: SQL | string) => sql`
+  SELECT 1 FROM credit_events r WHERE r.submission_key = ${key} AND r.kind = 'reserve'
+    AND NOT EXISTS (SELECT 1 FROM credit_events x WHERE x.submission_key = r.submission_key AND x.kind = 'release')`;
+
+/**
+ * A-02 ledger guard: true when `submissionKey` holds no unreleased reserve, so
+ * the old request cannot still be billed. Null key (never reserved) → true.
+ */
+export async function ledgerClear(db: Pick<Db, 'execute'>, submissionKey: string | null): Promise<boolean> {
+  if (!submissionKey) return true;
+  const res = await db.execute(heldReserveSql(submissionKey));
+  return (res as unknown as { rows: unknown[] }).rows.length === 0;
+}
+
+class RetryLost extends Error {}
+
+/**
+ * The only place a second submission key is minted (D-09). Does not touch
+ * credit_events or the scan quota (A-04). One transaction: archive the current
+ * attempt, conditionally reset the world (status='failed' AND submit_attempt =
+ * N, so concurrent retries race to one winner), enqueue submit or pack. Null
+ * when the world moved on; unique violations propagate to the caller.
+ */
+export async function applyRetry(
+  db: Db,
+  w: World,
+  a: { approvedMaxCredits: number; clientRequestId: string; bundlePresent: boolean; captureId: string },
+): Promise<World | null> {
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.insert(worldAttempts).values({
+        worldId: w.id,
+        attempt: w.submitAttempt,
+        submissionKey: w.submissionKey,
+        providerRequestId: w.providerRequestId,
+        failureStage: w.failureStage,
+        failureCode: w.failureCode,
+        quotedCredits: w.quotedCredits,
+        clientRequestId: a.clientRequestId,
+      });
+      const [row] = await tx
+        .update(worlds)
+        .set({
+          submissionKey: randomUUID(),
+          submitBody: null,
+          providerRequestId: null,
+          quotedCredits: null,
+          failureStage: null,
+          failureCode: null,
+          failureMessage: null,
+          progress: null,
+          approvedMaxCredits: a.approvedMaxCredits,
+          submitAttempt: w.submitAttempt + 1,
+          status: a.bundlePresent ? 'submitting' : 'packing',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(worlds.id, w.id),
+            eq(worlds.status, 'failed'),
+            isNull(worlds.deletedAt),
+            eq(worlds.submitAttempt, w.submitAttempt),
+          ),
+        )
+        .returning();
+      if (!row) throw new RetryLost();
+      await enqueue(tx, a.bundlePresent ? 'submit' : 'pack', w.id, a.bundlePresent ? undefined : { captureId: a.captureId });
+      return row;
+    });
+  } catch (err) {
+    if (err instanceof RetryLost) return null;
+    throw err;
+  }
 }

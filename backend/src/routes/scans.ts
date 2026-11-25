@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/client.js';
@@ -8,7 +8,7 @@ import { chargeScanQuota, releaseScanQuota } from '../quota.js';
 import { BundleInvalidError, MANIFEST_MAX_BYTES, validateStored } from '../bundle/pack.js';
 import { MAX_LONG_EDGE } from '../bundle/validate.js';
 import { PRICING, captureConfig } from '../capture-config.js';
-import { spentCredits, wouldExceedBudget } from '../budget.js';
+import { budgetAlertFor, spentCredits, wouldExceedBudget } from '../budget.js';
 import { failWorld } from '../pipeline.js';
 import { enqueue } from '../queue.js';
 import { createProvider } from '../provider/index.js';
@@ -17,6 +17,7 @@ import {
   findOwnedWorld,
   findWorldByClientRequestId,
   isUniqueViolation,
+  latestCapture,
   requireUserId,
   sendScanQuotaExceeded,
   serializeWorld,
@@ -56,16 +57,6 @@ const presignBody = z
 const pad6 = (n: number) => String(n).padStart(6, '0');
 
 type Db = ReturnType<typeof getDb>;
-
-async function latestCapture(db: Db, worldId: string) {
-  const [capture] = await db
-    .select()
-    .from(captures)
-    .where(eq(captures.worldId, worldId))
-    .orderBy(desc(captures.createdAt))
-    .limit(1);
-  return capture;
-}
 
 /** What storage holds for this capture vs the declared frame count. */
 export async function uploadState(storage: StorageDriver, captureId: string, frameCount: number) {
@@ -122,6 +113,11 @@ export function scansRoutes(app: FastifyInstance, deps: RouteDeps): void {
       withinBudget:
         !wouldExceedBudget(spent.day, credits, config.DAILY_CREDIT_BUDGET) &&
         !wouldExceedBudget(spent.month, credits, config.MONTHLY_CREDIT_BUDGET),
+      budgetAlert: budgetAlertFor(spent, {
+        daily: config.DAILY_CREDIT_BUDGET,
+        monthly: config.MONTHLY_CREDIT_BUDGET,
+        share: config.BUDGET_ALERT_SHARE,
+      }),
     });
   });
 
