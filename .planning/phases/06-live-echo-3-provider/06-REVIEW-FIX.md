@@ -1,10 +1,10 @@
 ---
 phase: 06-live-echo-3-provider
-fixed_at: 2026-11-25T08:40:00Z
+fixed_at: 2026-11-25T09:40:00Z
 review_path: .planning/phases/06-live-echo-3-provider/06-REVIEW.md
-iteration: 1
-findings_in_scope: 12
-fixed: 12
+iteration: 2
+findings_in_scope: 5
+fixed: 5
 skipped: 0
 status: all_fixed
 ---
@@ -147,3 +147,76 @@ HARD MONEY RULE held: no request to `*.spaitial.ai`. All client tests use inject
 _Fixed: 2026-11-25T08:40:00Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+---
+
+## Iteration 2
+
+**Fixed at:** 2026-11-25T09:40:00Z
+**Source review:** .planning/phases/06-live-echo-3-provider/06-REVIEW.md (iteration 2)
+
+**Summary:**
+- Findings in scope: 5 (WR-01..WR-04, plus IN-11 on request; other Info findings out of scope)
+- Fixed: 5
+- Skipped: 0
+- Status: all_fixed
+
+HARD MONEY RULE held. No request went to `*.spaitial.ai`: the new redirect tests use injected `fetch` with `example.com` and `amazonaws.com` names, and nothing is fetched. Nothing sets `ALLOW_PAID_PROVIDER` or `PROVIDER_MODE=live`. No schema change. As in iteration 1, the work ran in the main tree because the pg suites need `backend/.env` and `node_modules`. Each commit staged only its own files. To prove each pg regression test catches its bug, the WR-02, WR-04 and IN-11 tests were also run against the pre-fix `pipeline.ts`, and each one failed there.
+
+### WR-01: A stalled submit run could reserve and send its old key after a retry
+
+**Files modified:** `backend/src/pipeline.ts`, `backend/test/integration/retry.pg.test.ts`, `backend/test/integration/echo3-contract.pg.test.ts`
+**Commit:** 549515a
+**Status:** fixed: requires human verification (money-path logic)
+**Applied fix:**
+- `handleSubmit` heartbeats right before `reserveCredits` and again right before `provider.submit`. A job that a retry retired (`phase='done'`) or that another worker re-claimed throws `LeaseLostError`. Nothing is reserved or sent, and the worker walks away without touching the job.
+- The success tx writes `providerRequestId` only `WHERE submission_key = key`. If that matches 0 rows, it logs `[pipeline] RECONCILE: request … for key … on world …`, does not flip the world and does not enqueue track. The key already identifies the attempt, because every retry mints a new key, so no separate attempt condition was added.
+- New pg test: a run is paused inside `quote()`, refused with `BUDGET_EXCEEDED` and retried while paused, then resumes. The test asserts `LeaseLostError`, zero sends, zero reserves, and attempt 2 untouched. A legacy payload stands in for "already passed the attempt check".
+- V3 (echo3-contract): the non-owner run B now aborts on the lease check. The fake therefore sees 1 submit instead of 2, and the assertion was updated to match.
+
+### WR-02: A stale run's quote write, body write and refusal were not scoped to its attempt
+
+**Files modified:** `backend/src/pipeline.ts`, `backend/test/integration/retry.pg.test.ts`
+**Commit:** 999ed48
+**Status:** fixed: requires human verification (money-path logic)
+**Applied fix:**
+- `failWorld` takes an optional extra `SQL` condition.
+- `handleSubmit` builds `thisAttempt = eq(worlds.submitAttempt, <attempt read at entry>)`. It adds it to the quote update, the body persist, `refuse()`, and the 409 / `SUBMIT_UNCERTAIN` failWorld calls.
+- New pg test: a stalled attempt-1 run with approval 5000 and quote 6000 resumes after a retry with approval 7000. Attempt 2 stays `submitting` with no quote, no body and no failure. Before the fix it ended `failed` with `quoted_credits=6000`.
+
+### WR-03: Storage redirects were not followed at all
+
+**Files modified:** `backend/src/provider/echo3.ts`, `backend/test/echo3.client.test.ts`
+**Commit:** 10b5d5d
+**Applied fix:**
+- `bareGet` follows up to `MAX_DOWNLOAD_HOPS = 3` redirects by hand, after the API's own 302.
+- `downloadAllowed` runs on every hop, and a relative `Location` resolves against the current hop.
+- One `AbortSignal.timeout(tDownload)` covers all hops, and no hop sends any headers.
+- New tests: a 3-hop S3-style chain (including a relative hop) with no auth on any hop; a second hop to `169.254.169.254` is refused without being fetched; a 4th redirect is not followed and ends as `download 307`.
+
+### WR-04: The release and the world flip on a refused submit were two statements
+
+**Files modified:** `backend/src/pipeline.ts`, `backend/test/integration/scenarios.pg.test.ts`
+**Commit:** 5a701f9
+**Status:** fixed: requires human verification (money-path logic)
+**Applied fix:**
+- `refuse(code, msg, releaseKey?)` runs `releaseCredits(tx, key)` in the same tx as `failWorld` and `completeJob`. This covers both the definitive-4xx path and the 429/503-exhausted path. `releaseCredits` already accepted a tx.
+- New pg test: a trigger makes the world flip throw. The release rolls back, leaving only the reserve on the ledger and the world still `submitting`. After the trigger is dropped, the resume ends `failed/INSUFFICIENT_CREDITS` with reserve and release. Before the fix the ledger already held the release.
+
+### IN-11: The thumbnail catch swallowed LeaseLostError
+
+**Files modified:** `backend/src/pipeline.ts`, `backend/test/integration/scenarios.pg.test.ts`
+**Commit:** 1b9d75e
+**Applied fix:**
+- The catch now reads `if (err instanceof LeaseLostError || a.kind !== 'thumbnail' || trackErrs(job) < 2) throw err;`.
+- New pg test: the 3rd thumbnail pass throws `LeaseLostError`, and the world stays `importing` without `thumbnailKey`. Before the fix it went `ready`.
+
+### Verification (iteration 2)
+
+- backend: `npx tsc --noEmit` clean. `npx vitest run`: 511 passed, 164 skipped (pg).
+- backend pg: retry, echo3-contract, scenarios and pipeline suites ran per fix. Full `npm run test:pg`: 18 files passed, 1 skipped, no failures.
+- virtumetry: no app files changed, so its gate was not re-run.
+
+_Fixed: 2026-11-25T09:40:00Z_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 2_
