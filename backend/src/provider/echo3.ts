@@ -36,6 +36,24 @@ function isThumbnailUrl(u: unknown): u is string {
   return url.protocol === 'https:' && url.hostname.endsWith('.spaitial.ai');
 }
 
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/**
+ * WR-02 SSRF guard for every credential-less GET (signed storage URLs,
+ * thumbnails): https, a DNS name (no IP literal), no internal suffix. Loopback
+ * passes only when the API base itself is loopback — the test fake; config
+ * refuses a non-https live base.
+ * ponytail: hostname-only check; a public name that resolves to a private IP
+ * (DNS rebinding) still passes. Pin resolved addresses if storage hosts get untrusted.
+ */
+export function downloadAllowed(url: URL, loopbackOk = false): boolean {
+  const h = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (loopbackOk && LOOPBACK.has(h) && (url.protocol === 'http:' || url.protocol === 'https:')) return true;
+  if (url.protocol !== 'https:') return false;
+  if (h.startsWith('[') || /^[\d.]+$/.test(h)) return false; // WHATWG URL normalizes every IPv4 form to dotted
+  return h.includes('.') && !/(^|\.)(localhost|local|localdomain|internal|home\.arpa)$/.test(h);
+}
+
 type Envelope = {
   world?: { thumbnail_url?: unknown } | null;
   validation?: { issues?: { code?: string; message?: string }[] } | null;
@@ -51,6 +69,7 @@ export function createEcho3Provider(o: {
 }): ReconProvider {
   const f = o.fetch ?? fetch;
   const base = o.baseUrl.replace(/\/$/, '');
+  const loopbackOk = LOOPBACK.has(new URL(base).hostname);
   const tSubmit = o.timeouts?.submit ?? T_SUBMIT_MS;
   const tCall = o.timeouts?.call ?? T_CALL_MS;
   const tDownload = o.timeouts?.download ?? T_DOWNLOAD_MS;
@@ -106,9 +125,13 @@ export function createEcho3Provider(o: {
 
   /** GET without any credentials (signed storage URLs, public thumbnails). */
   async function bareGet(endpoint: string, url: URL): Promise<Readable> {
+    if (!downloadAllowed(url, loopbackOk)) {
+      throw new ProviderError(`${endpoint}: refusing download host`, { endpoint });
+    }
     let res: Response;
     try {
-      res = await f(url, { signal: AbortSignal.timeout(tDownload) });
+      // No redirect is followed: each hop would skip the host check above.
+      res = await f(url, { redirect: 'manual', signal: AbortSignal.timeout(tDownload) });
     } catch (err) {
       if ((err as Error)?.name === 'TimeoutError') throw new ProviderTimeoutError(`${endpoint} timed out`, endpoint);
       throw new ProviderError(`${endpoint} network error`, { endpoint, cause: err });

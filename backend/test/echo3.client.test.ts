@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createEcho3Provider, parseRetryAfter, T_SUBMIT_MS } from '../src/provider/echo3.js';
+import { createEcho3Provider, downloadAllowed, parseRetryAfter, T_SUBMIT_MS } from '../src/provider/echo3.js';
 import { ProviderError, ProviderTimeoutError, signWebhook, type Artifact } from '../src/provider/types.js';
 import { LEASE_SECONDS } from '../src/queue.js';
 import { startFakeEcho3, type Step } from './helpers/fake-echo3.js';
@@ -274,4 +274,52 @@ describe('echo3 artifacts + open', () => {
       expect(fetched).toBe(0);
     },
   );
+});
+
+describe('WR-02 download SSRF guard', () => {
+  /** API base is a public https name (injected fetch, no network); the API answers 302 → `loc`. */
+  const redirectTo = (loc: string) => {
+    const seen: { url: string; init?: RequestInit }[] = [];
+    const p = createEcho3Provider({
+      apiKey: KEY,
+      baseUrl: 'https://api.example.com',
+      webhookSecret: SECRET,
+      fetch: (async (input: string | URL, init?: RequestInit) => {
+        seen.push({ url: String(input), init });
+        return seen.length === 1 ? new Response(null, { status: 302, headers: { location: loc } }) : new Response('bytes');
+      }) as typeof fetch,
+    });
+    const a: Artifact = { kind: 'splat', name: 'splat.spz', contentType: 'application/octet-stream', ref: '/v1/worlds/requests/req_a/splat' };
+    return { open: () => p.open(a), seen };
+  };
+
+  it.each([
+    'http://169.254.169.254/latest/meta-data',
+    'https://10.0.0.5/x',
+    'https://2130706433/x',
+    'https://[::1]/x',
+    'https://127.0.0.1/x',
+    'http://storage.example.com/x',
+    'https://metadata.google.internal/x',
+    'https://localhost/x',
+    'file:///etc/passwd',
+  ])('refuses a redirect to %s without fetching it', async (loc) => {
+    const { open, seen } = redirectTo(loc);
+    await expect(open()).rejects.toThrow(/refusing download host/);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('follows a redirect to a public https host without auth and without following further hops', async () => {
+    const { open, seen } = redirectTo('https://storage.example.com/obj?sig=1');
+    expect((await bytes(await open())).toString()).toBe('bytes');
+    expect(seen[1]!.url).toBe('https://storage.example.com/obj?sig=1');
+    expect(seen[1]!.init?.redirect).toBe('manual');
+    expect(seen[1]!.init?.headers).toBeUndefined();
+  });
+
+  it('loopback is allowed only when the API base is loopback (the test fake)', () => {
+    expect(downloadAllowed(new URL('http://localhost:9/x'), true)).toBe(true);
+    expect(downloadAllowed(new URL('http://localhost:9/x'), false)).toBe(false);
+    expect(downloadAllowed(new URL('http://10.0.0.1/x'), true)).toBe(false);
+  });
 });
