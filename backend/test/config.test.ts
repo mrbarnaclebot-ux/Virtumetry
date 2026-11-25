@@ -129,10 +129,67 @@ describe('loadConfig', () => {
       ).toThrow(/ALLOW_PAID_PROVIDER/);
     });
 
-    it('boots live with ALLOW_PAID_PROVIDER=1 outside production', () => {
-      const cfg = loadConfig(env({ ...base, PROVIDER_MODE: 'live', ALLOW_PAID_PROVIDER: '1' }));
+    // Literal fakes only: these never reach a network (the client is not built).
+    const live = {
+      ...base,
+      PROVIDER_MODE: 'live',
+      ALLOW_PAID_PROVIDER: '1',
+      SPAITIAL_API_KEY: 'spt_live_test',
+      SPAITIAL_WEBHOOK_SECRET: 'whsec_test',
+    };
+
+    it('boots live with ALLOW_PAID_PROVIDER=1 + both secrets outside production', () => {
+      const cfg = loadConfig(env(live));
       expect(cfg.PROVIDER_MODE).toBe('live');
+      expect(cfg.SPAITIAL_BASE_URL).toBe('https://api.spaitial.ai');
     });
+
+    it.each(['SPAITIAL_API_KEY', 'SPAITIAL_WEBHOOK_SECRET'])('refuses live without %s, naming it', (k) => {
+      expect(() => loadConfig(env({ ...live, [k]: undefined }))).toThrow(new RegExp(`missing.*${k}`));
+    });
+
+    it('error messages never echo secret values', () => {
+      expect(() => loadConfig(env({ ...live, SPAITIAL_WEBHOOK_SECRET: undefined }))).toThrow(
+        /^(?!.*spt_live_test).*$/s,
+      );
+    });
+
+    it('refuses live with a non-https SPAITIAL_BASE_URL', () => {
+      expect(() => loadConfig(env({ ...live, SPAITIAL_BASE_URL: 'http://x' }))).toThrow(/SPAITIAL_BASE_URL/);
+    });
+
+    it('refuses live with BUNDLE_URL_TTL_SECONDS < 9000', () => {
+      expect(() => loadConfig(env({ ...live, BUNDLE_URL_TTL_SECONDS: '3600' }))).toThrow(
+        /BUNDLE_URL_TTL_SECONDS/,
+      );
+    });
+
+    it('mock mode boots with no SpAItial vars set', () => {
+      expect(loadConfig(env(base)).PROVIDER_MODE).toBe('mock');
+    });
+  });
+
+  describe('BUDGET_ALERT_SHARE', () => {
+    it.each([
+      [undefined, 0.8],
+      ['0.5', 0.5],
+      ['1', 1],
+    ])('%s -> %s', (v, want) => {
+      expect(loadConfig(env({ ...base, BUDGET_ALERT_SHARE: v })).BUDGET_ALERT_SHARE).toBe(want);
+    });
+
+    it.each(['0', '1.5', 'abc'])('rejects %s', (v) => {
+      expect(() => loadConfig(env({ ...base, BUDGET_ALERT_SHARE: v }))).toThrow(/BUDGET_ALERT_SHARE/);
+    });
+  });
+
+  describe('HARD MONEY RULE fetch guard (setup-no-spaitial.ts)', () => {
+    it.each(['https://api.spaitial.ai/v1/captures/limits', 'https://docs.spaitial.ai/x'])(
+      'blocks %s before any socket',
+      async (url) => {
+        await expect(fetch(url)).rejects.toThrow(/HARD MONEY RULE.*spaitial/);
+      },
+    );
   });
 
   describe('dev auth in production (D-12)', () => {

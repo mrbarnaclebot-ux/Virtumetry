@@ -80,8 +80,10 @@ const baseSchema = z.object({
   // Every real reconstruction costs money: PROVIDER_MODE=live boots only with
   // this set to exactly '1' (D-12).
   ALLOW_PAID_PROVIDER: z.string().optional(),
-  // Live Echo-3 key: unread until Phase 6 (the mock never needs it).
+  // Live Echo-3 key (required only when PROVIDER_MODE=live; the mock never reads it).
   SPAITIAL_API_KEY: z.string().optional(),
+  // Echo-3 API base. Live mode refuses anything that is not https (D-04).
+  SPAITIAL_BASE_URL: z.string().url().default('https://api.spaitial.ai'),
   // HMAC secret for the provider webhook route (Phase 2: mock-signed webhooks).
   SPAITIAL_WEBHOOK_SECRET: z.string().optional(),
   // Mock provider: scenario for manual/dev runs and time-to-complete (D-13).
@@ -100,6 +102,13 @@ const baseSchema = z.object({
   // Monthly (UTC) spend cap, checked alongside the daily one (D-18).
   // Default is an auto-mode resolution; owner to confirm before Phase 6.
   MONTHLY_CREDIT_BUDGET: numberFromEnv(10000),
+  // Share of a budget at which the owner is alerted (0 < x <= 1). Fractional, so
+  // not numberFromEnv (int-only); non-numeric becomes NaN and fails the pipe.
+  BUDGET_ALERT_SHARE: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? 0.8 : Number(v)))
+    .pipe(z.number().gt(0).lte(1)),
   DAILY_SCAN_QUOTA: numberFromEnv(10),
   // D-08: optional JSON overriding capture thresholds (src/capture-config.ts).
   CAPTURE_CONFIG_JSON: z.string().optional(),
@@ -197,6 +206,19 @@ function refine(cfg: z.infer<typeof baseSchema>): Config {
   // --- Paid provider (D-12). ------------------------------------------------
   if (cfg.PROVIDER_MODE === 'live' && cfg.ALLOW_PAID_PROVIDER !== '1') {
     throw new Error('PROVIDER_MODE=live refused: set ALLOW_PAID_PROVIDER=1 to spend money deliberately');
+  }
+  if (cfg.PROVIDER_MODE === 'live') {
+    const missing = (['SPAITIAL_API_KEY', 'SPAITIAL_WEBHOOK_SECRET'] as const).filter((k) => !cfg[k]);
+    if (missing.length > 0) {
+      throw new Error(`PROVIDER_MODE=live refused: missing ${missing.join(', ')}`);
+    }
+    if (!cfg.SPAITIAL_BASE_URL.startsWith('https://')) {
+      throw new Error('PROVIDER_MODE=live refused: SPAITIAL_BASE_URL must be https');
+    }
+    // Echo-3 needs the bundle ZIP URL valid for >= 2.5 h (or until terminal).
+    if (cfg.BUNDLE_URL_TTL_SECONDS < 9000) {
+      throw new Error('PROVIDER_MODE=live refused: BUNDLE_URL_TTL_SECONDS must be >= 9000');
+    }
   }
 
   // S3 driver requires its credentials; local driver does not.
