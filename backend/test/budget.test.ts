@@ -4,6 +4,7 @@ import {
   releaseCredits,
   reserveCredits,
   BudgetExceededError,
+  budgetAlertFor,
 } from '../src/budget.js';
 import type { Db } from '../src/db/client.js';
 
@@ -111,5 +112,33 @@ describe('BudgetExceededError', () => {
     expect(err.spent).toBe(400);
     expect(err.budget).toBe(500);
     expect(err.message).toContain('monthly');
+  });
+});
+
+// D-12: which window (if any) has crossed the alert share. Monthly first.
+describe('budgetAlertFor', () => {
+  const b = { daily: 1000, monthly: 10_000, share: 0.8 };
+  it('flags the daily window at exactly the share', () => {
+    expect(budgetAlertFor({ day: 800, month: 800 }, b)).toEqual({
+      window: 'daily',
+      share: 0.8,
+      spent: 800,
+      budget: 1000,
+    });
+  });
+  it('prefers monthly when both are over', () => {
+    expect(budgetAlertFor({ day: 900, month: 9000 }, b)).toEqual({
+      window: 'monthly',
+      share: 0.8,
+      spent: 9000,
+      budget: 10_000,
+    });
+  });
+  it('returns null when neither is over', () => {
+    expect(budgetAlertFor({ day: 799, month: 7999 }, b)).toBeNull();
+  });
+  it('never alerts on a zero budget', () => {
+    expect(budgetAlertFor({ day: 0, month: 0 }, { daily: 0, monthly: 0, share: 0.8 })).toBeNull();
+    expect(budgetAlertFor({ day: 5, month: 5 }, { daily: 0, monthly: 0, share: 0.8 })).toBeNull();
   });
 });
