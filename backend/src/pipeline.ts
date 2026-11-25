@@ -226,6 +226,11 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   if (stale(w)) return completeJob(db, job.id, job.lockedBy);
   const key = w.submissionKey!;
   const quoted = w.quotedCredits!;
+  // iter2 WR-01: the attempt check above is a read. A run that stalled past its
+  // lease (and was retired by a retry) must stop before it spends: a retired or
+  // re-claimed job fails the heartbeat → LeaseLostError, nothing reserved or sent.
+  const beat = heartbeat(deps, job);
+  await beat();
 
   try {
     await reserveCredits(db, {
@@ -271,6 +276,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     db.update(jobs).set({ payload: { ...(jobAttempt !== undefined ? { submitAttempt: jobAttempt } : {}), ...p } }).where(eq(jobs.id, job.id));
   await mark({ uncertain, sending: true });
 
+  await beat(); // iter2 WR-01: last ownership check before the paid send
   let requestId: string;
   try {
     ({ requestId } = await provider.submit(JSON.stringify(w.submitBody), key));
@@ -317,8 +323,14 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   }
 
   const cur = await getWorld(db, worldId);
-  await db.transaction(async (tx) => {
-    await tx.update(worlds).set({ providerRequestId: requestId }).where(eq(worlds.id, worldId));
+  const recorded = await db.transaction(async (tx) => {
+    // iter2 WR-01: never record a request id for a key the world no longer holds.
+    const [own] = await tx
+      .update(worlds)
+      .set({ providerRequestId: requestId })
+      .where(and(eq(worlds.id, worldId), eq(worlds.submissionKey, key)))
+      .returning({ id: worlds.id });
+    if (!own) return false;
     // A confirmed (paid) request beats a stale submit-stage failure (WR-02): if
     // the world was failed under us (e.g. reaper after a lease expiry), revive
     // it so the request is tracked instead of silently orphaned.
@@ -333,8 +345,11 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
       )
       .returning({ id: worlds.id });
     if (flipped) await enqueue(tx, 'track', worldId);
+    return true;
   });
-  if (cur?.status === 'failed') {
+  if (!recorded) {
+    console.error(`[pipeline] RECONCILE: request ${requestId} for key ${key} on world ${worldId} was accepted but the world no longer holds that key; not recorded`);
+  } else if (cur?.status === 'failed') {
     console.error(`[pipeline] world ${worldId} was failed mid-submit but request ${requestId} exists; tracking it`);
   }
   await completeJob(db, job.id, job.lockedBy);

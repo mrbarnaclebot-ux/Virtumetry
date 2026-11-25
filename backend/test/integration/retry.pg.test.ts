@@ -30,9 +30,9 @@ import { captures, creditEvents, worlds, type World } from '../../src/db/schema.
 import { applyRetry } from '../../src/retry.js';
 import { createMockProvider } from '../../src/provider/mock.js';
 import { ProviderError, ProviderTimeoutError } from '../../src/provider/types.js';
-import { handleSubmit } from '../../src/pipeline.js';
-import { enqueue, mapJobRow } from '../../src/queue.js';
-import type { WorkerDeps } from '../../src/worker.js';
+import { failWorld, handleSubmit } from '../../src/pipeline.js';
+import { claimNextJob, enqueue, mapJobRow } from '../../src/queue.js';
+import { LeaseLostError, type WorkerDeps } from '../../src/worker.js';
 
 // D-09 retry contract + its money guards (A-02 ledger, A-04 quota, idempotent
 // replay, concurrent one-wins) and the payload fields the app renders
@@ -444,5 +444,52 @@ describe.skipIf(!url)('CR-01: retry vs a stale submit job (mock pipeline, real P
     expect(done.status).toBe('ready');
     expect(happy.calls.submit).toHaveLength(1);
     expect(happy.calls.submit[0]!.key).toBe(next!.submissionKey);
+  }, 180_000);
+});
+
+describe.skipIf(!url)('iter2: a stalled submit run vs a retry (mock pipeline, real Postgres)', () => {
+  let p: Pipeline | undefined;
+  afterAll(async () => {
+    await p?.close();
+  });
+
+  /** Claim the world's submit job as worker-a and run it; `midQuote` runs while the run is paused in quote(). */
+  async function stalledRun(opts: { legacy: boolean; quote: number; midQuote: (worldId: string, captureId: string) => Promise<void> }) {
+    p = await startPipeline({ scenario: 'happy', retryAfterS: 0, trackPollSeconds: 0 });
+    const { worldId, captureId } = await p.seedScan();
+    await p.drain({ worldId, until: (w) => w.status === 'submitting' });
+    const job = (await claimNextJob(p.db, ['submit'], 'it-worker-a'))!;
+    // A legacy payload (no submitAttempt) stands in for a run that already passed the attempt check.
+    if (opts.legacy) job.payload = null;
+    const happy = createMockProvider({ processingSeconds: 1, retryAfterS: 0, webhookSecret: TEST_WEBHOOK_SECRET, deliver: () => Promise.resolve() });
+    let paused = false;
+    happy.quote = async () => {
+      if (!paused) {
+        paused = true;
+        await opts.midQuote(worldId, captureId);
+      }
+      return { credits: opts.quote, available: Number.POSITIVE_INFINITY };
+    };
+    const deps = { ...p.deps, provider: happy, workerId: 'it-worker-a' } as WorkerDeps;
+    const run = await handleSubmit(deps, job).then(() => null, (e: unknown) => e);
+    return { worldId, happy, run };
+  }
+
+  /** Another worker refused attempt 1 with a retryable code; the owner retried (attempt 2, new key, job retired). */
+  async function refuseAndRetry(worldId: string, captureId: string, approvedMaxCredits: number) {
+    await failWorld(p!.db, worldId, ['submitting'], 'submit', 'BUDGET_EXCEEDED', 'daily credit budget exceeded');
+    const failed = await p!.getWorld(worldId);
+    const next = await applyRetry(p!.db, failed, { approvedMaxCredits, clientRequestId: randomUUID(), bundlePresent: true, captureId });
+    expect(next!.submitAttempt).toBe(2);
+  }
+
+  it('WR-01: a run retired by a retry while stalled stops on the lease check: nothing reserved, nothing sent', async () => {
+    const { worldId, happy, run } = await stalledRun({ legacy: true, quote: QUOTE, midQuote: (w, c) => refuseAndRetry(w, c, 5000) });
+    expect(run).toBeInstanceOf(LeaseLostError);
+    expect(happy.calls.submit).toHaveLength(0);
+    const w = await p!.getWorld(worldId);
+    expect([w.status, w.submitAttempt, w.providerRequestId]).toEqual(['submitting', 2, null]);
+    const reserves = (await p!.pool.query("SELECT count(*)::int AS n FROM credit_events WHERE world_id = $1 AND kind = 'reserve'", [worldId])).rows[0].n;
+    expect(reserves).toBe(0);
   }, 180_000);
 });

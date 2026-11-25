@@ -5,7 +5,7 @@ import { worldAssetKey } from '../../src/storage/index.js';
 import { createEcho3Provider } from '../../src/provider/echo3.js';
 import { handleSubmit } from '../../src/pipeline.js';
 import { claimNextJob } from '../../src/queue.js';
-import { runOneJob } from '../../src/worker.js';
+import { LeaseLostError, runOneJob } from '../../src/worker.js';
 import { startFakeEcho3, type ReplayManifest, type Step } from '../helpers/fake-echo3.js';
 import { startPipeline, TEST_WEBHOOK_SECRET, type Pipeline } from '../helpers/pipeline.js';
 
@@ -142,10 +142,13 @@ describe.skipIf(!url)('Echo-3 live client contract (fake server, real Postgres)'
       handleSubmit({ ...p.deps, workerId: 'it-worker-a' }, job!),
       handleSubmit({ ...p.deps, workerId: 'it-worker-b' }, { ...job! }),
     ]);
-    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+    // iter2 WR-01: B never owned the lease, so it either finds the job done or
+    // aborts on the pre-spend lease check; it must never fail any other way.
+    expect(results[0]!.status).toBe('fulfilled');
+    if (results[1]!.status === 'rejected') expect(results[1]!.reason).toBeInstanceOf(LeaseLostError);
     expect(fake.state.billed).toBe(1);
     const w = await drainNow(worldId);
-    await assertBilledOnce(w, 2);
+    await assertBilledOnce(w, 1); // iter2 WR-01: the non-owner no longer even sends a duplicate
     const reserves = (await p.pool.query("SELECT count(*)::int AS n FROM credit_events WHERE world_id = $1 AND kind = 'reserve'", [worldId]))
       .rows[0].n;
     expect(reserves).toBe(1);
