@@ -3,10 +3,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
-import LibraryScreen from '@/app/(tabs)/index';
+import LibraryScreen, { __resetBudgetBannerForTest } from '@/app/(tabs)/index';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, type BudgetAlert } from '@/lib/api';
 import { endSession } from '@/lib/session';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -76,6 +76,7 @@ beforeEach(() => {
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   (endSession as jest.Mock).mockClear();
   __setLocalScansForTest([]);
+  __resetBudgetBannerForTest();
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -241,5 +242,60 @@ describe('library screen', () => {
 
     expect(screen.queryByRole('button', { name: /^Bedroom, Processing/ })).toBeNull();
     expect(screen.getByLabelText(/^Bedroom, Processing/)).toBeDisabled();
+  });
+});
+
+describe('budget banner (D-13)', () => {
+  const daily: BudgetAlert = { window: 'daily', share: 0.8, spent: 820, budget: 1000 };
+  const monthly: BudgetAlert = { window: 'monthly', share: 0.8, spent: 900, budget: 1000 };
+  const withAlert = (budgetAlert: BudgetAlert | null, worlds = [w('Kitchen', { status: 'ready' })]) =>
+    ok({ worlds, has_more: false, next_offset: null, budgetAlert });
+  const dismiss = () => screen.getByRole('button', { name: 'Dismiss budget alert' });
+
+  it('shows the daily percent and consequence', async () => {
+    fetchMock.mockResolvedValue(withAlert(daily));
+    await renderLibrary();
+    expect(await screen.findByText("You've used 82% of today's processing budget.")).toBeTruthy();
+    expect(screen.getByText('New scans may wait until tomorrow.')).toBeTruthy();
+  });
+
+  it('shows monthly copy, and "all of" at or over 100%', async () => {
+    fetchMock.mockResolvedValue(withAlert({ ...monthly, spent: 1200 }));
+    await renderLibrary();
+    expect(await screen.findByText("You've used all of this month's processing budget.")).toBeTruthy();
+    expect(screen.getByText('New scans may wait until next month.')).toBeTruthy();
+  });
+
+  it('is absent when budgetAlert is null or missing', async () => {
+    fetchMock.mockResolvedValue(withAlert(null));
+    await renderLibrary();
+    await screen.findByText('Ready');
+    expect(screen.queryByRole('button', { name: 'Dismiss budget alert' })).toBeNull();
+  });
+
+  it('stays dismissed for its window across refreshes; a monthly alert still shows', async () => {
+    fetchMock.mockResolvedValue(withAlert(daily));
+    const client = await renderLibrary();
+    await screen.findByText("You've used 82% of today's processing budget.");
+    await fireEvent.press(dismiss());
+    expect(screen.queryByText(/today's processing budget/)).toBeNull();
+
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['worlds'] });
+    });
+    expect(screen.queryByText(/today's processing budget/)).toBeNull();
+
+    fetchMock.mockResolvedValue(withAlert(monthly));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['worlds'] });
+    });
+    expect(await screen.findByText("You've used 90% of this month's processing budget.")).toBeTruthy();
+  });
+
+  it('never shows in the empty state', async () => {
+    fetchMock.mockResolvedValue(withAlert(daily, []));
+    await renderLibrary();
+    await screen.findByText('No scans yet');
+    expect(screen.queryByText(/processing budget/)).toBeNull();
   });
 });

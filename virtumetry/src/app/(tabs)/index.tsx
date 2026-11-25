@@ -2,7 +2,7 @@ import { useCameraPermissions } from 'expo-camera';
 import { router, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { LibraryRow, type RowItem } from '@/components/library-row';
 import { RenameModal } from '@/components/rename-modal';
@@ -14,7 +14,57 @@ import { getPrepFlags } from '@/capture/prep-flags';
 import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import { useLocalScans } from '@/capture/store';
 import type { DisplayState, LocalScan } from '@/library/display-state';
-import { useDeleteWorld, useWorlds } from '@/lib/api';
+import { useDeleteWorld, useWorlds, type BudgetAlert } from '@/lib/api';
+
+// D-13: dismissed/announced per window for this JS session only (no storage).
+const dismissedAlerts = new Set<string>();
+const announcedAlerts = new Set<string>();
+
+/** Test-only: clears the per-session banner state. */
+export function __resetBudgetBannerForTest() {
+  dismissedAlerts.clear();
+  announcedAlerts.clear();
+}
+
+function BudgetBanner({ alert }: { alert: BudgetAlert }) {
+  const theme = useTheme();
+  const [, setTick] = useState(0);
+  const daily = alert.window === 'daily';
+  const pct = Math.min(100, Math.floor((alert.spent / alert.budget) * 100));
+  const which = daily ? "today's" : "this month's";
+  const line1 = `You've used ${pct >= 100 ? 'all' : `${pct}%`} of ${which} processing budget.`;
+  const line2 = daily ? 'New scans may wait until tomorrow.' : 'New scans may wait until next month.';
+  const hidden = dismissedAlerts.has(alert.window);
+
+  useEffect(() => {
+    if (hidden || announcedAlerts.has(alert.window)) return;
+    announcedAlerts.add(alert.window);
+    AccessibilityInfo.announceForAccessibility(line1);
+  }, [hidden, alert.window, line1]);
+
+  if (hidden) return null;
+  return (
+    <ThemedView type="backgroundElement" accessibilityRole="alert" style={styles.banner}>
+      <SymbolView name="exclamationmark.triangle.fill" size={20} tintColor={theme.warning} />
+      <View style={styles.bannerText}>
+        <ThemedText type="small">{line1}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {line2}
+        </ThemedText>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss budget alert"
+        onPress={() => {
+          dismissedAlerts.add(alert.window);
+          setTick((t) => t + 1);
+        }}
+        style={({ pressed }) => [styles.dismiss, pressed && { backgroundColor: theme.backgroundSelected }]}>
+        <SymbolView name="xmark" size={16} tintColor={theme.textSecondary} />
+      </Pressable>
+    </ThemedView>
+  );
+}
 
 export default function LibraryScreen() {
   const theme = useTheme();
@@ -164,6 +214,8 @@ export default function LibraryScreen() {
           {"Couldn't refresh. Showing your last saved list."}
         </ThemedText>
       )}
+      {/* Never in the empty/error/loading states: those have no rows to sit above. */}
+      {data?.budgetAlert && items.length > 0 && <BudgetBanner alert={data.budgetAlert} />}
     </>
   );
 
@@ -276,6 +328,16 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   refreshError: { marginBottom: Spacing.three },
+  banner: {
+    borderRadius: 12,
+    padding: Spacing.three,
+    marginBottom: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  bannerText: { flex: 1, gap: Spacing.one },
+  dismiss: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: Spacing.six },
   heading: { marginTop: Spacing.three, marginBottom: Spacing.two, textAlign: 'center' },
   textCenter: { textAlign: 'center' },
