@@ -199,6 +199,22 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
       worldId,
       daily: config.DAILY_CREDIT_BUDGET,
       monthly: config.MONTHLY_CREDIT_BUDGET,
+      // D-12: budget.ts records the alert once per window in the reserve tx and
+      // calls this after commit; it swallows a throw, but each window gets its
+      // own try so one failed push doesn't skip the other. No keys/URLs logged.
+      share: config.BUDGET_ALERT_SHARE,
+      onAlert: async (alerts) => {
+        for (const a of alerts) {
+          try {
+            console.warn('[budget-alert]', JSON.stringify({ mode: provider.mode, window: a.window, spent: a.spent, budget: a.budget, share: a.share, worldId }));
+            const pct = Math.round((a.spent / a.budget) * 100);
+            const span = a.window === 'daily' ? "today's" : "this month's";
+            await deps.push(w!.ownerId, 'Processing budget', `You've used ${pct}% of ${span} processing budget`);
+          } catch (err) {
+            console.warn(`[budget-alert] ${a.window} side effect failed on world ${worldId}: ${err instanceof Error ? err.name : 'unknown'}`);
+          }
+        }
+      },
     });
   } catch (err) {
     if (err instanceof BudgetExceededError) {
@@ -210,7 +226,8 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   // Sticky (CR-02): once any earlier attempt's outcome was unknown (an error that
   // was not a definitive refusal, or a crash mid-send that left `sending` set), a
   // later 4xx/429/503 proves nothing about it, so the reservation is never released.
-  // ponytail: job-scoped marker; there is one submit job per world today.
+  // ponytail: job-scoped marker. A retry (D-09) enqueues a new submit job with a
+  // new key minted by the retry route, so the marker is effectively per key.
   const prev = (job.payload ?? {}) as { uncertain?: boolean; sending?: boolean };
   const uncertain = prev.uncertain === true || prev.sending === true;
   const mark = (p: { uncertain: boolean; sending?: boolean }) =>
@@ -223,12 +240,20 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   } catch (err) {
     const status = err instanceof ProviderError ? err.status : undefined;
     const backoff = Math.min(30 * 2 ** job.attempts, SUBMIT_MAX_DELAY_S);
-    const definitive = status === 400 || status === 402 || status === 403 || status === 429 || status === 503;
+    // A-02 / Pitfall 3: every definitive 4xx except 408/409/429 is a refusal
+    // (401/404/413/422 included), not 4 attempts of SUBMIT_UNCERTAIN.
+    const refusal = status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429;
+    const definitive = refusal || status === 429 || status === 503;
     await mark({ uncertain: uncertain || !definitive });
-    if (status === 400 || status === 402 || status === 403) {
-      // Known not charged (unless an earlier attempt may have been).
-      if (!uncertain) await releaseCredits(db, key);
-      return refuse((err as ProviderError).code ?? `HTTP_${status}`, `provider refused submit (${status})`);
+    if (refusal) {
+      const code = (err as ProviderError).code;
+      if (uncertain) {
+        // Pitfall 7: an earlier attempt may have been billed. Keep the
+        // reservation and use a non-retryable code so the world isn't retried.
+        return refuse('SUBMIT_UNCERTAIN', `provider refused submit (${status} ${code ?? ''}) after an uncertain attempt`);
+      }
+      await releaseCredits(db, key); // known not charged
+      return refuse(status === 401 ? 'PROVIDER_AUTH' : (code ?? `HTTP_${status}`), `provider refused submit (${status})`);
     }
     if (status === 409) {
       // Never mint a new key; the reservation stays (it may be billed).
@@ -389,7 +414,17 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
   for (const a of await provider.artifacts(rid)) {
     const key = worldAssetKey(w.id, w.assetVersion, a.name);
     const exists = await storage.objectSize(key).then(() => true, () => false);
-    if (!exists) await storage.putStream(key, await provider.open(a), a.contentType).done;
+    if (!exists) {
+      try {
+        await storage.putStream(key, await provider.open(a), a.contentType).done;
+      } catch (err) {
+        // A-05 / Pitfall 11: the thumbnail is optional — retried by the normal
+        // snooze for 3 passes, then skipped so it can't wedge a paid import.
+        if (a.kind !== 'thumbnail' || trackErrs(job) < 2) throw err;
+        console.warn(`[pipeline] skipping thumbnail on world ${w.id} after 3 failed passes: ${err instanceof Error ? err.name : 'unknown'}`);
+        continue;
+      }
+    }
     await beat();
     const col = KEY_COLUMN[a.kind];
     if (col) keys[col] = key;

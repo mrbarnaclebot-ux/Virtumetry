@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { MockScenario } from '../../src/provider/mock.js';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
-import { failWorldForDeadJob, runOneJob } from '../../src/worker.js';
+import { failWorldForDeadJob, LeaseLostError, runOneJob } from '../../src/worker.js';
 import { ProviderError } from '../../src/provider/index.js';
 import { MAX_ATTEMPTS } from '../../src/queue.js';
 
@@ -178,15 +178,135 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
   }, 120_000);
 
-  it('CR-02: a crash mid-send (sending marker left) then 402 keeps the reservation', async () => {
+  it('CR-02: a crash mid-send (sending marker left) then 402 → SUBMIT_UNCERTAIN, reservation kept (Pitfall 7)', async () => {
     const pl = await start('402');
     const { worldId, frameCount } = await pl.seedScan();
     await pl.drain({ worldId, until: (w) => w.status === 'submitting' });
     await pl.pool.query(`UPDATE jobs SET payload = '{"sending":true}' WHERE world_id = $1 AND kind = 'submit'`, [worldId]);
     const w = await pl.drain({ worldId });
     expect(w.status).toBe('failed');
-    expect(w.failureCode).toBe('INSUFFICIENT_CREDITS');
+    expect(w.failureCode).toBe('SUBMIT_UNCERTAIN');
+    expect(w.failureMessage).toContain('402');
+    expect(w.failureMessage).toContain('INSUFFICIENT_CREDITS');
     expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
+  }, 120_000);
+
+  /** Make every submit throw `err` (recording the call like the mock does). */
+  const refuseWith = (pl: Pipeline, err: ProviderError) => {
+    pl.provider.submit = async (body, key) => {
+      pl.provider.calls.submit.push({ key, body });
+      throw err;
+    };
+  };
+
+  it('A-02: 401 → failed/submit PROVIDER_AUTH on the first attempt, reservation released', async () => {
+    const pl = await start('happy');
+    const { worldId, frameCount } = await pl.seedScan();
+    refuseWith(pl, new ProviderError('mock: 401', { status: 401, code: 'UNAUTHORIZED' }));
+    const w = await drainNow(pl, worldId);
+    expect(pl.provider.calls.submit).toHaveLength(1);
+    expect(w.status).toBe('failed');
+    expect(w.failureStage).toBe('submit');
+    expect(w.failureCode).toBe('PROVIDER_AUTH');
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([
+      ['reserve', 900 + frameCount],
+      ['release', -(900 + frameCount)],
+    ]);
+  }, 120_000);
+
+  for (const [status, code] of [[404, 'NOT_FOUND'], [422, 'VALIDATION_FAILED']] as const) {
+    it(`A-02: ${status} → refused once with the provider code, reservation released`, async () => {
+      const pl = await start('happy');
+      const { worldId } = await pl.seedScan();
+      refuseWith(pl, new ProviderError(`mock: ${status}`, { status, code }));
+      const w = await drainNow(pl, worldId);
+      expect(pl.provider.calls.submit).toHaveLength(1);
+      expect(w.status).toBe('failed');
+      expect(w.failureStage).toBe('submit');
+      expect(w.failureCode).toBe(code);
+      expect((await ledger(w.submissionKey!)).map((r) => r.kind)).toEqual(['reserve', 'release']);
+    }, 120_000);
+  }
+
+  it('V5: kill mid-submit (accepted, request id not saved) resumes with the same key and body, one reserve', async () => {
+    const pl = await start('happy');
+    const { worldId, frameCount } = await pl.seedScan();
+    const real = pl.provider.submit.bind(pl.provider);
+    let first: string | undefined;
+    let crashed = false;
+    pl.provider.submit = async (body, key) => {
+      const r = await real(body, key);
+      if (crashed) return r;
+      crashed = true;
+      first = r.requestId;
+      throw new LeaseLostError('simulated crash');
+    };
+    await pl.drain({ worldId, until: () => crashed });
+    // The crashed job stays locked; age its lease so the claim picks it up again.
+    await pl.pool.query(
+      "UPDATE jobs SET locked_at = now() - interval '1 hour' WHERE world_id = $1 AND kind = 'submit'",
+      [worldId],
+    );
+    const w = await drainNow(pl, worldId);
+    expect(w.status).toBe('ready');
+    const submits = pl.provider.calls.submit;
+    expect(submits).toHaveLength(2);
+    expect(submits[1]!.key).toBe(submits[0]!.key);
+    expect(submits[1]!.body).toBe(submits[0]!.body);
+    expect(w.providerRequestId).toBe(first);
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([['reserve', 900 + frameCount]]);
+  }, 120_000);
+
+  it('A-05: a thumbnail that never downloads is skipped; the world is ready without it', async () => {
+    const pl = await start('happy');
+    const { worldId } = await pl.seedScan();
+    const open = pl.provider.open.bind(pl.provider);
+    let thumbTries = 0;
+    pl.provider.open = async (a) => {
+      if (a.kind === 'thumbnail') {
+        thumbTries++;
+        throw new Error('mock: thumbnail 500');
+      }
+      return open(a);
+    };
+    const w = await pl.drain({ worldId });
+    expect(w.status).toBe('ready');
+    expect(w.thumbnailKey).toBeNull();
+    expect(w.splatKey).toBeTruthy();
+    expect(w.colliderKey).toBeTruthy();
+    expect(thumbTries).toBe(3);
+  }, 120_000);
+
+  it('D-12: crossing the budget share pushes the owner once per window', async () => {
+    const pl = await start('happy', { daily: 2000 });
+    pl.config.BUDGET_ALERT_SHARE = 0.4; // deps share this config object; ~930 crosses 800
+    const push = vi.fn(async () => undefined);
+    pl.deps.push = push;
+    const a = await pl.seedScan();
+    expect((await pl.drain({ worldId: a.worldId })).status).toBe('ready');
+    const owner = (await pl.pool.query('SELECT owner_id FROM worlds WHERE id = $1', [a.worldId])).rows[0].owner_id;
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith(owner, 'Processing budget', expect.stringContaining("today's"));
+
+    const b = await pl.seedScan();
+    expect((await pl.drain({ worldId: b.worldId })).status).toBe('ready');
+    expect(push).toHaveBeenCalledTimes(1);
+    const { rows } = await pl.pool.query('SELECT budget_window FROM budget_alerts');
+    expect(rows).toEqual([{ budget_window: 'daily' }]);
+  }, 180_000);
+
+  it('D-12: a push that throws never fails the submit', async () => {
+    const pl = await start('happy', { daily: 2000 });
+    pl.config.BUDGET_ALERT_SHARE = 0.4;
+    const push = vi.fn(async () => {
+      throw new Error('apns down');
+    });
+    pl.deps.push = push;
+    const { worldId } = await pl.seedScan();
+    const w = await pl.drain({ worldId });
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(w.status).toBe('ready');
+    expect(w.charged).toBe(true);
   }, 120_000);
 
   it('WR-01: a resumed submit is not re-quoted, so a changed quote cannot orphan the request', async () => {
