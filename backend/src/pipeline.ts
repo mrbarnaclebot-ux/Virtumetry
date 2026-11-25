@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pipeline, Transform, type Readable } from 'node:stream';
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { BudgetExceededError, releaseCredits, reserveCredits } from './budget.js';
 import { BundleInvalidError, packCapture } from './bundle/pack.js';
 import { captureConfig } from './capture-config.js';
@@ -21,7 +21,10 @@ export const SUBMIT_MAX_ATTEMPTS = 4;
 const SUBMIT_MAX_DELAY_S = 900;
 const PREFLIGHT_TIMEOUT_MS = 30_000;
 
-/** Fail a world from one of `from`. Messages are built from codes; URLs are scrubbed anyway. */
+/**
+ * Fail a world from one of `from`. Messages are built from codes; URLs are scrubbed anyway.
+ * `extra` narrows the match further (e.g. to one submit attempt).
+ */
 export async function failWorld(
   db: Pick<Db, 'update'>,
   worldId: string,
@@ -29,6 +32,7 @@ export async function failWorld(
   stage: FailureStage,
   code: string,
   message: string,
+  extra?: SQL,
 ): Promise<boolean> {
   const rows = await db
     .update(worlds)
@@ -40,7 +44,7 @@ export async function failWorld(
       progress: null,
       updatedAt: new Date(),
     })
-    .where(and(eq(worlds.id, worldId), inArray(worlds.status, from)))
+    .where(and(eq(worlds.id, worldId), inArray(worlds.status, from), extra))
     .returning({ id: worlds.id });
   return rows.length > 0;
 }
@@ -161,11 +165,14 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   if (stale(w)) return completeJob(db, job.id, job.lockedBy);
   w = w!;
   const worldId = w.id;
+  // iter2 WR-02: every world write below is scoped to the attempt read here, so
+  // a run that stalled across a retry can't fail, re-quote or re-body the new attempt.
+  const thisAttempt = eq(worlds.submitAttempt, w.submitAttempt);
   // One tx (CR-01): a crash between the two used to leave a retryable failed
   // world with a live submit job that a retry would then race.
   const refuse = (code: string, message: string) =>
     db.transaction(async (tx) => {
-      await failWorld(tx, worldId, ['submitting'], 'submit', code, message);
+      await failWorld(tx, worldId, ['submitting'], 'submit', code, message, thisAttempt);
       await completeJob(tx as unknown as Db, job.id, job.lockedBy);
     });
 
@@ -183,7 +190,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     const [quoted] = await db
       .update(worlds)
       .set({ quotedCredits: quote.credits })
-      .where(and(eq(worlds.id, worldId), isNull(worlds.submitBody)))
+      .where(and(eq(worlds.id, worldId), thisAttempt, isNull(worlds.submitBody)))
       .returning({ id: worlds.id });
     if (quoted && quote.credits > w.approvedMaxCredits) {
       return refuse('QUOTE_ABOVE_APPROVAL', `quote ${quote.credits} > approved ${w.approvedMaxCredits}`);
@@ -219,7 +226,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     await db
       .update(worlds)
       .set({ submitBody: body })
-      .where(and(eq(worlds.id, worldId), isNull(worlds.submitBody)));
+      .where(and(eq(worlds.id, worldId), thisAttempt, isNull(worlds.submitBody)));
   }
   // Always send what the DB holds (RESEARCH Pattern 1), including the first send.
   w = (await getWorld(db, worldId))!;
@@ -301,7 +308,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     if (status === 409) {
       // Never mint a new key; the reservation stays (it may be billed).
       console.error(`[pipeline] IDEMPOTENCY_KEY_REUSED on world ${worldId}; parking submit job ${job.id}`);
-      await failWorld(db, worldId, ['submitting'], 'submit', 'IDEMPOTENCY_KEY_REUSED', 'provider returned 409');
+      await failWorld(db, worldId, ['submitting'], 'submit', 'IDEMPOTENCY_KEY_REUSED', 'provider returned 409', thisAttempt);
       return parkJobDead(db, job.id, 'IDEMPOTENCY_KEY_REUSED', job.lockedBy);
     }
     if (status === 429 || status === 503) {
@@ -318,7 +325,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
     if (job.attempts < SUBMIT_MAX_ATTEMPTS) {
       throw new RetryLaterError(`submit outcome uncertain (${status ?? 'network'}), retrying with the same key`, backoff);
     }
-    await failWorld(db, worldId, ['submitting'], 'submit', 'SUBMIT_UNCERTAIN', `submit outcome uncertain after ${job.attempts} attempts`);
+    await failWorld(db, worldId, ['submitting'], 'submit', 'SUBMIT_UNCERTAIN', `submit outcome uncertain after ${job.attempts} attempts`, thisAttempt);
     return parkJobDead(db, job.id, 'SUBMIT_UNCERTAIN', job.lockedBy);
   }
 

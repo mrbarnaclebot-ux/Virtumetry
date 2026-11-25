@@ -492,4 +492,13 @@ describe.skipIf(!url)('iter2: a stalled submit run vs a retry (mock pipeline, re
     const reserves = (await p!.pool.query("SELECT count(*)::int AS n FROM credit_events WHERE world_id = $1 AND kind = 'reserve'", [worldId])).rows[0].n;
     expect(reserves).toBe(0);
   }, 180_000);
+
+  it('WR-02: a stalled run whose quote exceeds its stale approval neither re-quotes nor fails the new attempt', async () => {
+    // The run holds approval 5000 in memory; its quote (6000) lands after the retry (approval 7000).
+    const { worldId, happy, run } = await stalledRun({ legacy: false, quote: 6000, midQuote: (w, c) => refuseAndRetry(w, c, 7000) });
+    expect(run).toBeNull();
+    expect(happy.calls.submit).toHaveLength(0);
+    const w = await p!.getWorld(worldId);
+    expect([w.status, w.submitAttempt, w.quotedCredits, w.submitBody, w.failureCode]).toEqual(['submitting', 2, null, null, null]);
+  }, 180_000);
 });
