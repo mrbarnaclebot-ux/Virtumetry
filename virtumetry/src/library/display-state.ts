@@ -18,6 +18,10 @@ export type LibraryItem = {
   eta_seconds: number | null;
   credits_spent: number | null;
   assets: { thumbnail_url?: string };
+  /** Server-authoritative (D-08); missing = not retryable. */
+  retryable?: boolean;
+  submit_attempt?: number;
+  frame_count?: number | null;
 };
 
 
@@ -95,7 +99,7 @@ const LIMIT_CODES = new Set([
 ]);
 const UPLOAD_CODE = /^(UPLOAD_STALE|BUNDLE_NOT_RANGEABLE|MANIFEST_|ZIP_|IMAGES_MISSING|IMAGE_|EXIF_|CAMERA_FILE_INVALID_JSON|PER_FRAME_INTRINSICS_)/;
 
-function failureText(code: string | null, stage: string | null): string {
+export function failureText(code: string | null, stage: string | null): string {
   const c = code ?? '';
   if (stage === 'validate') return CHECKS; // ahead of the code families (IMAGE_* would read as upload)
   if (UPLOAD_CODE.test(c)) return UPLOAD;
@@ -105,6 +109,34 @@ function failureText(code: string | null, stage: string | null): string {
   if (stage === 'upload' || stage === 'pack') return UPLOAD;
   return UNKNOWN;
 }
+
+const G_LIMIT = 'Your spending limit or credits stopped this run. Check the cost below before you try again.';
+const G_PROVIDER = 'The processing service had a problem on its side. Trying again often works.';
+const G_CAPTURE = "This capture can't be turned into a room. Scan again: move slowly, keep the room well lit and cover every wall.";
+const G_UNCERTAIN = "We can't tell if this run was charged, so it can't be retried from the app. Scan the room again to get a new one.";
+const G_IMPORT = "The room was built but couldn't be saved. It can't be retried from the app. Scan again to get a new room.";
+const G_OTHER = "This scan can't be retried. Scan the room again to get a new one.";
+
+const GUIDE_LIMIT = new Set(['BUDGET_EXCEEDED', 'QUOTE_ABOVE_APPROVAL', 'HTTP_402', 'INSUFFICIENT_CREDITS']);
+const GUIDE_PROVIDER = new Set(['RATE_LIMITED', 'PROVIDER_UNAVAILABLE', 'WORLD_GENERATION_FAILED']);
+const GUIDE_UNCERTAIN = new Set(['SUBMIT_UNCERTAIN', 'IDEMPOTENCY_KEY_REUSED']);
+const CAPTURE_CODE = /^(IMAGES_MISSING|ZIP_|EXIF_)/;
+
+/** Failure sheet guidance body (06-UI-SPEC copy table). Never shows a code. */
+export function failureGuidance(stage: string | null, code: string | null, charged: boolean | null | undefined): string {
+  const c = code ?? '';
+  if (stage === 'validate' || stage === 'pack' || stage === 'upload' || CAPTURE_CODE.test(c)) return G_CAPTURE;
+  if (GUIDE_UNCERTAIN.has(c)) return G_UNCERTAIN;
+  if (GUIDE_LIMIT.has(c)) return G_LIMIT;
+  if (GUIDE_PROVIDER.has(c)) return G_PROVIDER;
+  if (stage === 'import') return G_IMPORT;
+  if (charged == null) return G_UNCERTAIN;
+  return G_OTHER;
+}
+
+/** Charge line on the failure sheet (the Library row keeps its shorter "Not charged"). */
+export const chargeLine = (charged: boolean | null | undefined) =>
+  charged === true ? 'Charged for this run' : charged === false ? 'Not charged for this run' : 'Charge unknown';
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

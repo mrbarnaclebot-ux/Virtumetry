@@ -47,7 +47,15 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   return res.json();
 }
 
-export type WorldsPage = { worlds: LibraryItem[]; has_more: boolean; next_offset: number | null };
+/** Budget share alert (D-13), on the worlds list and the quote. */
+export type BudgetAlert = { window: 'daily' | 'monthly'; share: number; spent: number; budget: number };
+
+export type WorldsPage = {
+  worlds: LibraryItem[];
+  has_more: boolean;
+  next_offset: number | null;
+  budgetAlert?: BudgetAlert | null;
+};
 
 // ponytail: first 100 only; page with next_offset when an owner has more scans.
 export const listWorlds = () => apiFetch<WorldsPage>('/v1/worlds?limit=100');
@@ -166,6 +174,7 @@ export type Quote = {
   budgetRemaining: number;
   budgetWindow: 'daily' | 'monthly';
   withinBudget: boolean;
+  budgetAlert?: BudgetAlert | null;
 };
 
 /** Idempotent create: Idempotency-Key = sessionId, so a retry replays the same world (T-04-29). */
@@ -198,3 +207,11 @@ export async function completeScan(id: string): Promise<{ world: ScanWorld; issu
 }
 
 export const getQuote = (frames: number) => apiFetch<Quote>(`/v1/quote?frames=${frames}`);
+
+/** D-11 retry of a failed world: one Idempotency-Key per sheet open, so a lost response replays the same retry. */
+export const retryWorld = (id: string, approvedMaxCredits: number, idempotencyKey: string) =>
+  apiFetch<{ world: LibraryItem }>(`/v1/worlds/${encodeURIComponent(id)}/retry`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ approved_max_credits: approvedMaxCredits }),
+  });

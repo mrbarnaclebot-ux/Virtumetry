@@ -1,4 +1,6 @@
 import {
+  chargeLine,
+  failureGuidance,
   isTerminal,
   pollInterval,
   STALLED_MS,
@@ -276,5 +278,49 @@ describe('isTerminal / pollInterval', () => {
 
   it('keeps polling while a local scan is uploading even if every server item is terminal', () => {
     expect(pollInterval([{ status: 'ready' }], true)).toBe(5000);
+  });
+});
+
+describe('failureGuidance', () => {
+  const LIMIT = 'Your spending limit or credits stopped this run. Check the cost below before you try again.';
+  const PROVIDER = 'The processing service had a problem on its side. Trying again often works.';
+  const CAPTURE = "This capture can't be turned into a room. Scan again: move slowly, keep the room well lit and cover every wall.";
+  const UNCERTAIN = "We can't tell if this run was charged, so it can't be retried from the app. Scan the room again to get a new one.";
+  const IMPORT = "The room was built but couldn't be saved. It can't be retried from the app. Scan again to get a new room.";
+  const OTHER = "This scan can't be retried. Scan the room again to get a new one.";
+
+  it.each([
+    ['submit', 'BUDGET_EXCEEDED', false, LIMIT],
+    ['submit', 'QUOTE_ABOVE_APPROVAL', false, LIMIT],
+    ['submit', 'HTTP_402', false, LIMIT],
+    ['submit', 'INSUFFICIENT_CREDITS', false, LIMIT],
+    ['submit', 'RATE_LIMITED', false, PROVIDER],
+    ['submit', 'PROVIDER_UNAVAILABLE', false, PROVIDER],
+    ['processing', 'WORLD_GENERATION_FAILED', false, PROVIDER],
+    ['validate', 'CAMERA_JUMP', false, CAPTURE],
+    ['pack', null, false, CAPTURE],
+    ['upload', 'UPLOAD_STALE', false, CAPTURE],
+    ['processing', 'IMAGES_MISSING', true, CAPTURE],
+    ['processing', 'ZIP_INVALID', true, CAPTURE],
+    ['processing', 'EXIF_MISSING', true, CAPTURE],
+    ['submit', 'SUBMIT_UNCERTAIN', null, UNCERTAIN],
+    ['submit', 'IDEMPOTENCY_KEY_REUSED', false, UNCERTAIN],
+    ['processing', 'SOMETHING', null, UNCERTAIN],
+    ['import', 'IMPORT_FAILED', true, IMPORT],
+    ['processing', 'CANCELLED', true, OTHER],
+    [null, null, false, OTHER],
+  ] as const)('(%s, %s, %s)', (stage, code, charged, copy) => {
+    expect(failureGuidance(stage, code, charged)).toBe(copy);
+  });
+});
+
+describe('chargeLine', () => {
+  it.each([
+    [true, 'Charged for this run'],
+    [false, 'Not charged for this run'],
+    [null, 'Charge unknown'],
+    [undefined, 'Charge unknown'],
+  ])('%s -> %s', (charged, copy) => {
+    expect(chargeLine(charged)).toBe(copy);
   });
 });

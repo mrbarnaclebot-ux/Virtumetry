@@ -2,28 +2,30 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState, type ReactNode } from 'react';
-import {
-  AccessibilityInfo,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCaptureConfig } from '@/capture/capture-config';
-import { costFor, formatCost, formatCredits, formatUsd } from '@/capture/cost';
+import { costFor, formatCost } from '@/capture/cost';
 import { checkReason, serverReason } from '@/capture/precheck';
 import { LABEL } from '@/capture/readiness';
 import { discardLocalScan, getLocalScan, updateLocalScan, useLocalScan } from '@/capture/store';
+import {
+  Layout,
+  Neutral,
+  overBudget,
+  Primary,
+  QUOTE_ERROR,
+  QuoteCard,
+  StatRow,
+  styles as shared,
+  useAnnounce,
+} from '@/components/approval';
 import { ReadinessPill } from '@/components/readiness-pill';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toDisplayState, type LocalScan } from '@/library/display-state';
 import { ApiError, createScan, getQuote } from '@/lib/api';
@@ -43,13 +45,6 @@ function sample(n: number, k = 5): number[] {
   if (n <= 0) return [];
   if (n <= k) return Array.from({ length: n }, (_, i) => i + 1);
   return Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1)) + 1);
-}
-
-/** Polite live region + iOS announcement for errors and blocking headings. */
-function useAnnounce(text: string | null) {
-  useEffect(() => {
-    if (text && Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(text);
-  }, [text]);
 }
 
 export default function CaptureScreen() {
@@ -75,80 +70,6 @@ export default function CaptureScreen() {
         {step === 'upload' && <Upload scan={scan} />}
       </SafeAreaView>
     </ThemedView>
-  );
-}
-
-/** Scrolling content + pinned action area with a hairline top separator. */
-function Layout({ top, title, children, actions }: { top?: ReactNode; title: string; children: ReactNode; actions: ReactNode }) {
-  const theme = useTheme();
-  return (
-    <>
-      {top}
-      <ScrollView contentContainerStyle={styles.content}>
-        <ThemedText type="title" accessibilityRole="header" maxFontSizeMultiplier={1.6} style={styles.title}>
-          {title}
-        </ThemedText>
-        {children}
-      </ScrollView>
-      <View style={[styles.actions, { backgroundColor: theme.background, borderTopColor: theme.backgroundSelected }]}>
-        {actions}
-      </View>
-    </>
-  );
-}
-
-function Primary({ label, disabled, busy, hint, onPress }: { label: string; disabled: boolean; busy?: boolean; hint?: string; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={disabled ? hint : undefined}
-      accessibilityState={{ disabled: disabled || !!busy, busy: !!busy }}
-      disabled={disabled || busy}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: theme.accent },
-        disabled && styles.disabled,
-        pressed && styles.pressed,
-      ]}>
-      {busy ? (
-        <ActivityIndicator color={theme.onAccent} />
-      ) : (
-        <ThemedText type="smallBold" themeColor="onAccent" maxFontSizeMultiplier={1.6}>
-          {label}
-        </ThemedText>
-      )}
-    </Pressable>
-  );
-}
-
-function Neutral({ label, onPress, style }: { label: string; onPress: () => void; style?: object }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [styles.neutral, { backgroundColor: theme.backgroundSelected }, pressed && styles.pressed, style]}>
-      <ThemedText type="smallBold" maxFontSizeMultiplier={1.6}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-function StatRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.stat}>
-      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6}>
-        {label}
-      </ThemedText>
-      <ThemedText type="smallBold" maxFontSizeMultiplier={1.6} style={styles.tabular}>
-        {value}
-      </ThemedText>
-    </View>
   );
 }
 
@@ -274,11 +195,9 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
 
 // --- Quote (D-18/D-19, UI-SPEC §6) ---
 
-const QUOTE_ERROR = "Couldn't get a quote. Check your connection and try again.";
 const APPROVE_ERROR = "Couldn't start the upload. Check your connection and try again.";
 
 function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => void; onApproved: () => void }) {
-  const theme = useTheme();
   // Fetched on entering the step, never cached across visits (budget changes).
   const quote = useQuery({
     queryKey: ['quote', scan.id],
@@ -311,12 +230,7 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
     onSuccess: onApproved,
   });
 
-  const over =
-    data?.withinBudget === false
-      ? data.budgetWindow === 'monthly'
-        ? "This scan would go over this month's limit."
-        : "This scan would go over today's limit. Try again tomorrow."
-      : null;
+  const over = overBudget(data, 'scan');
   const error = quote.isError ? QUOTE_ERROR : approve.isError ? APPROVE_ERROR : null;
   useAnnounce(error);
 
@@ -341,46 +255,7 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
           </Pressable>
         </>
       }>
-      <ThemedView type="backgroundElement" style={[styles.card, styles.section]}>
-        {quote.isPending ? (
-          <View style={styles.check}>
-            <ActivityIndicator color={theme.accent} />
-            <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6}>
-              Getting quote…
-            </ThemedText>
-          </View>
-        ) : quote.isError ? (
-          <View accessibilityLiveRegion="polite">
-            <ThemedText type="small" themeColor="destructive" maxFontSizeMultiplier={1.6}>
-              {QUOTE_ERROR}
-            </ThemedText>
-            <Neutral label="Try again" onPress={() => quote.refetch()} style={styles.retry} />
-          </View>
-        ) : (
-          data && (
-            <>
-              <ThemedText maxFontSizeMultiplier={1.6}>
-                {'This scan will use '}
-                <ThemedText type="subtitle" style={styles.tabular}>
-                  ~{formatCredits(data.credits)}
-                </ThemedText>
-                {` ≈ ${formatUsd(data.usd)}`}
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.gap}>
-                {`${formatCredits(data.budgetRemaining)} left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
-              </ThemedText>
-              {over && (
-                <View style={[styles.check, styles.gap]}>
-                  <SymbolView name="exclamationmark.triangle.fill" size={20} tintColor={theme.warning} />
-                  <ThemedText type="small" themeColor="warning" maxFontSizeMultiplier={1.6} style={styles.flex}>
-                    {over}
-                  </ThemedText>
-                </View>
-              )}
-            </>
-          )
-        )}
-      </ThemedView>
+      <QuoteCard quote={quote} noun="scan" />
       {approve.isError && (
         <ThemedText
           type="small"
@@ -477,39 +352,21 @@ function Upload({ scan }: { scan: LocalScan }) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: {
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.five,
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-  },
-  topBar: { height: 44, justifyContent: 'center', paddingHorizontal: Spacing.three },
-  topButton: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
-  title: { marginTop: Spacing.three },
-  saved: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, marginTop: Spacing.two },
-  section: { marginTop: Spacing.four },
-  gap: { marginTop: Spacing.two },
-  strip: { gap: Spacing.two },
-  thumb: { width: 64, height: 64, borderRadius: 8, overflow: 'hidden' },
-  card: { borderRadius: 12, padding: Spacing.three },
-  rows: { gap: Spacing.two },
-  stat: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  hairline: { height: StyleSheet.hairlineWidth, marginTop: Spacing.two, marginBottom: Spacing.three },
-  check: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  actions: { padding: Spacing.three, borderTopWidth: StyleSheet.hairlineWidth },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  neutral: { minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  retry: { marginTop: Spacing.three, minHeight: 44 },
-  textButton: { marginTop: Spacing.three, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  tabular: { fontVariant: ['tabular-nums'] },
-  track: { height: 4, borderRadius: 2, marginTop: Spacing.one, overflow: 'hidden' },
-  fill: { height: 4, borderRadius: 2 },
-  blocked: { alignItems: 'center', marginTop: Spacing.five },
-  blockedHeading: { marginTop: Spacing.three, textAlign: 'center' },
-  center: { textAlign: 'center' },
-  disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.8 },
-});
+// Screen-only styles on top of the shared approval styles.
+const styles = {
+  ...shared,
+  ...StyleSheet.create({
+    topBar: { height: 44, justifyContent: 'center', paddingHorizontal: Spacing.three },
+    topButton: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
+    saved: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, marginTop: Spacing.two },
+    strip: { gap: Spacing.two },
+    thumb: { width: 64, height: 64, borderRadius: 8, overflow: 'hidden' },
+    rows: { gap: Spacing.two },
+    hairline: { height: StyleSheet.hairlineWidth, marginTop: Spacing.two, marginBottom: Spacing.three },
+    track: { height: 4, borderRadius: 2, marginTop: Spacing.one, overflow: 'hidden' },
+    fill: { height: 4, borderRadius: 2 },
+    blocked: { alignItems: 'center', marginTop: Spacing.five },
+    blockedHeading: { marginTop: Spacing.three, textAlign: 'center' },
+    center: { textAlign: 'center' },
+  }),
+};
