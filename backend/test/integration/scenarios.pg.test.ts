@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { MockScenario } from '../../src/provider/mock.js';
 import { startPipeline, type Pipeline } from '../helpers/pipeline.js';
-import { failWorldForDeadJob, runOneJob } from '../../src/worker.js';
+import { failWorldForDeadJob, LeaseLostError, runOneJob } from '../../src/worker.js';
 import { ProviderError } from '../../src/provider/index.js';
 import { claimNextJob, MAX_ATTEMPTS } from '../../src/queue.js';
 import { handleSubmit } from '../../src/pipeline.js';
@@ -335,6 +335,21 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(w.splatKey).toBeTruthy();
     expect(w.colliderKey).toBeTruthy();
     expect(thumbTries).toBe(3);
+  }, 120_000);
+
+  it('IN-11: a lease lost on the 3rd thumbnail pass is not swallowed; the losing run never finalizes ready', async () => {
+    const pl = await start('happy');
+    const { worldId } = await pl.seedScan();
+    const open = pl.provider.open.bind(pl.provider);
+    let thumbTries = 0;
+    pl.provider.open = async (a) => {
+      if (a.kind !== 'thumbnail') return open(a);
+      thumbTries++;
+      throw thumbTries < 3 ? new Error('mock: thumbnail 500') : new LeaseLostError('mock: lease lost mid-thumbnail');
+    };
+    const w = await pl.drain({ worldId, until: () => thumbTries >= 3 });
+    expect(thumbTries).toBe(3);
+    expect([w.status, w.thumbnailKey]).toEqual(['importing', null]);
   }, 120_000);
 
   it('D-12: crossing the budget share pushes the owner once per window', async () => {

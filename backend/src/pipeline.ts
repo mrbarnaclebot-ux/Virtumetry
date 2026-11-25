@@ -488,7 +488,8 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
       } catch (err) {
         // A-05 / Pitfall 11: the thumbnail is optional — retried by the normal
         // snooze for 3 passes, then skipped so it can't wedge a paid import.
-        if (a.kind !== 'thumbnail' || trackErrs(job) < 2) throw err;
+        // IN-11: a lost lease is never "optional" — the new owner finalizes.
+        if (err instanceof LeaseLostError || a.kind !== 'thumbnail' || trackErrs(job) < 2) throw err;
         console.warn(`[pipeline] skipping thumbnail on world ${w.id} after 3 failed passes: ${err instanceof Error ? err.name : 'unknown'}`);
         continue;
       }
