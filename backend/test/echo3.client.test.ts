@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEcho3Provider, downloadAllowed, parseRetryAfter, T_SUBMIT_MS } from '../src/provider/echo3.js';
 import { ProviderError, ProviderTimeoutError, signWebhook, type Artifact } from '../src/provider/types.js';
 import { LEASE_SECONDS } from '../src/queue.js';
+import { withHeartbeat } from '../src/pipeline.js';
 import { startFakeEcho3, type Step } from './helpers/fake-echo3.js';
 
 // V1 client contract against the hermetic fake (127.0.0.1). Never a spaitial host.
@@ -357,4 +358,27 @@ describe('WR-03 response shape validation', () => {
       expect(calls()).toBe(2);
     },
   );
+});
+
+describe('WR-04 lease heartbeat while an artifact streams', () => {
+  it('beats during the stream and passes every byte through', async () => {
+    let beats = 0;
+    const out = withHeartbeat(Readable.from([Buffer.from('ab'), Buffer.from('cd'), Buffer.from('ef')]), async () => {
+      beats++;
+    }, 0);
+    expect((await bytes(out)).toString()).toBe('abcdef');
+    expect(beats).toBe(3);
+  });
+
+  it('a lost lease errors the stream (the upload aborts)', async () => {
+    const out = withHeartbeat(Readable.from([Buffer.from('ab')]), async () => {
+      throw new Error('lease lost');
+    }, 0);
+    await expect(bytes(out)).rejects.toThrow('lease lost');
+  });
+
+  it('a source error reaches the consumer', async () => {
+    const src = new Readable({ read() { this.destroy(new Error('socket reset')); } });
+    await expect(bytes(withHeartbeat(src, async () => undefined))).rejects.toThrow('socket reset');
+  });
 });

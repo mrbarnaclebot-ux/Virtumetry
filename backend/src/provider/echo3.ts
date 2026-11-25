@@ -17,7 +17,7 @@ import {
 /** Must stay well under LEASE_SECONDS/2 so two runs of one submit job can't overlap. */
 export const T_SUBMIT_MS = 60_000;
 const T_CALL_MS = 30_000;
-const T_DOWNLOAD_MS = 15 * 60_000; // covers the whole body of a 100+ MB splat
+const T_DOWNLOAD_MS = 15 * 60_000; // whole 100+ MB splat body; outlives the lease, so handleTrack heartbeats mid-stream (WR-04)
 const LIMITS_TTL_MS = 60 * 60_000;
 const REQ_PREFIX = '/v1/worlds/requests/';
 

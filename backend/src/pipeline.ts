@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { pipeline, Transform, type Readable } from 'node:stream';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { BudgetExceededError, releaseCredits, reserveCredits } from './budget.js';
 import { BundleInvalidError, packCapture } from './bundle/pack.js';
@@ -66,6 +67,24 @@ function heartbeat(deps: WorkerDeps, job: Job) {
       throw new LeaseLostError(`lease lost on job ${job.id}`);
     }
   };
+}
+
+/**
+ * WR-04: beat the lease at most every `everyMs` while an artifact streams; the
+ * download timeout (15 min) outlives LEASE_SECONDS (10 min). A lost lease
+ * errors the stream, so the upload aborts instead of racing the new owner.
+ */
+export function withHeartbeat(src: Readable, beat: () => Promise<void>, everyMs = 60_000): Readable {
+  let last = Date.now();
+  const out = new Transform({
+    transform(chunk, _enc, cb) {
+      if (Date.now() - last < everyMs) return cb(null, chunk);
+      last = Date.now();
+      beat().then(() => cb(null, chunk), cb);
+    },
+  });
+  pipeline(src, out, () => undefined); // src errors destroy `out` with the same error
+  return out;
 }
 
 // --- pack ---------------------------------------------------------------------
@@ -433,7 +452,7 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
     const exists = await storage.objectSize(key).then(() => true, () => false);
     if (!exists) {
       try {
-        await storage.putStream(key, await provider.open(a), a.contentType).done;
+        await storage.putStream(key, withHeartbeat(await provider.open(a), beat), a.contentType).done;
       } catch (err) {
         // A-05 / Pitfall 11: the thumbnail is optional — retried by the normal
         // snooze for 3 passes, then skipped so it can't wedge a paid import.
