@@ -95,6 +95,8 @@ export const worlds = pgTable(
     // Floorplan affine/meta from the provider, needed to draw it (D-15).
     floorplanMeta: jsonb('floorplan_meta'),
     assetVersion: integer('asset_version').notNull().default(1),
+    // Which paid submission this is (D-10): 1 on create, bumped by each retry.
+    submitAttempt: integer('submit_attempt').notNull().default(1),
 
     provider: text('provider'),
     creditsSpent: integer('credits_spent').notNull().default(0),
@@ -240,6 +242,49 @@ export const shareSlugs = pgTable('share_slugs', {
   lastOpenedAt: timestamp('last_opened_at', { withTimezone: true }),
 });
 
+// Append-only archive of superseded submissions (D-10). A retry copies the
+// current attempt's identifiers here before resetting the world, so the old
+// provider request can still be deleted on purge (A-05) and audited.
+export const worldAttempts = pgTable(
+  'world_attempts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    worldId: uuid('world_id')
+      .notNull()
+      .references(() => worlds.id),
+    attempt: integer('attempt').notNull(),
+    submissionKey: uuid('submission_key'),
+    providerRequestId: text('provider_request_id'),
+    failureStage: text('failure_stage'),
+    failureCode: text('failure_code'),
+    quotedCredits: integer('quoted_credits'),
+    // The retry's idempotency key, so a double-tapped Retry archives once.
+    clientRequestId: text('client_request_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('world_attempts_world_attempt_idx').on(t.worldId, t.attempt),
+    uniqueIndex('world_attempts_world_client_idx').on(t.worldId, t.clientRequestId),
+  ],
+);
+
+// One budget alert per mode/window (D-12); the unique index is the dedupe.
+// `budget_window` because `window` is reserved in Postgres.
+export const budgetAlerts = pgTable(
+  'budget_alerts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    providerMode: text('provider_mode').notNull(),
+    budgetWindow: text('budget_window').notNull(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    spent: integer('spent').notNull(),
+    budget: integer('budget').notNull(),
+    share: doublePrecision('share').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('budget_alerts_window_idx').on(t.providerMode, t.budgetWindow, t.windowStart)],
+);
+
 // --- Better Auth tables (D-01) -----------------------------------------------
 // Shape from `npx auth generate` (better-auth 1.7.27); text ids are minted by
 // Better Auth. Singular `user` is Better Auth's own row; our `users` row is
@@ -326,3 +371,5 @@ export type Capture = typeof captures.$inferSelect;
 export type CreditEvent = typeof creditEvents.$inferSelect;
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type ShareSlug = typeof shareSlugs.$inferSelect;
+export type WorldAttempt = typeof worldAttempts.$inferSelect;
+export type BudgetAlert = typeof budgetAlerts.$inferSelect;
