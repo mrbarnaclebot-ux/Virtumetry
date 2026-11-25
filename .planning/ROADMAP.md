@@ -240,7 +240,7 @@ Plans:
   3. A failed scan shows a retry button only when the failure is retryable, and retrying needs a fresh explicit cost approval *(RNTL + backend tests + manual Expo Go check)*
   4. The owner is alerted when spend crosses the configured share of the daily or monthly budget *(automated threshold test + manual check of the alert during the live run)*
 
-**Plans:** 5/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -256,8 +256,8 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-06-PLAN.md — Exactly-once contract suite vs live client + recorded replay + owner-only recorder
-- [ ] 06-07-PLAN.md — POST /v1/worlds/:id/retry + retryable/frame_count/budgetAlert in the API
+- [x] 06-06-PLAN.md — Exactly-once contract suite vs live client + recorded replay + owner-only recorder
+- [x] 06-07-PLAN.md — POST /v1/worlds/:id/retry + retryable/frame_count/budgetAlert in the API
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -323,7 +323,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Owner Account & Scan Library | 9/9 | Complete    | 2026-11-24 |
 | 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
 | 5. Viewer, Floor Plan, Measure & Share | 8/8 | Awaiting UAT | - |
-| 6. Live Echo-3 Provider | 5/8 | In Progress|  |
+| 6. Live Echo-3 Provider | 7/8 | In Progress|  |
 | 7. Native Build Readiness | 0/TBD | Not started | - |
 | 8. Native ARKit Capture & Sign in with Apple | 0/TBD | Not started | - |
 | 9. Privacy & Retention Hardening | 0/TBD | Not started | - |
