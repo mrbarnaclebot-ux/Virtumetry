@@ -56,6 +56,34 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(rows[1]!.created_at.getTime()).toBe(rows[0]!.created_at.getTime());
   }, 120_000);
 
+  it('WR-01: provider FAILED flips the world and releases in one tx (a failing release leaves the world processing)', async () => {
+    const pl = await start('failed');
+    const { worldId, frameCount } = await pl.seedScan();
+    await pl.drain({ worldId, until: (w) => w.status === 'processing' });
+    // Simulate a crash at the release: the flip must roll back with it, so the
+    // re-polled job can finish both (before WR-01 the world stayed failed, reserve held).
+    await pl.pool.query(`CREATE FUNCTION wr01_boom() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$ LANGUAGE plpgsql`);
+    await pl.pool.query(`CREATE TRIGGER wr01 BEFORE INSERT ON credit_events FOR EACH ROW WHEN (NEW.kind = 'release') EXECUTE FUNCTION wr01_boom()`);
+    const errs = async () =>
+      (await pl.pool.query("SELECT payload FROM jobs WHERE world_id = $1 AND kind = 'track'", [worldId])).rows[0]?.payload?.errs ?? 0;
+    for (let i = 0; i < 200 && (await errs()) === 0; i++) {
+      await pl.pool.query("UPDATE jobs SET run_after = now() WHERE world_id = $1 AND phase = 'queued'", [worldId]);
+      if (!(await runOneJob(pl.deps))) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(await errs()).toBeGreaterThan(0);
+    const mid = await pl.getWorld(worldId);
+    expect(mid.status).toBe('processing');
+    expect((await ledger(mid.submissionKey!)).map((r) => r.kind)).toEqual(['reserve']);
+
+    await pl.pool.query('DROP TRIGGER wr01 ON credit_events');
+    const w = await drainNow(pl, worldId);
+    expect([w.status, w.failureStage]).toEqual(['failed', 'processing']);
+    expect((await ledger(w.submissionKey!)).map((r) => [r.kind, r.amount])).toEqual([
+      ['reserve', 900 + frameCount],
+      ['release', -(900 + frameCount)],
+    ]);
+  }, 120_000);
+
   it("'402': insufficient credits → failed/submit, reservation released", async () => {
     const { w, submits, quote, rows } = await run('402');
     expect(w.status).toBe('failed');

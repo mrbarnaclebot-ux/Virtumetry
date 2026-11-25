@@ -374,16 +374,22 @@ async function trackOnce(deps: WorkerDeps, job: Job): Promise<void> {
     const s = await provider.status(rid);
     if (s.status === 'FAILED') {
       const codes = (s.issues ?? []).map((i) => i.code);
-      await failWorld(db, w.id, ['processing'], 'processing', s.error?.code ?? codes[0] ?? 'FAILED', codes.join(', ') || (s.error?.code ?? 'FAILED'));
-      await releaseCredits(db, w.submissionKey!); // FAILED = 0 credits
+      // One tx (WR-01): a crash between the flip and the release would hold a
+      // 0-credit reserve forever and keep the world non-retryable.
+      await db.transaction(async (tx) => {
+        await releaseCredits(tx, w.submissionKey!); // FAILED = 0 credits
+        await failWorld(tx, w.id, ['processing'], 'processing', s.error?.code ?? codes[0] ?? 'FAILED', codes.join(', ') || (s.error?.code ?? 'FAILED'));
+      });
       return completeJob(db, job.id, job.lockedBy);
     }
     if (s.status === 'CANCELLED') {
-      await db
-        .update(worlds)
-        .set({ status: 'cancelled', progress: null, updatedAt: new Date() })
-        .where(and(eq(worlds.id, w.id), eq(worlds.status, 'processing')));
-      await releaseCredits(db, w.submissionKey!);
+      await db.transaction(async (tx) => {
+        await releaseCredits(tx, w.submissionKey!);
+        await tx
+          .update(worlds)
+          .set({ status: 'cancelled', progress: null, updatedAt: new Date() })
+          .where(and(eq(worlds.id, w.id), eq(worlds.status, 'processing')));
+      });
       return completeJob(db, job.id, job.lockedBy);
     }
     if (s.status !== 'COMPLETED') {
