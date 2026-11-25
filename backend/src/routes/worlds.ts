@@ -6,7 +6,7 @@ import { captures, worldAttempts, worlds, type World } from '../db/schema.js';
 import { enqueue } from '../queue.js';
 import type { QuotaChargeResult } from '../quota.js';
 import { budgetAlertFor, spentCredits } from '../budget.js';
-import { createProvider } from '../provider/index.js';
+import { createProvider, ProviderError, ProviderTimeoutError } from '../provider/index.js';
 import { applyRetry, heldReserveSql, isRetryable, ledgerClear } from '../retry.js';
 import type { StorageDriver } from '../storage/index.js';
 import type { RouteDeps } from './deps.js';
@@ -242,7 +242,9 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
       if (!hit) return null;
       const current = (await findOwnedWorld(db, world.id, userId)) ?? world;
       const cap = await latestCapture(db, world.id);
-      return { world: serializeWorld(current, { frameCount: cap?.frameCount ?? null }) };
+      // WR-11: same ledger guard as GET /v1/worlds/:id, so `retryable` agrees.
+      const ledgerHeld = !(await ledgerClear(db, current.submissionKey));
+      return { world: serializeWorld(current, { frameCount: cap?.frameCount ?? null, ledgerHeld }) };
     };
     const replayed = await replay();
     if (replayed) return reply.send(replayed);
@@ -252,7 +254,19 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
     const cap = await latestCapture(db, world.id);
     if (!cap) return reply.code(409).send({ error: 'not_retryable' });
-    const quote = await provider.quote(cap.frameCount);
+    let quote: Awaited<ReturnType<typeof provider.quote>>;
+    try {
+      quote = await provider.quote(cap.frameCount);
+    } catch (err) {
+      if (!(err instanceof ProviderError)) throw err;
+      // WR-11: a provider hiccup is not our 500. 429/503/timeout → 503 with a
+      // backoff hint; anything else (bad shape, 5xx, 4xx) → 502. Nothing was written.
+      const transient = err instanceof ProviderTimeoutError || err.status === 429 || err.status === 503;
+      req.log.warn({ worldId: world.id, status: err.status, code: err.code }, 'retry quote failed');
+      return transient
+        ? reply.code(503).send({ error: 'quote_unavailable', retry_after: err.retryAfterS ?? null })
+        : reply.code(502).send({ error: 'quote_failed' });
+    }
     if (parsed.data.approved_max_credits < quote.credits) {
       return reply.code(400).send({ error: 'approval_below_quote', quote_credits: quote.credits });
     }
@@ -274,7 +288,8 @@ export function worldsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
     if (!row) return reply.code(409).send({ error: 'not_retryable' });
     req.log.info({ worldId: world.id }, 'retry approved');
-    return reply.send({ world: serializeWorld(row, { frameCount: cap.frameCount }) });
+    // A freshly minted key holds no reserve yet.
+    return reply.send({ world: serializeWorld(row, { frameCount: cap.frameCount, ledgerHeld: false }) });
   });
 
   // PATCH /v1/worlds/:id — rename (D-16). Owner-only; title is the only

@@ -4,6 +4,23 @@ import type { FastifyInstance } from 'fastify';
 
 let currentDb: unknown;
 vi.mock('../../src/db/client.js', () => ({ getDb: () => currentDb, closeDb: async () => {} }));
+// WR-11: lets a test make the route's provider.quote throw.
+let quoteFail: Error | undefined;
+vi.mock('../../src/provider/index.js', async (orig) => {
+  const m = await orig<typeof import('../../src/provider/index.js')>();
+  return {
+    ...m,
+    createProvider: (c: Parameters<typeof m.createProvider>[0]) => {
+      const p = m.createProvider(c);
+      const quote = p.quote.bind(p);
+      p.quote = async (n) => {
+        if (quoteFail) throw quoteFail;
+        return quote(n);
+      };
+      return p;
+    },
+  };
+});
 
 import { eq } from 'drizzle-orm';
 import { createTestSchema } from '../helpers/pg-schema.js';
@@ -12,6 +29,7 @@ import { startPipeline, TEST_WEBHOOK_SECRET, type Pipeline } from '../helpers/pi
 import { captures, creditEvents, worlds, type World } from '../../src/db/schema.js';
 import { applyRetry } from '../../src/retry.js';
 import { createMockProvider } from '../../src/provider/mock.js';
+import { ProviderError, ProviderTimeoutError } from '../../src/provider/types.js';
 import { handleSubmit } from '../../src/pipeline.js';
 import { enqueue, mapJobRow } from '../../src/queue.js';
 import type { WorkerDeps } from '../../src/worker.js';
@@ -291,6 +309,40 @@ describe.skipIf(!url)('POST /v1/worlds/:id/retry (real Postgres)', () => {
       expect(await jobs(w.id)).toBe(0);
       expect((await row(w.id)).submissionKey).toBe(w.submissionKey);
     }
+  });
+
+  it('WR-11: a provider quote failure → 503 quote_unavailable (429/503/timeout) or 502, nothing written', async () => {
+    const cases: [Error, number, Record<string, unknown>][] = [
+      [new ProviderError('429', { status: 429, retryAfterS: 7, endpoint: 'quote' }), 503, { error: 'quote_unavailable', retry_after: 7 }],
+      [new ProviderTimeoutError('quote timed out', 'quote'), 503, { error: 'quote_unavailable', retry_after: null }],
+      [new ProviderError('quote: bad response shape', { endpoint: 'quote' }), 502, { error: 'quote_failed' }],
+    ];
+    try {
+      for (const [err, code, body] of cases) {
+        const w = await seed();
+        quoteFail = err;
+        const res = await retry(w.id);
+        expect([res.statusCode, res.json()]).toEqual([code, body]);
+        expect(await attempts(w.id)).toBe(0);
+        expect(await jobs(w.id)).toBe(0);
+      }
+    } finally {
+      quoteFail = undefined;
+    }
+  });
+
+  it('WR-11: a replayed retry reports retryable=false while the world holds a reserve (matches GET detail)', async () => {
+    const w = await seed();
+    const key = randomUUID();
+    expect((await retry(w.id, { key })).statusCode).toBe(200);
+    // The new attempt reserved, then failed again with a retryable code.
+    const cur = await row(w.id);
+    await ledger(cur.submissionKey!, ['reserve']);
+    await schema.pool.query("UPDATE worlds SET status = 'failed', failure_stage = 'submit', failure_code = 'RATE_LIMITED' WHERE id = $1", [w.id]);
+    const again = await retry(w.id, { key });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().world.retryable).toBe(false);
+    expect((await call('GET', `/v1/worlds/${w.id}`, cookieA)).json().world.retryable).toBe(false);
   });
 
   it('budgetAlert names the daily window once spend reaches share × budget (list + quote)', async () => {
