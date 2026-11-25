@@ -7,6 +7,8 @@ export default function WorldLayout() {
       <Stack.Screen name="[id]/index" options={{ gestureEnabled: false }} />
       {/* D-18: iOS page sheet over the viewer. */}
       <Stack.Screen name="[id]/share" options={{ presentation: 'modal' }} />
+      {/* D-11: failure sheet (retry or scan again), opened from the Library. */}
+      <Stack.Screen name="[id]/retry" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }
