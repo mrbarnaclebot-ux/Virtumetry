@@ -279,10 +279,14 @@ describe('createProvider', () => {
     expect(p.verifyWebhook(raw, signWebhook(SECRET, raw))).toBe(true);
   });
 
-  it('live mode throws (Phase 6)', () => {
-    expect(() => createProvider({ PROVIDER_MODE: 'live' } as Config)).toThrow(
-      'no live provider in this build (Phase 6)',
-    );
+  it('live mode builds the Echo-3 client (constructing it makes no request)', () => {
+    const p = createProvider({
+      PROVIDER_MODE: 'live',
+      SPAITIAL_API_KEY: 'spt_live_test',
+      SPAITIAL_BASE_URL: 'http://127.0.0.1:1',
+      SPAITIAL_WEBHOOK_SECRET: SECRET,
+    } as Config);
+    expect(p.mode).toBe('live');
   });
 
   it('every MOCK_SCENARIO is covered above', () => {
