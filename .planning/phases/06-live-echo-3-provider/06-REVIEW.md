@@ -1,158 +1,87 @@
 ---
 phase: 06-live-echo-3-provider
-iteration: 2
-reviewed: 2026-11-25T03:01:05Z
+iteration: 3
+reviewed: 2026-11-25T03:34:32Z
 depth: deep
-diff_base: 46dd18d
-files_reviewed: 14
+diff_base: 3b8e833
+files_reviewed: 8
 files_reviewed_list:
   - backend/src/pipeline.ts
-  - backend/src/retry.ts
   - backend/src/provider/echo3.ts
-  - backend/src/provider/index.ts
-  - backend/src/routes/worlds.ts
-  - backend/src/queue.ts
   - backend/src/budget.ts
-  - backend/src/worker.ts
-  - backend/src/storage/s3.ts
-  - backend/src/storage/local.ts
-  - backend/test/integration/retry.pg.test.ts
+  - backend/src/retry.ts
   - backend/test/echo3.client.test.ts
-  - virtumetry/src/library/display-state.ts
-  - virtumetry/src/app/world/[id]/retry.tsx
+  - backend/test/integration/echo3-contract.pg.test.ts
+  - backend/test/integration/retry.pg.test.ts
+  - backend/test/integration/scenarios.pg.test.ts
 findings:
   critical: 0
-  warning: 4
-  info: 13
-  total: 17
-status: issues_found
+  warning: 0
+  info: 6
+  total: 6
+status: clean
 ---
 
-# Phase 6: Code Review Report (iteration 2)
+# Phase 6: Code Review Report (iteration 3)
 
-**Reviewed:** 2026-11-25T03:01:05Z
-**Depth:** deep. The fix commits `46dd18d..501e384` were traced through queue.ts (claim, lease, ownership guards), budget.ts (reserve/alert), worker.ts (dead-job and lease-lost handling) and both storage drivers' `putStream`.
-**Files Reviewed:** 14
-**Status:** issues_found
+**Reviewed:** 2026-11-25T03:34:32Z
+**Depth:** deep. The diff `3b8e833..5cdd8f9` was traced through `queue.ts` (`heartbeatJob`, `claimNextJob`, the owner-guarded finalizers), `worker.ts` (`handleJobError`'s `LeaseLostError` walk-away, the serial claim loop, purge's held-reserve check), `budget.ts` (`reserveCredits`/`releaseCredits`) and `retry.ts` (`applyRetry`'s in-tx ledger guard and job retirement).
+**Files Reviewed:** 8
+**Status:** clean (no BLOCKER or WARNING remains)
+
+`npx tsc --noEmit` is clean, and `test/echo3.client.test.ts` passes 62/62 locally. The pg suites were not re-run in this review.
 
 ## Summary
 
-### Verification of iteration-1 findings
+### Verification of the iteration-2 findings
 
-| ID | Verdict | Notes |
+| ID | Verdict | Trace |
 |----|---------|-------|
-| CR-01 | **Fixed, with a residual gap (WR-01, WR-02 below)** | `refuse()` is now one tx. `applyRetry` retires queued and running pack/submit/track jobs inside the retry tx. Submit jobs carry `submitAttempt`, and `handleSubmit` checks it at entry and after the pre-send re-read. **A retry cannot drop a legitimate job:** a retry needs `status='failed'`, a retryable code and a clear ledger for the old key. Every run that might have sent the old key reserved it first and only releases on a definitive, non-uncertain refusal. `JOB_EXHAUSTED`, `SUBMIT_UNCERTAIN` and `IDEMPOTENCY_KEY_REUSED` are not retryable. A track job only exists after a successful submit, so a retryable world never has a live track job tied to a paid, unfinished request. **The attempt check cannot skip a resume of a request that was really sent:** the attempt only changes through a retry, and the held reserve blocks that. **Remaining gap:** the attempt check is a read, not a guard. A run that passed it before a retry can still reserve and send its old key, record the request id onto the new attempt, fail the new attempt, or overwrite its quote. The regression test covers only a stale job that *enters* after the retry. |
-| WR-01 | Fixed | Release runs first, then the flip, in one tx, for both FAILED and CANCELLED. |
-| WR-02 | **Fixed, with a regression risk (WR-03)** | The host/IP/scheme guard is sound for the documented 302 → signed storage URL: typical GCS, S3 and R2 hosts are https DNS names and pass. But `redirect: 'manual'` with no hop-following turns any second redirect into a permanent error, and the paid import then retries forever. |
-| WR-03 | Fixed | Validation for `quote` and `limits` is correct, and a bad shape is never cached. |
-| WR-04 | Fixed | A `LeaseLostError` from `beat()` reaches `handleTrack` and is rethrown. Traced: `cb(err)` destroys `out`. The local driver's `pipeline()` rejects with that error object. lib-storage `Upload.done()` rethrows `concurrentUploaderFailures[0]`, which is the async-iterator error. One leak remains (IN-11). |
-| WR-05 | Fixed | The conditional quote write is correct for two runs of the same job. It does not cover a cross-attempt stale run (WR-02). There is also a cosmetic gap after a 0-row write (IN-12). |
-| WR-06 | Fixed | The in-tx `NOT EXISTS(heldReserve)` plus the `IS NOT DISTINCT FROM` checks on failure_* and key are correct. A lost race rolls back the `world_attempts` insert. |
-| WR-07 | Fixed | `Promise.resolve().then(push).catch(log)` catches both sync throws and rejections, so there is no unhandled rejection. The push no longer gates the send. |
-| WR-08 | Fixed | Copy now follows the server's `retryable` flag in both the sheet and the row. |
-| WR-09 | Fixed | The factory guard runs before the client is built. |
-| WR-10 | Fixed | V5 now really leaves the job `running` with `sending=true` and resumes after the lease ages. |
-| WR-11 | Fixed | `ProviderTimeoutError` extends `ProviderError`, so the transient mapping is reached. The replay and GET ledger checks now agree. |
+| WR-01 | **Fixed** | `beat()` runs at line 243, before `reserveCredits`, and again at line 289, right before `provider.submit`. `heartbeatJob` requires `phase='running' AND locked_by=workerId`. A job that `applyRetry` retired (`phase='done'`, `locked_by=NULL`) fails it, and so does a job re-claimed by another worker. The `LeaseLostError` reaches `handleJobError`, which leaves the row alone. The line-289 beat also renews the lease to a full 600 s, while the send is capped at `T_SUBMIT_MS` = 60 s. So no second owner can claim the job between the last check and the request leaving the process. **Exactly-once holds.** Any run that sends either wrote `sending:true` before a successful beat, so every later owner's claim snapshot sees it and the 4xx is sticky-uncertain, or it is the only owner. The success tx records the request id only `WHERE submission_key = key`. **A sent request cannot go untracked through the new guard.** A run that reaches the send holds a reserve on `key`, so `applyRetry`'s in-tx `NOT EXISTS(heldReserve)` blocks any re-key. That reserve can only be released by a definitive refusal of the same key, and no concurrent owner can produce one under the lease. The `!recorded` branch is therefore defensive only (IN-15). |
+| WR-02 | **Fixed** | `thisAttempt` is fixed at entry and scopes the quote write (196), the body persist (232), `refuse()` (178), the 409 path (314) and the uncertain-exhausted path (331). The key mint (204-207) needs no scope, because after any retry `submission_key` is never NULL. A non-legacy stale job is caught at line 236 by `stale()`. A legacy one reads the new attempt's key, but the line-243 beat stops it, as the new pg test shows. |
+| WR-03 | **Fixed** | `bareGet` checks `downloadAllowed` before **every** fetch, including each redirect target. It never passes `headers`, so the API key cannot leave `call()`. The key is only sent to `${base}${path}`, with `redirect:'manual'`. Relative `Location` values resolve against the current hop. One `AbortSignal.timeout` covers all hops and the body. Redirects stop after 3 storage hops, so a loop cannot spin. An http downgrade or an IP literal at any hop is refused before it is fetched. |
+| WR-04 | **Fixed** | `refuse(code, msg, key)` runs `releaseCredits(tx, key)` in the same tx as `failWorld` and `completeJob`. Releases only happen on provably uncharged outcomes. One is a non-uncertain definitive 4xx other than 408/409/429. The other is a 429/503 after retries ran out with `!uncertain`. Both are gated by the sticky `uncertain` flag. `SUBMIT_UNCERTAIN`, 409, 5xx and timeouts never release. The release commits even if the scoped `failWorld` matches 0 rows. That is correct: whether to release depends on what the provider said about this key, not on the world row. A 0-row match with a held reserve also cannot coincide with a re-key (see WR-01). |
+| IN-11 | **Fixed** | `err instanceof LeaseLostError` is checked first, so the thumbnail-skip path cannot swallow a lost lease. `handleTrack` rethrows it. A small residual remains (IN-17). |
 
-HARD MONEY RULE: no new path enables live mode. The only live `Config` literals are casts in `test/provider/mock.test.ts`, and they point at `https://127.0.0.1:1`. The WR-09 guard refuses any config without `ALLOW_PAID_PROVIDER=1`.
+HARD MONEY RULE: the new tests only use injected `fetch` against `api.example.com`, `*.example.com` and `amazonaws.com` names, and the mock provider. No path sets `ALLOW_PAID_PROVIDER` or `PROVIDER_MODE=live`.
 
-Four WARNINGs remain. None is a BLOCKER. Each one needs either a ≥10-minute stall of a live process, a crash in a specific window, or an unverified provider behaviour. Three of them touch the money path, and they should be closed before the first paid run.
-
-## Warnings
-
-### WR-01: A submit run that passed the attempt check before a retry can still reserve and send its old key, then write that request id onto the new attempt
-
-**File:** `backend/src/pipeline.ts:225-276`, `backend/src/pipeline.ts:319-336`
-**Issue:** The attempt check is a plain read at line 226. Reserving (231), marking (272) and sending (276) all happen later, and none of them is conditioned on the attempt or on still owning the lease. `handleSubmit` never heartbeats. Here is the sequence:
-
-1. Run A of J1 (attempt 1, key K1) passes line 226, then stalls for more than `LEASE_SECONDS`, for example on a pool or connection hang.
-2. Run B claims J1 and refuses with a retryable code before reserving K1. `BUDGET_EXCEEDED` is one example.
-3. The owner retries. That mints K2 and retires J1 (`phase='done'`), and J2 is enqueued.
-4. A wakes up, reserves K1 (its local `key`) and sends K1. Echo-3 creates a second, billed request.
-5. The success tx at line 321 writes K1's request id onto the attempt-2 row without checking `submissionKey`, and flips it to `processing`.
-6. J2 then sends K2 (billed) and overwrites `providerRequestId` again. One of the two paid requests is never tracked.
-
-The K1 reserve then sits on an archived attempt. Purge's held-reserve check (`worker.ts`) only looks at the current key, so the world can be hard-deleted while K1 is billed. This is the same class as CR-01, narrowed from "crash window" to "stall window".
-
-**Fix:** Stop on a lost lease right before spending, and never record a request id for a key the world no longer holds:
-```ts
-// before reserveCredits AND again right before provider.submit:
-await heartbeat(deps, job)();   // retired job → phase 'done' → LeaseLostError, nothing sent
-...
-// success tx:
-await tx.update(worlds).set({ providerRequestId: requestId })
-  .where(and(eq(worlds.id, worldId), eq(worlds.submissionKey, key)));
-// 0 rows → console.error with worldId/key/requestId for reconciliation; do not flip/enqueue.
-```
-Add a pg test: a run is paused after line 226, `applyRetry` runs, the run resumes, and the test asserts zero sends of K1.
-
-### WR-02: A stale run's `refuse()` and quote write are not scoped to an attempt, so it can fail or re-quote the new attempt
-
-**File:** `backend/src/pipeline.ts:166-170`, `backend/src/pipeline.ts:183-190`, `backend/src/pipeline.ts:199-223`
-**Issue:** Take the same stale run A as in WR-01, but stalled before line 180. After the retry the world is `submitting` again with `submit_body = NULL` and `quoted_credits = NULL`.
-- A's quote write (guarded only by `submit_body IS NULL`) lands on attempt 2. If A's quote exceeds the *old* `approvedMaxCredits` it holds in memory, `refuse('QUOTE_ABOVE_APPROVAL')` fails attempt 2. `failWorld` matches on `status IN ('submitting')` only.
-- If A's write lands between J2's quote write and J2's body persist, J2 reserves A's amount. That amount was checked against the old approval, not the new one.
-- A's `BUNDLE_NOT_RANGEABLE`, `NOT_APPROVED` and `BUNDLE_MISSING` refusals can fail attempt 2 the same way. A's body persist (line 219) can write A's zip URL into attempt 2.
-
-The completeJob owner guard makes A's job update a no-op, but the world update still lands.
-
-**Fix:** Scope every world write in `handleSubmit` to the attempt read at entry (`const attempt = w.submitAttempt`). Add `eq(worlds.submitAttempt, attempt)` to the quote update, the body persist, and `refuse()`'s `failWorld`. For example, give `failWorld` an optional extra `SQL` condition, or inline the update in `refuse`. The WR-01 heartbeat placed before the quote also closes most of this.
-
-### WR-03: Download redirects are no longer followed at all, so a storage hop that redirects once more wedges a paid import forever
-
-**File:** `backend/src/provider/echo3.ts:128-145`
-**Issue:** `bareGet` now uses `redirect: 'manual'` and treats any non-2xx as `ProviderError(status 3xx)`. Some signed URLs redirect again: for example S3's global endpoint answers 307 for buckets outside us-east-1, and some CDNs put a 302 in front of the object. In that case every `trackOnce` pass throws. `handleTrack` snoozes, by design, "never gives up", and the splat of a paid, completed run is never imported. Before the fix those hops were followed. Nothing in the replay fixtures or tests exercises a second hop, and the real storage host is still unverified (IN-05).
-**Fix:** Follow a bounded number of hops by hand and check each one:
-```ts
-for (let hop = 0; hop < 3; hop++) {
-  if (!downloadAllowed(url, loopbackOk)) throw new ProviderError(`${endpoint}: refusing download host`, { endpoint });
-  res = await f(url, { redirect: 'manual', signal });
-  if (res.status < 300 || res.status >= 400) break;
-  const loc = res.headers.get('location'); await res.body?.cancel();
-  if (!loc) throw new ProviderError(...);
-  url = new URL(loc, url);
-}
-```
-Share one `AbortSignal.timeout(tDownload)` across all hops. Add a test where hop 1 is public and hop 2 is `169.254.169.254`, and assert it is refused.
-
-### WR-04: Releasing on a refusal and failing the world are still two statements, so a crash between them leaves a released ledger on a key that will be re-sent
-
-**File:** `backend/src/pipeline.ts:292-293`, `backend/src/pipeline.ts:306-308`
-**Issue:** `releaseCredits(db, key)` commits, then `refuse(...)` runs in its own tx. A crash between the two leaves the world in `submitting`, the job in `running`, and K1 released. The line-284 `mark` already cleared `sending`. On resume, `reserveCredits` returns `'already'` because the reserve row still exists, and the run re-sends K1. If the provider now accepts (402 → credits topped up, 429 → window passed), the request is paid while the ledger shows reserve + release = 0. Budget caps under-count real spend, and purge's held-reserve check no longer protects the row. This is the same crash-window class as iteration-1 WR-01. Now that `refuse` is transactional, the fix is one line.
-**Fix:** Move the release into `refuse`'s tx: `refuse(code, msg, { release: key })` → `await releaseCredits(tx, key)` before `failWorld`.
+No new BLOCKER or WARNING was found. The notes below are INFO only. Each one needs a multi-minute stall nested inside another stall, an infrastructure assumption, or a cosmetic error path.
 
 ## Info
 
-### IN-11: The thumbnail catch swallows `LeaseLostError`, so a worker that lost its lease keeps importing and can finalize `ready`
-**File:** `backend/src/pipeline.ts:463-468`
-**Issue:** When `trackErrs(job) >= 2`, any error on the thumbnail is swallowed, including a lease loss raised by `withHeartbeat`. The thumbnail is pushed last in `artifacts()`, so no further `beat()` follows. The losing worker then writes `ready` without `thumbnailKey`. The new owner's later `ready` update matches 0 rows, and its uploaded thumbnail is never recorded.
-**Fix:** `if (err instanceof LeaseLostError || a.kind !== 'thumbnail' || trackErrs(job) < 2) throw err;`
+### IN-14: If the line-289 beat fails after a fresh reserve, an orphaned reserve can sit on an archived key
+**File:** `backend/src/pipeline.ts:243-289`
+**Issue:** For this to happen, a retry must commit between the line-243 beat and the reserve insert, while this run still holds a live lease. That needs a second, older stale run of the same attempt to `refuse()` the world in that window. `applyRetry` doesn't take the budget advisory lock, so its `NOT EXISTS` and the reserve insert can both commit. The run then fails the line-289 beat and sends nothing. The K1 reserve stays held on an archived attempt and over-counts the budget. That errs on the safe side: no money is lost, and purge checks only the current key.
+**Fix (optional):** Take `pg_advisory_xact_lock(BUDGET_LOCK_KEY)` inside `applyRetry`'s tx, or release the reserve when the line-289 beat fails *and* the job is `done`.
 
-### IN-12: After a 0-row quote write, the run keeps using its stale `w.submitBody == null`
-**File:** `backend/src/pipeline.ts:188-199`
-**Issue:** The losing run still runs the Range preflight. If the preflight fails, it fails a world the other run is actively sending, with `BUNDLE_NOT_RANGEABLE`. The revival path rescues the world only on a 2xx. A definitive refusal then shows the wrong (non-retryable) code.
-**Fix:** `if (!quoted) w = (await getWorld(db, worldId))!;` before line 193.
+### IN-15: The `RECONCILE` branch leaves only a log line
+**File:** `backend/src/pipeline.ts:360-361`
+**Issue:** Per the WR-01 trace this branch is unreachable today. If it ever fires, the only record of a billed request id is a log line. The reserve on that key does stay held.
+**Fix (optional):** Also write the request id to the `world_attempts` row for that `submission_key`, so purge (A-05) deletes the provider copy.
 
-### IN-13: `withHeartbeat` only beats when a chunk arrives
-**File:** `backend/src/pipeline.ts:77-88`
-**Issue:** A source that stalls with no bytes for more than 600 s, while still inside the 15-minute download timeout, loses the lease with no heartbeat. Rare, and recoverable through the normal re-claim.
-**Fix:** Optionally add a `setInterval(beat, everyMs)` that is cleared on `close`.
+### IN-16: Every lease check assumes `hostname:pid` is unique per live process
+**File:** `backend/src/worker.ts` (`makeWorkerId`), `backend/src/queue.ts` (`heartbeatJob`)
+**Issue:** Within one process the claim loop is serial, so two runs there never overlap. Across containers, the hostname is normally the container id. If two live replicas ever shared a hostname, and both ran PID 1, the WR-01 lease check could not tell their runs apart.
+**Fix (optional):** `makeWorkerId = () => \`${os.hostname()}:${process.pid}:${randomUUID().slice(0, 8)}\``.
 
-### IN-01 … IN-10 (carried over from iteration 1, unchanged, out of fix scope)
-- IN-01: The exact-bytes guarantee rests on re-stringifying jsonb (`pipeline.ts:276`).
-- IN-02: The retry sheet spins forever when `frame_count` is null (`retry.tsx`).
-- IN-03: The budget alert slot is spent even when the submit is later refused, and a reservation refused with `BudgetExceededError` never alerts (`budget.ts:159-181`).
-- IN-04: The budget banner dismissal is keyed by window name, not window start (`(tabs)/index.tsx`).
-- IN-05: The thumbnail allowlist assumes `*.spaitial.ai`. Verify on the first paid run (`echo3.ts:33-37`).
-- IN-06: The validation-code list misses likely capture-quality codes (`retry.ts:19-20`).
-- IN-07: The test money guard misses trailing-dot FQDNs and covers only `fetch` (`test/setup-no-spaitial.ts`).
-- IN-08: The recorder writes synthetic artifact paths into a `synthetic: false` manifest (`scripts/record-echo3-run.ts`).
-- IN-09: `SPAITIAL_BASE_URL` accepts any https host (`config.ts`).
-- IN-10: `deleteWorld` on 409 cancels and then rethrows, so purge burns attempts (`echo3.ts:302-312`).
+### IN-17: After a skipped thumbnail, `ready` is written with no lease check
+**File:** `backend/src/pipeline.ts:492-494`, `509-521`
+**Issue:** On the skip path, `continue` jumps past the line-497 `beat()`. The final `ready` update is guarded only on `status='importing'`. A run that lost its lease while the thumbnail failed in some other way could still finalize. The new owner would then hit a 0-row update, which is harmless.
+**Fix (optional):** `await beat()` right before the `ready` update.
+
+### IN-18: A malformed `Location` header throws `TypeError`, not `ProviderError`, and the download host check ignores ports
+**File:** `backend/src/provider/echo3.ts:154`, `312`, `52-58`
+**Issue:** `new URL(loc, url)` throws on garbage. `handleTrack` still snoozes, so only the error label is wrong. `downloadAllowed` also accepts any port on a public DNS name. That is within the documented `ponytail:` hostname-only ceiling.
+**Fix (optional):** Use `URL.canParse(loc, url)`, and throw `ProviderError` when it fails.
+
+### IN-12, IN-13, IN-01 … IN-10 (carried over, unchanged, out of fix scope)
+- IN-12: After a 0-row quote write, the run keeps its stale `w.submitBody == null` and runs the preflight anyway (`pipeline.ts:189-217`). The failure is now attempt-scoped, but it can still fail a same-attempt world that a concurrent owner is sending.
+- IN-13: `withHeartbeat` only beats when a chunk arrives (`pipeline.ts:81-92`).
+- IN-01 … IN-10: as listed in iteration 2. These are: jsonb re-stringify, the retry sheet spinning on a null `frame_count`, the alert slot being spent on a refusal, the banner keyed by window name, the thumbnail allowlist, the validation-code list, the test money guard's FQDN gap, the recorder's synthetic paths, `SPAITIAL_BASE_URL` breadth, and `deleteWorld` 409 rethrow.
 
 ---
 
-_Reviewed: 2026-11-25T03:01:05Z_
+_Reviewed: 2026-11-25T03:34:32Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
-_Iteration: 2_
+_Iteration: 3_
