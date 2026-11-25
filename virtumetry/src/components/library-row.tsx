@@ -20,13 +20,16 @@ type Props = {
   onOpen?: (item: LocalScan & { local: true }) => void;
   /** Ready server rows only: opens the viewer (D-14). */
   onOpenWorld?: (item: LibraryItem) => void;
+  /** Failed server rows only: opens the retry sheet (D-11). */
+  onOpenFailed?: (item: LibraryItem) => void;
 };
 
-export function LibraryRow({ item, onMore, onOpen, onOpenWorld }: Props) {
+export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed }: Props) {
   const theme = useTheme();
   const state = toDisplayState(item, new Date());
   const thumbnailUrl = 'local' in item ? undefined : item.assets?.thumbnail_url;
   const [imageFailed, setImageFailed] = useState(false);
+  const retryable = !('local' in item) && item.status === 'failed' && item.retryable === true;
   const label = [state.displayTitle, state.statusLine, state.secondaryLine].filter(Boolean).join(', ');
 
   return (
@@ -46,7 +49,13 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld }: Props) {
                 accessibilityHint: 'Opens the room',
                 onPress: () => onOpenWorld?.(item),
               }
-            : { disabled: true })}
+            : item.status === 'failed'
+              ? {
+                  accessibilityRole: 'button' as const,
+                  accessibilityHint: retryable ? 'Shows the cost to try again' : 'Shows what happened',
+                  onPress: () => onOpenFailed?.(item),
+                }
+              : { disabled: true })}
         style={({ pressed }) => [styles.main, pressed && { backgroundColor: theme.backgroundSelected }]}>
         <View accessible={false} style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
           {thumbnailUrl && !imageFailed ? (
@@ -105,7 +114,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld }: Props) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`More actions for ${state.displayTitle}`}
-        accessibilityHint="Rename or delete"
+        accessibilityHint={retryable ? 'Retry, rename or delete' : 'Rename or delete'}
         onPress={() => onMore(item, state)}
         style={({ pressed }) => [styles.more, pressed && { backgroundColor: theme.backgroundSelected }]}>
         <SymbolView name="ellipsis" size={20} tintColor={theme.textSecondary} />

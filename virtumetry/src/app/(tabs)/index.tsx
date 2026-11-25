@@ -56,6 +56,10 @@ export default function LibraryScreen() {
   const openWorld = (world: { id: string }) =>
     router.push({ pathname: '/world/[id]', params: { id: world.id } } as unknown as Href);
 
+  // D-11: failed server rows open the retry sheet, which explains the failure or quotes a retry.
+  const openRetry = (world: { id: string }) =>
+    router.push({ pathname: '/world/[id]/retry', params: { id: world.id } } as unknown as Href);
+
   // Row action menu (D-21). Local scans: Discard only while nothing is on the server side
   // (saved/blocked/failed); once a server world exists, Delete removes both (CR-03).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
@@ -75,6 +79,10 @@ export default function LibraryScreen() {
       return;
     }
     Alert.alert(title, undefined, [
+      // T-06-21: only the server's retryable flag offers Retry; missing = hidden.
+      ...(item.status === 'failed' && item.retryable === true
+        ? [{ text: 'Retry…', onPress: () => openRetry(item) }]
+        : []),
       { text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) },
       { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(item.id, title) },
       { text: 'Cancel', style: 'cancel' },
@@ -210,7 +218,13 @@ export default function LibraryScreen() {
         data={items}
         keyExtractor={(i) => ('local' in i ? `local-${i.id}` : i.id)}
         renderItem={({ item }) => (
-          <LibraryRow item={item} onMore={openRowMenu} onOpen={openScan} onOpenWorld={openWorld} />
+          <LibraryRow
+            item={item}
+            onMore={openRowMenu}
+            onOpen={openScan}
+            onOpenWorld={openWorld}
+            onOpenFailed={openRetry}
+          />
         )}
         ItemSeparatorComponent={() => (
           <View style={[styles.separator, { backgroundColor: theme.backgroundSelected }]} />

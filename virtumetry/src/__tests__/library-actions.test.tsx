@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import { Alert, type AlertButton } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
@@ -11,6 +12,7 @@ jest.mock('@/lib/auth-client', () => ({
   authClient: { getCookie: jest.fn(async () => 'better-auth.session_token=abc') },
 }));
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
 const CREATED = '2026-11-20T10:00:00.000Z';
 
@@ -29,7 +31,7 @@ const local = (id: string, title: string): LocalScan => ({
   uploadState: 'saved',
 });
 
-function w(id: string, title: string): LibraryItem {
+function w(id: string, title: string, over: Partial<LibraryItem> = {}): LibraryItem {
   return {
     id,
     title,
@@ -46,6 +48,7 @@ function w(id: string, title: string): LibraryItem {
     eta_seconds: null,
     credits_spent: null,
     assets: {},
+    ...over,
   };
 }
 
@@ -105,6 +108,62 @@ describe('row action menu', () => {
       ['Delete', 'destructive'],
       ['Cancel', 'cancel'],
     ]);
+  });
+});
+
+describe('failed rows and Retry… (D-11)', () => {
+  const failed = (retryable: boolean | undefined) =>
+    w('w1', 'Kitchen', {
+      status: 'failed',
+      charged: false,
+      failure_stage: 'provider',
+      failure_code: 'WORLD_GENERATION_FAILED',
+      ...(retryable === undefined ? {} : { retryable }),
+    });
+  const RETRY = { pathname: '/world/[id]/retry', params: { id: 'w1' } };
+  const row = () => screen.getByRole('button', { name: /^Kitchen, Failed/ });
+  const more = () => screen.getByRole('button', { name: 'More actions for Kitchen' });
+  beforeEach(() => (router.push as jest.Mock).mockClear());
+
+  it('a retryable failed row opens the retry sheet and the menu starts with Retry…', async () => {
+    server = [failed(true)];
+    await renderLibrary();
+    expect(row().props.accessibilityHint).toBe('Shows the cost to try again');
+    await fireEvent.press(row());
+    expect(router.push).toHaveBeenLastCalledWith(RETRY);
+
+    expect(more().props.accessibilityHint).toBe('Retry, rename or delete');
+    await openMenu('Kitchen');
+    expect(lastButtons().map((b) => [b.text, b.style])).toEqual([
+      ['Retry…', undefined],
+      ['Rename', undefined],
+      ['Delete', 'destructive'],
+      ['Cancel', 'cancel'],
+    ]);
+    (router.push as jest.Mock).mockClear();
+    await press('Retry…');
+    expect(router.push).toHaveBeenLastCalledWith(RETRY);
+  });
+
+  it.each([false, undefined])('a failed row with retryable=%s opens the sheet but has no Retry…', async (retryable) => {
+    server = [failed(retryable)];
+    await renderLibrary();
+    expect(row().props.accessibilityHint).toBe('Shows what happened');
+    await fireEvent.press(row());
+    expect(router.push).toHaveBeenLastCalledWith(RETRY);
+
+    expect(more().props.accessibilityHint).toBe('Rename or delete');
+    await openMenu('Kitchen');
+    expect(lastButtons().map((b) => b.text)).toEqual(['Rename', 'Delete', 'Cancel']);
+  });
+
+  it('a ready row has no Retry… and still opens the room', async () => {
+    await renderLibrary();
+    expect(more().props.accessibilityHint).toBe('Rename or delete');
+    await fireEvent.press(screen.getByRole('button', { name: /^Kitchen, Ready/ }));
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/world/[id]', params: { id: 'w1' } });
+    await openMenu('Kitchen');
+    expect(lastButtons().map((b) => b.text)).not.toContain('Retry…');
   });
 });
 
