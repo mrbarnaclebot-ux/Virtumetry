@@ -58,7 +58,7 @@ Every provider request goes through a recording `fetch`, and each case asserts t
 
 - `npx tsc --noEmit`: clean. The backend tsconfig only includes `src/`, so the new test and script files were also type-checked with a scratch tsconfig that extends it (clean).
 - `npx vitest run`: 481 passed, 153 skipped (pg-gated). The `scrubRecorded` cases run here without a DB.
-- `npm run test:pg -- test/integration/echo3-contract.pg.test.ts test/integration/scenarios.pg.test.ts`: 2 files, 35 passed (echo3-contract: 15 tests, 7 of them the DB-free scrub cases; scenarios: 20, unchanged)
+- `npm run test:pg -- test/integration/echo3-contract.pg.test.ts test/integration/scenarios.pg.test.ts`: 2 files, 35 passed (echo3-contract: 15 tests = 9 pg cases + 6 DB-free scrub cases; scenarios: 20, unchanged)
 - Recorder refusal: `env -u PROVIDER_MODE -u ALLOW_PAID_PROVIDER node --import tsx scripts/record-echo3-run.ts 00000000-0000-0000-0000-000000000000` printed `[record:echo3] refused: owner-only, paid session (needs PROVIDER_MODE=live and ALLOW_PAID_PROVIDER=1)` and exited 1, before any DB, R2 or network access. No env file was loaded.
 - Zero SpAItial calls. PROVIDER_MODE and ALLOW_PAID_PROVIDER were never set. The manifest contains no `http(s)://`, `X-Amz` or `spt_live_`.
 
