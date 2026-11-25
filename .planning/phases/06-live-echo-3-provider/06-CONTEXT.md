@@ -122,3 +122,14 @@ Requirements: PROC-05, LIB-02, OPS-06. Out of scope: native ARKit capture (Phase
 
 *Phase: 06-live-echo-3-provider*
 *Context gathered: 2026-11-25*
+
+## Post-research amendments (auto, 2026-11-25)
+
+Resolving 06-RESEARCH.md open questions with its recommendations (owner asleep):
+- **A-01 (amends D-08):** Validation-code list extended with `IMAGES_MISSING`, `TOO_MANY_FRAMES`, `ORIENTATION_*`, `SCANS_*`, `VALIDATION_FAILED`; `isRetryable` also scans `failure_message` (joined issue codes) for validation codes. A processing-stage failure whose code is unknown but not a validation code IS retryable (failed Echo-3 jobs cost 0 credits); the bare generic `FAILED` fallback is not. Submit-stage codes follow D-08 exactly.
+- **A-02 (amends D-09):** Retry is refused (409 `not_retryable`) while the old submission_key still holds an un-released reservation AND the attempt was marked uncertain (prevents a new key while the old request may be billed). `401` from the provider is a definitive refusal (`PROVIDER_AUTH`, not retryable by button, reservation released) — fix in `pipeline.ts`.
+- **A-03:** `frame_count` for the retry sheet comes from the latest capture (subquery/join in the world serializers), not a `worlds` column.
+- **A-04:** A retry does not count against the daily scan quota; the budget caps guard the money.
+- **A-05:** Purge must delete `world_attempts` rows (FK) and request provider deletion for every prior attempt's request id. Optional thumbnail import failure must not loop forever (skip after bounded attempts).
+- **A-06:** `BUDGET_ALERT_SHARE` needs a float env parser (existing `numberFromEnv` is int-only).
+- **A-07 (D-15 refined):** Minimum-frame savings are negligible (900-credit base). Runbook recommends the first paid world on the owner's own room after Phase 8 (~$11–13); if the owner wants it in Phase 6, a converted ARKitScenes scene (~$11–12, licence check first). SpAItial's 3-frame sample and the 30-frame TUM fixture are not reconstructable rooms.
