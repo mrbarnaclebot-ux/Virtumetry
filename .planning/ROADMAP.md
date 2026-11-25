@@ -18,7 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Owner Account & Scan Library** - Owner logs in on Expo Go and sees their own scan library with every state (owner phone UAT pending: 03-HUMAN-UAT.md) (completed 2026-11-24)
 - [x] **Phase 4: $0 Capture-to-World Loop** - A fixture scan is captured, checked, quoted, approved, uploaded and processed by the mock provider, all in Expo Go
  (completed 2026-11-24)
-- [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link (executed 2026-11-25; awaiting owner UAT)
+- [ ] **Phase 5: Viewer, Floor Plan, Measure & Share** - Owner walks, measures and teleports in a ready world in the app and shares it through a public browser link
+ (executed 2026-11-25; awaiting owner UAT)
 - [ ] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
 - [ ] **Phase 8: Native ARKit Capture & Sign in with Apple** - Owner consents, then scans a real room with the iPhone and it comes back as a walkable world
@@ -239,7 +240,28 @@ Plans:
   3. A failed scan shows a retry button only when the failure is retryable, and retrying needs a fresh explicit cost approval *(RNTL + backend tests + manual Expo Go check)*
   4. The owner is alerted when spend crosses the configured share of the daily or monthly budget *(automated threshold test + manual check of the alert during the live run)*
 
-**Plans**: TBD
+**Plans:** 8 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Live echo3.ts client + fake Echo-3 server + money guards (test fetch guard, live boot guard, new env)
+- [ ] 06-02-PLAN.md — Migration 0005 (submit_attempt, world_attempts, budget_alerts) + isRetryable + purge fix
+- [ ] 06-03-PLAN.md — App retry sheet (shared approval components, retryWorld client, failureGuidance)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-04-PLAN.md — Once-per-window budget alerts + pipeline money-path fixes (401, uncertain recode, thumbnail skip)
+- [ ] 06-05-PLAN.md — Library failed-row Retry entry + budget banner
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-06-PLAN.md — Exactly-once contract suite vs live client + recorded replay + owner-only recorder
+- [ ] 06-07-PLAN.md — POST /v1/worlds/:id/retry + retryable/frame_count/budgetAlert in the API
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 06-08-PLAN.md — Mock-mode Railway dev deploy + 06-HUMAN-UAT.md (paid-run runbook, $0 Expo Go checklist)
 **UI hint**: yes
 
 ### Phase 7: Native Build Readiness
