@@ -338,6 +338,18 @@ describe.skipIf(!url)('provider failure scenarios (mock, real Postgres)', () => 
     expect(w.charged).toBe(true);
   }, 120_000);
 
+  it('WR-07: a push that never settles does not hold the paid send', async () => {
+    const pl = await start('happy', { daily: 2000 });
+    pl.config.BUDGET_ALERT_SHARE = 0.4;
+    const push = vi.fn(() => new Promise<undefined>(() => undefined));
+    pl.deps.push = push;
+    const { worldId } = await pl.seedScan();
+    const w = await pl.drain({ worldId, timeoutMs: 60_000 });
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(w.status).toBe('ready');
+    expect(pl.provider.calls.submit).toHaveLength(1);
+  }, 120_000);
+
   it('WR-01: a resumed submit is not re-quoted, so a changed quote cannot orphan the request', async () => {
     const pl = await start('503');
     const { worldId, frameCount } = await pl.seedScan();

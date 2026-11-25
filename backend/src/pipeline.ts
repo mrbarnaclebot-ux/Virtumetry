@@ -236,19 +236,20 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
       daily: config.DAILY_CREDIT_BUDGET,
       monthly: config.MONTHLY_CREDIT_BUDGET,
       // D-12: budget.ts records the alert once per window in the reserve tx and
-      // calls this after commit; it swallows a throw, but each window gets its
-      // own try so one failed push doesn't skip the other. No keys/URLs logged.
+      // calls this after commit. The push is never awaited (WR-07): a slow or
+      // hung APNs call must not hold the paid send (and its lease) behind it.
+      // Each window's push fails on its own, logged. No keys/URLs logged.
       share: config.BUDGET_ALERT_SHARE,
-      onAlert: async (alerts) => {
+      onAlert: (alerts) => {
         for (const a of alerts) {
-          try {
-            console.warn('[budget-alert]', JSON.stringify({ mode: provider.mode, window: a.window, spent: a.spent, budget: a.budget, share: a.share, worldId }));
-            const pct = Math.round((a.spent / a.budget) * 100);
-            const span = a.window === 'daily' ? "today's" : "this month's";
-            await deps.push(w!.ownerId, 'Processing budget', `You've used ${pct}% of ${span} processing budget`);
-          } catch (err) {
-            console.warn(`[budget-alert] ${a.window} side effect failed on world ${worldId}: ${err instanceof Error ? err.name : 'unknown'}`);
-          }
+          console.warn('[budget-alert]', JSON.stringify({ mode: provider.mode, window: a.window, spent: a.spent, budget: a.budget, share: a.share, worldId }));
+          const pct = Math.round((a.spent / a.budget) * 100);
+          const span = a.window === 'daily' ? "today's" : "this month's";
+          void Promise.resolve()
+            .then(() => deps.push(w!.ownerId, 'Processing budget', `You've used ${pct}% of ${span} processing budget`))
+            .catch((err: unknown) =>
+              console.warn(`[budget-alert] ${a.window} push failed on world ${worldId}: ${err instanceof Error ? err.name : 'unknown'}`),
+            );
         }
       },
     });
