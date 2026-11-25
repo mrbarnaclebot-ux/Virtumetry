@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -21,7 +22,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { openCountLabel, useCreateShare, useRevokeShare, useShares, type Share } from '@/lib/shares';
 
 const MIN = 6; // matches the backend's SHARE_PASSWORD_MIN (WR-04)
-const shareUrl = (url: string) => RNShare.share({ url, message: url }); // URL only, never the password (T-05-27)
+// URL only, never the password (T-05-27). iOS joins url + message on Copy/Messages ("url url"), so send one field.
+const shareUrl = (url: string) => RNShare.share(Platform.OS === 'ios' ? { url } : { message: url });
 const createdOn = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 

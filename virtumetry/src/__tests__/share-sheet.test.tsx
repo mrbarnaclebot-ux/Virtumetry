@@ -113,7 +113,7 @@ describe('list', () => {
     await renderSheet();
     await screen.findByText(server[0].url);
     await fireEvent.press(screen.getAllByRole('button', { name: 'Share link' })[1]);
-    expect(shareSpy).toHaveBeenCalledWith({ url: server[1].url, message: server[1].url });
+    expect(shareSpy).toHaveBeenCalledWith({ url: server[1].url });
   });
 
   it('Done goes back', async () => {
@@ -135,7 +135,7 @@ describe('create', () => {
     await screen.findByText(server[0].url);
     await fireEvent.press(createButton());
 
-    await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ url: created.url, message: created.url }));
+    await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ url: created.url }));
     const [[url, init]] = calls('POST');
     expect(url).toBe(BASE);
     expect(JSON.parse(init.body as string)).toEqual({});
@@ -167,7 +167,7 @@ describe('create', () => {
     expect(createButton().props.accessibilityState).toMatchObject({ disabled: false });
     await fireEvent.press(createButton());
 
-    await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ url: created.url, message: created.url }));
+    await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ url: created.url }));
     expect(JSON.parse(calls('POST')[0][1].body as string)).toEqual({ password: 'abcdef' });
     expect(screen.queryByLabelText('Password')).toBeNull();
     expect(screen.getByLabelText('Protect with a password').props.value).toBe(false);
