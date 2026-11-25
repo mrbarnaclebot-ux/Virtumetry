@@ -11,6 +11,9 @@ import { creditEvents } from './db/schema.js';
 
 export type BudgetWindow = 'daily' | 'monthly';
 
+/** A budget window whose running total just crossed `share × budget` (D-12). */
+export type BudgetAlertEvent = { window: BudgetWindow; spent: number; budget: number; share: number };
+
 /** Thrown when a reservation would exceed a budget window. NOT retryable. */
 export class BudgetExceededError extends Error {
   readonly window: BudgetWindow;
@@ -36,6 +39,23 @@ export class BudgetExceededError extends Error {
  */
 export function wouldExceedBudget(spent: number, amount: number, budget: number): boolean {
   return spent + amount > budget;
+}
+
+/**
+ * Pure D-12 check: which window has reached `share × budget`? Monthly first,
+ * else daily, else null. A budget of 0 never alerts.
+ */
+export function budgetAlertFor(
+  spent: { day: number; month: number },
+  b: { daily: number; monthly: number; share: number },
+): BudgetAlertEvent | null {
+  if (b.monthly > 0 && spent.month >= b.share * b.monthly) {
+    return { window: 'monthly', share: b.share, spent: spent.month, budget: b.monthly };
+  }
+  if (b.daily > 0 && spent.day >= b.share * b.daily) {
+    return { window: 'daily', share: b.share, spent: spent.day, budget: b.daily };
+  }
+  return null;
 }
 
 // Stable advisory-lock key so concurrent reservations serialize (the sum +
@@ -86,6 +106,13 @@ export async function spentCredits(
  * UTC month for `mode` and inserts the reserve row, or throws
  * BudgetExceededError naming the window. A transaction-scoped advisory lock
  * keeps parallel workers from both slipping past a cap.
+ *
+ * With `share` set (D-12), each window whose new total reaches `share × budget`
+ * records one budget_alerts row per (mode, window, window_start) inside the same
+ * locked tx; ON CONFLICT DO NOTHING makes later crossings in that window silent.
+ * `onAlert` gets the newly recorded alerts only AFTER commit, and a throwing
+ * side effect is logged, never rethrown — it must not fail a paid submit
+ * (Pitfall 10).
  */
 export async function reserveCredits(
   db: Db,
@@ -96,9 +123,12 @@ export async function reserveCredits(
     worldId: string;
     daily: number;
     monthly: number;
+    share?: number;
+    onAlert?: (alerts: BudgetAlertEvent[]) => void | Promise<void>;
   },
 ): Promise<'reserved' | 'already'> {
-  return db.transaction(async (tx) => {
+  const alerts: BudgetAlertEvent[] = [];
+  const result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${BUDGET_LOCK_KEY})`);
     const prior = rowsOf(
       await tx.execute(
@@ -125,8 +155,41 @@ export async function reserveCredits(
         providerMode: a.mode,
       })
       .onConflictDoNothing();
-    return 'reserved';
+
+    if (a.share !== undefined) {
+      const windows = [
+        { window: 'daily', unit: 'day', spent: day + a.amount, budget: a.daily },
+        { window: 'monthly', unit: 'month', spent: month + a.amount, budget: a.monthly },
+      ] as const;
+      for (const w of windows) {
+        if (w.budget <= 0 || w.spent < a.share * w.budget) continue;
+        // Same UTC window expression as spentCredits (see the comment there).
+        const inserted = rowsOf(
+          await tx.execute(sql`
+            INSERT INTO budget_alerts (provider_mode, budget_window, window_start, spent, budget, share)
+            VALUES (${a.mode}, ${w.window},
+              (date_trunc(${sql.raw(`'${w.unit}'`)}, now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),
+              ${w.spent}, ${w.budget}, ${a.share})
+            ON CONFLICT (provider_mode, budget_window, window_start) DO NOTHING
+            RETURNING 1
+          `),
+        );
+        if (inserted.length > 0) {
+          alerts.push({ window: w.window, spent: w.spent, budget: w.budget, share: a.share });
+        }
+      }
+    }
+    return 'reserved' as const;
   });
+
+  if (alerts.length > 0 && a.onAlert) {
+    try {
+      await a.onAlert(alerts);
+    } catch (err) {
+      console.warn('[budget-alert] side effect failed', err instanceof Error ? err.name : 'unknown');
+    }
+  }
+  return result;
 }
 
 /**
