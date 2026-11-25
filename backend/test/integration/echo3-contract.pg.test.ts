@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, afterEach } from 'vitest';
+import { scrubRecorded } from '../../scripts/record-echo3-run.js';
+import { worldAssetKey } from '../../src/storage/index.js';
 import { createEcho3Provider } from '../../src/provider/echo3.js';
 import { handleSubmit } from '../../src/pipeline.js';
 import { claimNextJob } from '../../src/queue.js';
 import { runOneJob } from '../../src/worker.js';
-import { startFakeEcho3, type Step } from '../helpers/fake-echo3.js';
+import { startFakeEcho3, type ReplayManifest, type Step } from '../helpers/fake-echo3.js';
 import { startPipeline, TEST_WEBHOOK_SECRET, type Pipeline } from '../helpers/pipeline.js';
 
 // PROC-05 / SC1 (D-06): the exactly-once money proof on the code path a paid run
@@ -200,4 +203,53 @@ describe.skipIf(!url)('Echo-3 live client contract (fake server, real Postgres)'
     assertOneKeyOneBody(w.submissionKey!);
     expect(await ledger(w.submissionKey!)).toEqual(['reserve', 'release']);
   }, 120_000);
+
+  it('replay (SC2 automated half): recorded set → submit, track, exports, import → ready with every output re-hosted', async () => {
+    const replaySet = 'test/fixtures/echo3-recorded/manifest.json';
+    const manifest = JSON.parse(readFileSync(new URL('../fixtures/echo3-recorded/manifest.json', import.meta.url), 'utf8')) as ReplayManifest;
+    const { p, fake } = await start({ replaySet });
+    const { worldId } = await p.seedScan();
+    const w = await drainNow(worldId);
+    expect(w.status).toBe('ready');
+    expect(fake.state.billed).toBe(1);
+    expect(fake.state.calls['export:POST:mesh-simplified']).toBe(1); // NOT_REQUESTED → started once
+    for (const name of ['splat.spz', 'collider.ply', 'floorplan.png', 'floorplan.json', 'cameras.json']) {
+      expect(await p.storage.objectSize(worldAssetKey(worldId, w.assetVersion, name))).toBeGreaterThan(0);
+    }
+    expect(w.splatKey).toBe(worldAssetKey(worldId, w.assetVersion, 'splat.spz'));
+    expect(w.floorplanMeta).toEqual(manifest.exports.floorplan.at(-1)?.floorplan);
+    for (const h of hosts) expect(LOCAL.has(h)).toBe(true);
+  }, 120_000);
+});
+
+// Runs in the plain `npx vitest run` too (no DB): the recorder's scrubber (T-06-25).
+describe('scrubRecorded (record-echo3-run.ts)', () => {
+  it('drops every URL-ish key, recursively', () => {
+    const out = scrubRecorded({
+      status: 'COMPLETED',
+      world: { splat_url: 'x', cameras_url: 'x', viewer_url: 'x', thumbnail_url: null, splat_format: 'spz' },
+      exports: [{ status: 'READY', download_url: 'x', floorplan: { image: { download_url: 'x', width_px: 64 } } }],
+      url: 'x',
+      location: 'x',
+    });
+    expect(out).toEqual({
+      status: 'COMPLETED',
+      world: { splat_format: 'spz' },
+      exports: [{ status: 'READY', floorplan: { image: { width_px: 64 } } }],
+    });
+  });
+
+  for (const leak of ['https://cdn.example/a', 'a?X-Amz-Signature=abc', 'Signature=abc', 'spt_live_abc123']) {
+    it(`refuses a remaining value like ${leak.slice(0, 12)}…`, () => {
+      expect(() => scrubRecorded({ note: { deep: [leak] } })).toThrow(/refusing/);
+    });
+  }
+
+  it('the committed replay manifest is already clean', () => {
+    const raw = readFileSync(new URL('../fixtures/echo3-recorded/manifest.json', import.meta.url), 'utf8');
+    const m = JSON.parse(raw) as ReplayManifest;
+    expect(m.synthetic).toBe(true);
+    expect(scrubRecorded(m.status)).toEqual(m.status);
+    expect(raw).not.toMatch(/https?:\/\/|X-Amz|spt_live_/);
+  });
 });

@@ -24,6 +24,7 @@
     "owner:create": "node --env-file=.env --import tsx scripts/owner-create.ts",
     "seed:library": "node --env-file=.env --import tsx scripts/seed-library.ts",
     "budget:reset-dev": "node --env-file=.env --import tsx scripts/budget-reset-dev.ts",
+    "record:echo3": "node --env-file=.env --import tsx scripts/record-echo3-run.ts",
     "demo-room": "node --import tsx scripts/make-demo-room.ts",
     "r2:cors-dev": "node --env-file=.env scripts/r2-cors-dev.mjs"
   },

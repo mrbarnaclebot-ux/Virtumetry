@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Hermetic stand-in for the Echo-3 API (docs.spaitial.ai), bound to 127.0.0.1.
@@ -11,12 +12,27 @@ import { fileURLToPath } from 'node:url';
 export type Step = 'accept' | '429' | '503' | '500' | '401' | '402' | 'timeout' | 'drop-after-accept';
 type Kind = 'mesh-simplified' | 'floorplan';
 
-const FIXTURES = fileURLToPath(new URL('../fixtures/mock-outputs/', import.meta.url));
+const BACKEND = fileURLToPath(new URL('../../', import.meta.url));
+const TEST_FIXTURES = fileURLToPath(new URL('../fixtures/', import.meta.url));
+const FIXTURES = `${TEST_FIXTURES}mock-outputs/`;
 const SIGNED: Record<string, string> = {
-  splat: 'splat.ply',
-  cameras: 'cameras.json',
-  'mesh-simplified': 'collider.ply',
-  floorplan: 'floorplan.png',
+  splat: 'mock-outputs/splat.ply',
+  cameras: 'mock-outputs/cameras.json',
+  'mesh-simplified': 'mock-outputs/collider.ply',
+  floorplan: 'mock-outputs/floorplan.png',
+};
+type ExportBody = { status: string; [k: string]: unknown };
+
+/** Recorded-response set (D-07): test/fixtures/echo3-recorded/manifest.json. */
+export type ReplayManifest = {
+  synthetic: boolean;
+  statusSequence: string[];
+  status: Record<string, object>;
+  envelope: object;
+  exports: Record<Kind, ExportBody[]>;
+  /** Paths relative to test/fixtures (always the small committed bytes). */
+  artifacts: { splat: string; collider: string; floorplan: string; cameras: string };
+  outputsR2Prefix: string | null;
 };
 const TERMINAL = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
 
@@ -30,16 +46,36 @@ export async function startFakeEcho3(
     thumbnailUrl?: string | null;
     /** Seconds or HTTP date sent as Retry-After with a scripted 429. */
     retryAfter?: string;
+    /** Path (relative to backend/) of a recorded manifest driving status/envelope/exports/artifacts. */
+    replaySet?: string;
   } = {},
 ) {
+  const replay = opts.replaySet
+    ? (JSON.parse(readFileSync(path.resolve(BACKEND, opts.replaySet), 'utf8')) as ReplayManifest)
+    : undefined;
+  const signed: Record<string, string> = replay
+    ? {
+        splat: replay.artifacts.splat,
+        cameras: replay.artifacts.cameras,
+        'mesh-simplified': replay.artifacts.collider,
+        floorplan: replay.artifacts.floorplan,
+      }
+    : SIGNED;
   const apiKey = opts.apiKey ?? 'spt_live_test';
   const script = [...(opts.submitScript ?? [])];
-  const statusSeq = opts.statusSequence ?? ['PROCESSING', 'COMPLETED'];
-  const exportSeq: Record<Kind, string[]> = {
-    'mesh-simplified': [...(opts.exportScript?.['mesh-simplified'] ?? ['READY'])],
-    floorplan: [...(opts.exportScript?.floorplan ?? ['READY'])],
-  };
+  const statusSeq = replay?.statusSequence ?? opts.statusSequence ?? ['PROCESSING', 'COMPLETED'];
   const floorplanMeta = JSON.parse(readFileSync(`${FIXTURES}floorplan.json`, 'utf8')) as unknown;
+  const bodies = (kind: Kind, seq: string[]): ExportBody[] =>
+    seq.map((s) => ({
+      status: s,
+      ...(s === 'READY' && kind === 'floorplan' ? { floorplan: floorplanMeta, download_url: 'unused' } : {}),
+    }));
+  const exportSeq: Record<Kind, ExportBody[]> = replay
+    ? { 'mesh-simplified': [...replay.exports['mesh-simplified']], floorplan: [...replay.exports.floorplan] }
+    : {
+        'mesh-simplified': bodies('mesh-simplified', opts.exportScript?.['mesh-simplified'] ?? ['READY']),
+        floorplan: bodies('floorplan', opts.exportScript?.floorplan ?? ['READY']),
+      };
   const byKey = new Map<string, { body: string; requestId: string }>();
   const known = new Set<string>();
   const statusCursor = new Map<string, number>();
@@ -55,7 +91,7 @@ export async function startFakeEcho3(
   const currentStatus = (id: string) =>
     cancelled.has(id) ? 'CANCELLED' : statusSeq[Math.min(Math.max((statusCursor.get(id) ?? 0) - 1, 0), statusSeq.length - 1)]!;
   /** Walk a script; the last value sticks. */
-  const next = (seq: string[]) => (seq.length > 1 ? seq.shift()! : seq[0]!);
+  const next = <T>(seq: T[]): T => (seq.length > 1 ? seq.shift()! : seq[0]!);
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
@@ -77,10 +113,10 @@ export async function startFakeEcho3(
 
     if (p.startsWith('/signed/')) {
       state.signedHits.push({ path: p, auth: req.headers.authorization });
-      const file = SIGNED[p.slice('/signed/'.length)];
+      const file = signed[p.slice('/signed/'.length)];
       if (!file) return err(404, 'NOT_FOUND');
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
-      res.end(readFileSync(`${FIXTURES}${file}`));
+      res.end(readFileSync(`${TEST_FIXTURES}${file}`));
       return;
     }
     if (req.headers.authorization !== `Bearer ${apiKey}`) return err(401, 'UNAUTHORIZED');
@@ -128,6 +164,7 @@ export async function startFakeEcho3(
       count('status');
       statusCursor.set(id, (statusCursor.get(id) ?? 0) + 1);
       const s = currentStatus(id);
+      if (replay?.status[s]) return json(200, replay.status[s]);
       return json(200, {
         status: s,
         progress: s === 'COMPLETED' ? 1 : null,
@@ -137,9 +174,11 @@ export async function startFakeEcho3(
     if (req.method === 'GET' && rest === '') {
       count('envelope');
       return json(200, {
-        world: { splat_format: 'spz', thumbnail_url: opts.thumbnailUrl ?? null },
-        validation: { passed: true, issues: [] },
-        error: null,
+        ...(replay?.envelope ?? {
+          world: { splat_format: 'spz', thumbnail_url: opts.thumbnailUrl ?? null },
+          validation: { passed: true, issues: [] },
+          error: null,
+        }),
         ...opts.failedEnvelope,
       });
     }
@@ -156,17 +195,14 @@ export async function startFakeEcho3(
       }
       if (req.method === 'GET') {
         count(`export:GET:${kind}`);
-        const s = next(exportSeq[kind]);
-        if (s === '404') return err(404, 'EXPORT_NOT_FOUND');
-        return json(200, {
-          status: s,
-          ...(s === 'READY' && kind === 'floorplan' ? { floorplan: floorplanMeta, download_url: 'unused' } : {}),
-        });
+        const b = next(exportSeq[kind]);
+        if (b.status === '404') return err(404, 'EXPORT_NOT_FOUND');
+        return json(200, b);
       }
       if (req.method === 'POST') {
         count(`export:POST:${kind}`);
         // 200 when the next scripted state is READY (already done), else 202 started.
-        return exportSeq[kind][0] === 'READY' ? json(200, { status: 'READY' }) : json(202, { status: 'PROCESSING' });
+        return exportSeq[kind][0]!.status === 'READY' ? json(200, { status: 'READY' }) : json(202, { status: 'PROCESSING' });
       }
     }
     if (req.method === 'POST' && rest === '/cancel') {
