@@ -31,6 +31,7 @@ function fakeWorld(overrides: Partial<World> = {}): World {
     createdAt: new Date('2026-07-12T10:00:00Z'),
     updatedAt: new Date('2026-07-12T11:00:00Z'),
     deletedAt: null,
+    submitAttempt: 1,
     ...overrides,
   };
 }
@@ -114,5 +115,16 @@ describe('serializeWorldListItem', () => {
     expect(item.assets).toEqual({
       thumbnail_url: 'https://signed.example/worlds/w-1/thumbnail.jpg',
     });
+  });
+
+  it('carries retryable, submit_attempt and frame_count (D-08/A-02/A-03)', async () => {
+    const failed = { status: 'failed', failureStage: 'processing', failureCode: 'WORLD_GENERATION_FAILED' } as Partial<World>;
+    const item = await serializeWorldListItem(fakeWorld(failed), mockStorage(), { frameCount: 30 });
+    expect(item).toMatchObject({ retryable: true, submit_attempt: 1, frame_count: 30 });
+    // A held reserve (maybe billed) hides Retry; no extra → frame_count null.
+    const held = await serializeWorldListItem(fakeWorld(failed), mockStorage(), { ledgerHeld: true });
+    expect(held).toMatchObject({ retryable: false, frame_count: null });
+    const ready = await serializeWorldListItem(fakeWorld(), mockStorage());
+    expect(ready).toMatchObject({ retryable: false, submit_attempt: 1, frame_count: null });
   });
 });

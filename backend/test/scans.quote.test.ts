@@ -75,6 +75,17 @@ describe('GET /v1/quote', () => {
     await app.close();
   });
 
+  it('carries budgetAlert once spend reaches share × budget (D-13), null under it', async () => {
+    spent = { day: 8000, month: 8000 };
+    const app = await buildApp();
+    const body = (await app.inject({ method: 'GET', url: '/v1/quote?frames=30' })).json();
+    expect(body.budgetAlert).toEqual({ window: 'daily', spent: 8000, budget: 10000, share: 0.8 });
+    spent = { day: 7999, month: 7999 };
+    const under = (await app.inject({ method: 'GET', url: '/v1/quote?frames=30' })).json();
+    expect(under.budgetAlert).toBeNull();
+    await app.close();
+  });
+
   it.each(['frames=0', 'frames=abc', 'frames=5001', 'frames=1.5', ''])('400s on %s', async (q) => {
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: `/v1/quote?${q}` });
