@@ -19,9 +19,11 @@ export function createProvider(config: Config): ReconProvider {
       outputsDir: config.MOCK_OUTPUTS_SET === 'demo-room' ? DEMO_ROOM_OUTPUTS_DIR : undefined,
     });
   }
-  return createEcho3Provider({
-    apiKey: config.SPAITIAL_API_KEY!,
-    baseUrl: config.SPAITIAL_BASE_URL,
-    webhookSecret: config.SPAITIAL_WEBHOOK_SECRET!,
-  });
+  // WR-09: the factory that builds the spending object re-checks D-04 itself,
+  // so a hand-built or cast Config can never reach the paid client.
+  const { ALLOW_PAID_PROVIDER, SPAITIAL_API_KEY, SPAITIAL_WEBHOOK_SECRET, SPAITIAL_BASE_URL } = config;
+  if (ALLOW_PAID_PROVIDER !== '1' || !SPAITIAL_API_KEY || !SPAITIAL_WEBHOOK_SECRET || !SPAITIAL_BASE_URL?.startsWith('https://')) {
+    throw new Error('createProvider: live refused (D-04 guard)');
+  }
+  return createEcho3Provider({ apiKey: SPAITIAL_API_KEY, baseUrl: SPAITIAL_BASE_URL, webhookSecret: SPAITIAL_WEBHOOK_SECRET });
 }

@@ -279,14 +279,27 @@ describe('createProvider', () => {
     expect(p.verifyWebhook(raw, signWebhook(SECRET, raw))).toBe(true);
   });
 
-  it('live mode builds the Echo-3 client (constructing it makes no request)', () => {
-    const p = createProvider({
-      PROVIDER_MODE: 'live',
-      SPAITIAL_API_KEY: 'spt_live_test',
-      SPAITIAL_BASE_URL: 'http://127.0.0.1:1',
-      SPAITIAL_WEBHOOK_SECRET: SECRET,
-    } as Config);
-    expect(p.mode).toBe('live');
+  // Constructing the client makes no request; 127.0.0.1 is never a SpAItial host.
+  const LIVE = {
+    PROVIDER_MODE: 'live',
+    ALLOW_PAID_PROVIDER: '1',
+    SPAITIAL_API_KEY: 'spt_live_test',
+    SPAITIAL_BASE_URL: 'https://127.0.0.1:1',
+    SPAITIAL_WEBHOOK_SECRET: SECRET,
+  } as Config;
+
+  it('live mode builds the Echo-3 client only past its own D-04 guard (constructing it makes no request)', () => {
+    expect(createProvider(LIVE).mode).toBe('live');
+  });
+
+  it.each([
+    ['no ALLOW_PAID_PROVIDER', { ALLOW_PAID_PROVIDER: undefined }],
+    ['ALLOW_PAID_PROVIDER != 1', { ALLOW_PAID_PROVIDER: 'true' }],
+    ['no API key', { SPAITIAL_API_KEY: undefined }],
+    ['no webhook secret', { SPAITIAL_WEBHOOK_SECRET: undefined }],
+    ['http base', { SPAITIAL_BASE_URL: 'http://127.0.0.1:1' }],
+  ])('WR-09: a cast live Config with %s is refused', (_name, over) => {
+    expect(() => createProvider({ ...LIVE, ...over } as Config)).toThrow(/live refused/);
   });
 
   it('every MOCK_SCENARIO is covered above', () => {
