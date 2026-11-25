@@ -12,6 +12,8 @@ import { startPipeline, TEST_WEBHOOK_SECRET, type Pipeline } from '../helpers/pi
 import { captures, creditEvents, worlds, type World } from '../../src/db/schema.js';
 import { applyRetry } from '../../src/retry.js';
 import { createMockProvider } from '../../src/provider/mock.js';
+import { handleSubmit } from '../../src/pipeline.js';
+import { enqueue, mapJobRow } from '../../src/queue.js';
 import type { WorkerDeps } from '../../src/worker.js';
 
 // D-09 retry contract + its money guards (A-02 ledger, A-04 quota, idempotent
@@ -327,5 +329,51 @@ describe.skipIf(!url)('retry end to end (mock pipeline, real Postgres)', () => {
     expect(new Set(rows.map((r) => r.submission_key))).toEqual(new Set([firstKey, done.submissionKey]));
     expect(kinds(firstKey)).toEqual(['release', 'reserve']);
     expect(kinds(done.submissionKey!)).toEqual(['reserve']);
+  }, 180_000);
+});
+
+describe.skipIf(!url)('CR-01: retry vs a stale submit job (mock pipeline, real Postgres)', () => {
+  let p: Pipeline | undefined;
+  afterAll(async () => {
+    await p?.close();
+  });
+
+  it('the retry retires the crashed attempt-1 submit job, and a stale job never sends the new key', async () => {
+    p = await startPipeline({ scenario: '402', retryAfterS: 0, trackPollSeconds: 0 });
+    const { worldId, captureId } = await p.seedScan();
+    const failed = await p.drain({ worldId });
+    expect([failed.failureStage, failed.failureCode]).toEqual(['submit', 'INSUFFICIENT_CREDITS']);
+    // Crash between failWorld and completeJob: the submit job is left running.
+    await p.pool.query(
+      "UPDATE jobs SET phase = 'running', locked_by = 'dead-worker', locked_at = now() - interval '1 hour' WHERE world_id = $1 AND kind = 'submit'",
+      [worldId],
+    );
+    const [cap] = await p.db.select().from(captures).where(eq(captures.id, captureId));
+    const next = await applyRetry(p.db, failed, {
+      approvedMaxCredits: 5000,
+      clientRequestId: randomUUID(),
+      bundlePresent: !!cap!.bundleKey,
+      captureId,
+    });
+    expect(next!.submitAttempt).toBe(2);
+    const js = (
+      await p.pool.query("SELECT phase, payload FROM jobs WHERE world_id = $1 AND kind = 'submit' ORDER BY created_at", [worldId])
+    ).rows as { phase: string; payload: { submitAttempt?: number } | null }[];
+    expect(js.map((j) => j.phase)).toEqual(['done', 'queued']);
+    expect(js[1]!.payload).toEqual({ submitAttempt: 2 });
+
+    const happy = createMockProvider({ processingSeconds: 1, retryAfterS: 0, webhookSecret: TEST_WEBHOOK_SECRET, deliver: () => Promise.resolve() });
+    const deps = { ...p.deps, provider: happy } as WorkerDeps;
+    // A job for attempt 1 that somehow survived: it completes without sending.
+    const staleId = await enqueue(p.db, 'submit', worldId, { submitAttempt: 1 });
+    const staleRow = (await p.pool.query('SELECT * FROM jobs WHERE id = $1', [staleId])).rows[0];
+    await handleSubmit(deps, mapJobRow(staleRow));
+    expect(happy.calls.submit).toHaveLength(0);
+    expect((await p.pool.query('SELECT phase FROM jobs WHERE id = $1', [staleId])).rows[0].phase).toBe('done');
+
+    const done = await p.drain({ worldId, deps });
+    expect(done.status).toBe('ready');
+    expect(happy.calls.submit).toHaveLength(1);
+    expect(happy.calls.submit[0]!.key).toBe(next!.submissionKey);
   }, 180_000);
 });

@@ -121,7 +121,7 @@ describe.skipIf(!url)('Echo-3 live client contract (fake server, real Postgres)'
     expect(first).toMatch(/^req_/);
     expect((await p.getWorld(worldId)).providerRequestId).toBeNull();
     const { rows } = await p.pool.query("SELECT phase, locked_by, payload FROM jobs WHERE world_id = $1 AND kind = 'submit'", [worldId]);
-    expect(rows).toEqual([{ phase: 'running', locked_by: 'it-worker-killed', payload: { uncertain: false, sending: true } }]);
+    expect(rows).toEqual([{ phase: 'running', locked_by: 'it-worker-killed', payload: { submitAttempt: 1, uncertain: false, sending: true } }]);
     // The dead worker's lease expires; another worker claims the job and resumes.
     await p.pool.query("UPDATE jobs SET locked_at = now() - interval '1 hour' WHERE world_id = $1 AND kind = 'submit'", [
       worldId,

@@ -22,7 +22,7 @@ const PREFLIGHT_TIMEOUT_MS = 30_000;
 
 /** Fail a world from one of `from`. Messages are built from codes; URLs are scrubbed anyway. */
 export async function failWorld(
-  db: Db,
+  db: Pick<Db, 'update'>,
   worldId: string,
   from: WorldStatus[],
   stage: FailureStage,
@@ -123,7 +123,8 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
       .set({ status: 'submitting', progress: null, updatedAt: new Date() })
       .where(and(eq(worlds.id, w.id), eq(worlds.status, 'packing')))
       .returning({ id: worlds.id });
-    if (flipped.length > 0) await enqueue(tx, 'submit', w.id);
+    // CR-01: the job carries its attempt so a stale run can't send a later attempt's key.
+    if (flipped.length > 0) await enqueue(tx, 'submit', w.id, { submitAttempt: w.submitAttempt });
   });
   await completeJob(db, job.id, job.lockedBy);
 }
@@ -132,13 +133,22 @@ export async function handlePack(deps: WorkerDeps, job: Job): Promise<void> {
 
 export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   const { db, storage, provider, config } = deps;
+  // CR-01: a job enqueued for an earlier attempt (payload.submitAttempt) must
+  // never run against a key a retry minted later. Legacy payloads skip the check.
+  const jobAttempt = (job.payload as { submitAttempt?: number } | null)?.submitAttempt;
+  const stale = (x: World | undefined) =>
+    x?.status !== 'submitting' || !!x.deletedAt || (jobAttempt !== undefined && jobAttempt !== x.submitAttempt);
   let w = await getWorld(db, job.worldId);
-  if (w?.status !== 'submitting' || w.deletedAt) return completeJob(db, job.id, job.lockedBy);
+  if (stale(w)) return completeJob(db, job.id, job.lockedBy);
+  w = w!;
   const worldId = w.id;
-  const refuse = async (code: string, message: string) => {
-    await failWorld(db, worldId, ['submitting'], 'submit', code, message);
-    await completeJob(db, job.id, job.lockedBy);
-  };
+  // One tx (CR-01): a crash between the two used to leave a retryable failed
+  // world with a live submit job that a retry would then race.
+  const refuse = (code: string, message: string) =>
+    db.transaction(async (tx) => {
+      await failWorld(tx, worldId, ['submitting'], 'submit', code, message);
+      await completeJob(tx as unknown as Db, job.id, job.lockedBy);
+    });
 
   if (w.approvedMaxCredits == null) return refuse('NOT_APPROVED', 'no approved credit ceiling');
   const cap = await latestCapture(db, worldId);
@@ -188,6 +198,7 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   }
   // Always send what the DB holds (RESEARCH Pattern 1), including the first send.
   w = (await getWorld(db, worldId))!;
+  if (stale(w)) return completeJob(db, job.id, job.lockedBy);
   const key = w.submissionKey!;
   const quoted = w.quotedCredits!;
 
@@ -226,12 +237,12 @@ export async function handleSubmit(deps: WorkerDeps, job: Job): Promise<void> {
   // Sticky (CR-02): once any earlier attempt's outcome was unknown (an error that
   // was not a definitive refusal, or a crash mid-send that left `sending` set), a
   // later 4xx/429/503 proves nothing about it, so the reservation is never released.
-  // ponytail: job-scoped marker. A retry (D-09) enqueues a new submit job with a
-  // new key minted by the retry route, so the marker is effectively per key.
-  const prev = (job.payload ?? {}) as { uncertain?: boolean; sending?: boolean };
+  // Job-scoped marker, per key only because a retry (D-09) retires every other
+  // pipeline job in its tx and a stale job's attempt check stops it (CR-01).
+  const prev = (job.payload ?? {}) as { uncertain?: boolean; sending?: boolean; submitAttempt?: number };
   const uncertain = prev.uncertain === true || prev.sending === true;
   const mark = (p: { uncertain: boolean; sending?: boolean }) =>
-    db.update(jobs).set({ payload: p }).where(eq(jobs.id, job.id));
+    db.update(jobs).set({ payload: { ...(jobAttempt !== undefined ? { submitAttempt: jobAttempt } : {}), ...p } }).where(eq(jobs.id, job.id));
   await mark({ uncertain, sending: true });
 
   let requestId: string;

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Db } from './db/client.js';
-import { worldAttempts, worlds, type World } from './db/schema.js';
+import { jobs, worldAttempts, worlds, type World } from './db/schema.js';
 import { enqueue } from './queue.js';
 
 // Submit-stage codes D-08 marks retryable: the provider refused before billing.
@@ -103,7 +103,19 @@ export async function applyRetry(
         )
         .returning();
       if (!row) throw new RetryLost();
-      await enqueue(tx, a.bundlePresent ? 'submit' : 'pack', w.id, a.bundlePresent ? undefined : { captureId: a.captureId });
+      // CR-01: retire every live pipeline job of the old attempt (e.g. a submit
+      // job left running by a crash) so only the job enqueued here can send the
+      // new key. Their own completeJob later is a harmless no-op.
+      await tx
+        .update(jobs)
+        .set({ phase: 'done', lockedAt: null, lockedBy: null, updatedAt: new Date() })
+        .where(and(eq(jobs.worldId, w.id), inArray(jobs.kind, ['pack', 'submit', 'track']), inArray(jobs.phase, ['queued', 'running'])));
+      await enqueue(
+        tx,
+        a.bundlePresent ? 'submit' : 'pack',
+        w.id,
+        a.bundlePresent ? { submitAttempt: row.submitAttempt } : { captureId: a.captureId },
+      );
       return row;
     });
   } catch (err) {
