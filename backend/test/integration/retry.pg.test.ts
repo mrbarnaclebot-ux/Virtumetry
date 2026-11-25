@@ -276,6 +276,23 @@ describe.skipIf(!url)('POST /v1/worlds/:id/retry (real Postgres)', () => {
     expect((await row(w.id)).submitAttempt).toBe(2);
   });
 
+  it('WR-06: applyRetry re-checks retryability and the ledger inside its tx (stale pre-check loses)', async () => {
+    const args = () => ({ approvedMaxCredits: QUOTE, clientRequestId: randomUUID(), bundlePresent: true, captureId: randomUUID() });
+    // A reserve appeared on the key after the route's ledgerClear check.
+    const held = await seed();
+    await ledger(held.submissionKey!, ['reserve']);
+    expect(await applyRetry(schema.db, held, args())).toBeNull();
+    // Revived and failed again with a non-retryable code under the same submit_attempt.
+    const moved = await seed();
+    await schema.pool.query("UPDATE worlds SET failure_stage = 'submit', failure_code = 'SUBMIT_UNCERTAIN' WHERE id = $1", [moved.id]);
+    expect(await applyRetry(schema.db, moved, args())).toBeNull();
+    for (const w of [held, moved]) {
+      expect(await attempts(w.id)).toBe(0);
+      expect(await jobs(w.id)).toBe(0);
+      expect((await row(w.id)).submissionKey).toBe(w.submissionKey);
+    }
+  });
+
   it('budgetAlert names the daily window once spend reaches share × budget (list + quote)', async () => {
     await schema.db.insert(creditEvents).values({ amount: DAILY * 0.8, submissionKey: randomUUID(), providerMode: 'mock' });
     const { body } = await listItem(randomUUID());

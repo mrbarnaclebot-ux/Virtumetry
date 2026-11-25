@@ -57,7 +57,8 @@ class RetryLost extends Error {}
  * The only place a second submission key is minted (D-09). Does not touch
  * credit_events or the scan quota (A-04). One transaction: archive the current
  * attempt, conditionally reset the world (status='failed' AND submit_attempt =
- * N, so concurrent retries race to one winner), enqueue submit or pack. Null
+ * N AND failure_* / key unchanged AND no held reserve, so concurrent retries
+ * race to one winner), enqueue submit or pack. Null
  * when the world moved on; unique violations propagate to the caller.
  */
 export async function applyRetry(
@@ -99,6 +100,13 @@ export async function applyRetry(
             eq(worlds.status, 'failed'),
             isNull(worlds.deletedAt),
             eq(worlds.submitAttempt, w.submitAttempt),
+            // WR-06 (D-09): the facts the route judged retryable are unchanged,
+            // and the A-02 ledger guard holds inside this tx, not just before it.
+            sql`${worlds.failureStage} IS NOT DISTINCT FROM ${w.failureStage}`,
+            sql`${worlds.failureCode} IS NOT DISTINCT FROM ${w.failureCode}`,
+            sql`${worlds.failureMessage} IS NOT DISTINCT FROM ${w.failureMessage}`,
+            sql`${worlds.submissionKey} IS NOT DISTINCT FROM ${w.submissionKey}`,
+            sql`NOT EXISTS (${heldReserveSql(sql`worlds.submission_key`)})`,
           ),
         )
         .returning();
