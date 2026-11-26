@@ -175,6 +175,21 @@ describe('viewer coach marks and haptics (UX-04)', () => {
     expect(store().has('vm.coach.bogus')).toBe(false);
   });
 
+  it('reveal is remembered per world and joins coachSeen once played (critique R1 #9)', async () => {
+    const v = await open();
+    expect(v.coachSeen).not.toContain('reveal');
+    await act(async () => {
+      await v.onCoachSeen!('reveal');
+    });
+    expect(store().get('vm.reveal.w1')).toBe('1');
+    expect(viewerProps.current!.coachSeen).toContain('reveal'); // a crash remount won't replay it
+  });
+
+  it('a revealed world passes reveal in coachSeen; walk/measure flags untouched', async () => {
+    store().set('vm.reveal.w1', '1');
+    expect((await open()).coachSeen).toEqual(['reveal']);
+  });
+
   it('onHaptic maps kinds to the haptics module', async () => {
     const { haptic } = jest.requireMock('@/design/haptics');
     const v = await open();

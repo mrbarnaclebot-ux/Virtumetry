@@ -8,6 +8,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { acceleratedRaycast, computeBoundsTree, type MeshBVH } from 'three-mesh-bvh';
 
+import { revealAt } from './coach';
 import { cameraToThree, EYE_HEIGHT, fallbackPose, matToPose, needsFlip, splatFrameFor, type Pose } from './coords';
 import type { Bounds, FloorplanMeta } from './types';
 import { floorYAt, resolveCapsule, stepWalk, type WalkInput } from './walk';
@@ -65,6 +66,15 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
   let startPose: Pose | null = null;
   let mode: Mode = 'orbit';
   let tween: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; t0: number } | null = null;
+  // First-open reveal: final orbit offset (camera - target), eased in from 1.25x radius + 15° yaw. t0 = first rendered frame.
+  let revealArmed = false;
+  let reveal: { offset: THREE.Vector3; t0: number | null } | null = null;
+  const stopTweens = () => {
+    tween = null;
+    reveal = null;
+  };
+  const Y_AXIS = new THREE.Vector3(0, 1, 0);
+  controls.addEventListener('start', stopTweens); // any touch takes the camera: cancels a running reset or reveal
   const firstFrame: (() => void)[] = [];
   let pendingFirstFrame = false;
   const frameListeners = new Set<() => void>();
@@ -163,6 +173,11 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
       camera.position.lerpVectors(tween.from[0], tween.to[0], e);
       controls.target.lerpVectors(tween.from[1], tween.to[1], e);
       if (t === 1) tween = null;
+    } else if (reveal) {
+      reveal.t0 ??= now;
+      const r = revealAt(now - reveal.t0);
+      camera.position.copy(reveal.offset).applyAxisAngle(Y_AXIS, r.yaw).multiplyScalar(r.scale).add(controls.target);
+      if (r.done) reveal = null;
     }
     if (mode !== 'walk') controls.update(); // OrbitControls.update would re-aim the walk camera at its target
     renderer.render(scene, camera);
@@ -194,6 +209,13 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
           : fallbackPose({ min: box.min.toArray(), max: box.max.toArray() });
       }
       applyPose(initialPose ?? startPose);
+      if (revealArmed && !initialPose) {
+        reveal = { offset: camera.position.clone().sub(controls.target), t0: null };
+        const r = revealAt(0); // first frame already shows the pulled-back pose
+        camera.position.copy(reveal.offset).applyAxisAngle(Y_AXIS, r.yaw).multiplyScalar(r.scale).add(controls.target);
+        controls.update();
+      }
+      revealArmed = false;
       pendingFirstFrame = true;
     },
     /** Collider PLY (mesh-simplified). Throws on a bad file; caller treats that as orbit-only (UI-SPEC B9). */
@@ -258,7 +280,7 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
      * With a collider this switches to Walk (returns 'walk'); without one it moves the orbit camera there and stays in Orbit.
      */
     teleport(x: number, z: number, bounds?: Bounds): Mode {
-      tween = null;
+      stopTweens();
       walk.input = NO_INPUT;
       const box = bvh?.getBoundingBox(new THREE.Box3());
       const floor = (bvh && box && floorYAt(bvh, x, z, box.min.y + EYE_HEIGHT)) ?? (sceneBounds ?? bounds)?.min[1] ?? 0;
@@ -306,12 +328,17 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
       splat = mesh;
       scene.add(mesh);
     },
+    /** Play the first-open reveal on the next loadSplat (not for a crash-restore pose; no-op under reduced motion). */
+    armReveal() {
+      revealArmed = !reducedMotion;
+    },
     setStartPose(pose: Pose) {
       startPose = pose;
       applyPose(pose);
     },
     /** Back to the start pose and Orbit (D-07); 400 ms ease-out, instant under reduced motion. */
     reset() {
+      reveal = null;
       if (mode === 'walk') orbitAhead();
       mode = 'orbit';
       walk.input = NO_INPUT;
@@ -329,7 +356,7 @@ export function createEngine(canvas: HTMLCanvasElement, { reducedMotion }: { red
       if ((next === 'walk' || next === 'measure') && !bvh) return; // D-10
       const wasWalk = mode === 'walk';
       mode = next;
-      tween = null;
+      stopTweens();
       walk.input = NO_INPUT;
       if (mode === 'walk') enterWalk();
       else if (wasWalk) orbitAhead();

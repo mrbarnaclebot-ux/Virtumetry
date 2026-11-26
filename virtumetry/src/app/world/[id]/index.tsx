@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
@@ -22,6 +23,23 @@ import WorldViewer from '@/viewer/world-viewer';
 const TOP_BAR = 44;
 const CHROME = 1.3; // maxFontSizeMultiplier on viewer chrome (UI-SPEC Typography)
 const BAR_W = 200;
+
+// Critique R1 #9: the first-open reveal plays once per world. SecureStore keys allow [A-Za-z0-9._-] only (T-06.1-33).
+const revealKey = (id: string | undefined) => (id && /^[\w-]+$/.test(id) ? `vm.reveal.${id}` : null);
+const isRevealed = (id: string | undefined) => {
+  const k = revealKey(id);
+  try {
+    return !!k && SecureStore.getItem(k) === '1';
+  } catch {
+    return false;
+  }
+};
+const markRevealed = (id: string | undefined) => {
+  const k = revealKey(id);
+  try {
+    if (k) SecureStore.setItem(k, '1');
+  } catch {}
+};
 
 function Reconnecting() {
   return (
@@ -81,10 +99,21 @@ export default function WorldScreen() {
   }, []);
   const onPose = useCallback(async (pose: Pose) => dispatch({ type: 'pose', pose }), []);
   // Pattern 9: coach state read once; the DOM keeps its own dismissed set. Ids from the WebView are allow-listed (T-06.1-33).
-  const [coachSeen] = useState(() => (['walk', 'measure'] as const).filter(isCoachSeen));
-  const onCoachSeen = useCallback(async (cid: string) => {
-    if (cid === 'walk' || cid === 'measure') markCoachSeen(cid);
-  }, []);
+  // 'reveal' joins the list once played, so a crash remount never replays it.
+  const [coachSeen, setCoachSeen] = useState<string[]>(() => [
+    ...(['walk', 'measure'] as const).filter(isCoachSeen),
+    ...(isRevealed(id) ? ['reveal'] : []),
+  ]);
+  const onCoachSeen = useCallback(
+    async (cid: string) => {
+      if (cid === 'walk' || cid === 'measure') markCoachSeen(cid);
+      else if (cid === 'reveal') {
+        markRevealed(id);
+        setCoachSeen((s) => (s.includes('reveal') ? s : [...s, 'reveal']));
+      }
+    },
+    [id],
+  );
   const onHaptic = useCallback(async (kind: 'selection' | 'light' | 'success') => {
     if (kind === 'selection') haptic.selection();
     else if (kind === 'light') haptic.light();

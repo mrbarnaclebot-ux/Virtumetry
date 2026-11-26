@@ -10,7 +10,7 @@ import {
 } from 'react';
 
 import { glyphs, type GlyphId } from '../design/glyphs';
-import { coachText, isSeen, markSeen, type ViewerCoachId } from './coach';
+import { coachText, isSeen, markSeen, urlScope, type ViewerCoachId } from './coach';
 import { createEngine, resolveStartPose, type Engine, type Mode } from './engine';
 import { hasFloorplan, headingAngle, pixelFromWorld, tapToPixel, worldFromPixel } from './floorplan';
 import { announceDistance, distance, formatDistance, isTap, type Vec3 } from './measure';
@@ -21,10 +21,9 @@ import type { ViewerProps } from './types';
 type Load = { stage: 'download'; percent: number | null } | { stage: 'prepare' } | { stage: 'ready' } | { stage: 'error' };
 
 const HINT_MS = 6000;
-const DISABLED_HINT_MS = 4000;
 const JOY_TRAVEL = 32; // px
 const LOOK_RAD_PER_PX = 0.005; // ponytail: one sensitivity for touch and mouse; tune on device
-const NO_GEOMETRY = "Walking and measuring need room geometry. This scan doesn't have it.";
+const ORBIT_ONLY = 'Orbit only. This scan has no room geometry.';
 const ORBIT_HINT = ['Drag to orbit · Pinch to zoom', 'Drag to orbit · Scroll to zoom · Right-drag to pan'] as const;
 const MODES: { id: Mode; label: string }[] = [
   { id: 'orbit', label: 'Orbit' },
@@ -78,7 +77,9 @@ export default function WorldViewer(props: ViewerProps) {
   const [reducedMotion] = useState(() => media('(prefers-reduced-motion: reduce)'));
   const [coarse] = useState(() => media('(pointer: coarse)'));
   const t = (touch: string, desktop: string) => (coarse ? touch : desktop);
-  const [hasCollider, setHasCollider] = useState(false);
+  // Room geometry (collider) decides the mode bar: unknown → nothing yet, none → one caption chip, no dead segments.
+  const [geometry, setGeometry] = useState<'pending' | 'yes' | 'no'>('pending');
+  const revealed = useRef(false); // per mount: fresh URLs or a retry never replay the reveal
   const [mode, setMode] = useState<Mode>('orbit');
   const seenWalk = useRef(false);
   // Measure (D-12): points live in a ref and are re-projected every frame straight into the DOM.
@@ -155,24 +156,29 @@ export default function WorldViewer(props: ViewerProps) {
 
     // D-13a: keep the context restorable, rebuild from cached bytes, give up after 5 s.
     let lostTimer: ReturnType<typeof setTimeout> | undefined;
+    // The host (app screen / web page) owns recovery from here: drop our overlay so only its message shows.
+    const handOff = () => {
+      setLost(false);
+      call(propsRef.current.onError, { code: 'context_lost' });
+    };
     const onLost = (e: Event) => {
       e.preventDefault();
       setLost(true);
       clearTimeout(lostTimer);
-      lostTimer = setTimeout(() => call(propsRef.current.onError, { code: 'context_lost' }), LOST_MS);
+      lostTimer = setTimeout(handOff, LOST_MS);
     };
     const onRestored = () => {
       clearTimeout(lostTimer);
       engine
         .rebuild()
         .then(() => setLost(false))
-        .catch(() => call(propsRef.current.onError, { code: 'context_lost' }));
+        .catch(handOff);
     };
     canvas.addEventListener('webglcontextlost', onLost);
     canvas.addEventListener('webglcontextrestored', onRestored);
 
     setLoad({ stage: 'download', percent: null });
-    setHasCollider(false);
+    setGeometry('pending');
     setMode('orbit');
     setLost(false);
     (async () => {
@@ -186,11 +192,21 @@ export default function WorldViewer(props: ViewerProps) {
         setLoad({ stage: 'prepare' });
         call(propsRef.current.onProgress, { stage: 'prepare' as const, percent: null });
         if (pose) engine.setStartPose(pose);
+        // Wonder moment (critique R1 #9): first ready open per world eases the camera in (engine; skipped under
+        // reduced motion) and plays a success haptic. Not after a crash remount (startPose = saved pose).
+        const scope = urlScope(splatUrl);
+        const reveal = !revealed.current && !propsRef.current.startPose && !isSeen('reveal', coachSeenProp, store(), scope);
+        if (reveal) engine.armReveal();
         engine.onFirstFrame(() => {
           setLoad({ stage: 'ready' });
           setHint({ text: ORBIT_HINT[coarse ? 0 : 1], ms: HINT_MS });
           call(propsRef.current.onReady, undefined);
           engine.onFrame(emitPose);
+          if (reveal) {
+            revealed.current = true;
+            call(propsRef.current.onHaptic, 'success' as const);
+            markSeen('reveal', propsRef.current.onCoachSeen, store(), scope);
+          }
         });
         await engine.loadSplat(bytes, propsRef.current.startPose);
       } catch {
@@ -201,16 +217,16 @@ export default function WorldViewer(props: ViewerProps) {
       }
       // Collider is optional (D-10, B9, T-05-08): any failure leaves the viewer in Orbit with Walk/Measure off.
       const { colliderUrl, floorplanMeta } = propsRef.current;
-      if (!colliderUrl) return;
+      if (!colliderUrl) return setGeometry('no');
       try {
         const res = await fetch(colliderUrl, { signal: ac.signal });
         if (!res.ok) throw new Error(`collider ${res.status}`);
         const buf = await res.arrayBuffer();
         if (ac.signal.aborted) return;
         engine.loadCollider(buf, floorplanMeta?.scene_bounds);
-        setHasCollider(true);
+        setGeometry('yes');
       } catch {
-        // orbit-only
+        if (!ac.signal.aborted) setGeometry('no');
       }
     })();
 
@@ -222,7 +238,7 @@ export default function WorldViewer(props: ViewerProps) {
       engine.dispose();
       engineRef.current = null;
     };
-  }, [splatUrl, attempt, reducedMotion, coarse]);
+  }, [splatUrl, attempt, reducedMotion, coarse, coachSeenProp]);
 
   // The plan image is fetched lazily; warm it while its presigned URL is fresh (review-2 WR-01).
   const { floorplanUrl } = props;
@@ -358,10 +374,7 @@ export default function WorldViewer(props: ViewerProps) {
   function selectMode(next: Mode) {
     const engine = engineRef.current;
     if (!engine || next === mode) return;
-    if (next !== 'orbit' && !engine.hasCollider()) {
-      setHint({ text: NO_GEOMETRY, ms: DISABLED_HINT_MS });
-      return;
-    }
+    if (next !== 'orbit' && !engine.hasCollider()) return; // segments only render with geometry
     engine.setMode(next);
     setMode(next);
     call(propsRef.current.onHaptic, 'selection' as const);
@@ -734,26 +747,27 @@ export default function WorldViewer(props: ViewerProps) {
             )}
           </div>
 
-          <div role="radiogroup" aria-label="View mode" style={{ ...S.modeBar, bottom: barBottom }}>
-            {MODES.map(({ id, label }) => {
-              const disabled = id !== 'orbit' && !hasCollider;
-              const selected = id === mode;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  aria-disabled={disabled || undefined}
-                  className="vm-btn vm-seg"
-                  style={{ ...S.segment, ...(selected ? S.selected : null), ...(disabled ? S.disabled : null) }}
-                  onClick={() => selectMode(id)}>
-                  <Glyph id={id} size={16} />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          {geometry === 'yes' && (
+            <div role="radiogroup" aria-label="View mode" style={{ ...S.modeBar, bottom: barBottom }}>
+              {MODES.map(({ id, label }) => {
+                const selected = id === mode;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className="vm-btn vm-seg"
+                    style={{ ...S.segment, ...(selected ? S.selected : null) }}
+                    onClick={() => selectMode(id)}>
+                    <Glyph id={id} size={16} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {geometry === 'no' && <div style={{ ...S.chip, bottom: barBottom + (44 - 32) / 2 }}>{ORBIT_ONLY}</div>}
         </>
       )}
     </div>
@@ -1004,7 +1018,6 @@ const S: Record<string, CSSProperties> = {
     pointerEvents: 'none',
   },
   joyKnob: { width: 48, height: 48, borderRadius: 24, background: color.ghost.knob },
-  disabled: { opacity: 0.4 },
   rail: { position: 'absolute', right: space.lg, display: 'flex', flexDirection: 'column', gap: space.sm },
   round: {
     ...scrimPill,
