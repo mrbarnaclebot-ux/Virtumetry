@@ -18,6 +18,7 @@ import { ApiError, useWorld, WORLD_URL_FRESH_MS } from '@/lib/api';
 import { initialRecovery, recoveryReducer } from '@/viewer/recovery';
 import { VT } from '@/viewer/tokens';
 import type { Pose } from '@/viewer/types';
+import { scanTitle } from '@/library/display-state';
 import WorldViewer from '@/viewer/world-viewer';
 
 const TOP_BAR = 44;
@@ -135,7 +136,7 @@ export default function WorldScreen() {
   }, [rec.capped]);
 
   const world = data?.world;
-  const title = world?.title?.trim() || 'Untitled scan';
+  const title = world ? scanTitle(world.title, world.created_at) : '';
   const splatUrl = data?.assets.splat_url;
   // D-18: sharing only exists for a ready room.
   const ready = world?.status === 'ready';

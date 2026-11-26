@@ -119,11 +119,12 @@ it('passes the detail response to the viewer, and refetches on re-entry (never a
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
-it('falls back to "Untitled scan" and a null floor plan', async () => {
+it('falls back to the capture date/time and a null floor plan', async () => {
   fetchMock.mockResolvedValue(ok({ world: world({ title: '  ', floorplan_meta: undefined }), assets: ASSETS }));
   await render(ui(newClient()));
   await screen.findByTestId('world-viewer');
-  expect(viewerProps.current).toMatchObject({ title: 'Untitled scan', floorplanMeta: null });
+  expect(viewerProps.current).toMatchObject({ floorplanMeta: null });
+  expect(viewerProps.current?.title).toMatch(/2026/);
 });
 
 it('404: this scan is not available', async () => {

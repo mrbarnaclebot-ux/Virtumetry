@@ -152,6 +152,9 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, 
 /** Critique F3: an unnamed scan is titled by when it was captured. */
 const formatDateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { ...DATE, hour: 'numeric', minute: '2-digit' });
 
+/** Shared by Library rows and the world screen: the name, or the capture date/time. */
+export const scanTitle = (title: string | null | undefined, created: string) => title?.trim() || formatDateTime(created);
+
 /** Secondary-line date, dropped when the title already is the date. */
 const withDate = (lead: string | null, date: string | null) => [lead, date].filter(Boolean).join(' · ') || null;
 
@@ -181,7 +184,7 @@ const base = {
 export function toDisplayState(item: LibraryItem | (LocalScan & { local: true }), now: Date): DisplayState {
   const created = 'local' in item ? item.createdAt : item.created_at;
   const named = item.title?.trim();
-  const displayTitle = named || formatDateTime(created);
+  const displayTitle = scanTitle(named, created);
   const date = named ? formatDate(created) : null;
 
   if ('local' in item) {
