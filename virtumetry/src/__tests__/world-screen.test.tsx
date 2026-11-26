@@ -30,6 +30,9 @@ jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: jest.fn() },
   useLocalSearchParams: jest.fn(() => ({ id: 'w1' })),
 }));
+jest.mock('@/design/haptics', () => ({
+  haptic: { selection: jest.fn(), light: jest.fn(), medium: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() },
+}));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }),
 }));
@@ -66,6 +69,8 @@ const fail = (status: number, error: string) => ({ ok: false, status, json: asyn
 
 let fetchMock: jest.Mock;
 beforeEach(() => {
+  jest.requireMock('expo-secure-store').__reset();
+  jest.clearAllMocks();
   viewerProps.current = null;
   mockMounts.length = 0;
   fetchMock = jest.fn();
@@ -79,10 +84,12 @@ const ui = (client: QueryClient) => (
   </QueryClientProvider>
 );
 
-it('shows a spinner and Back while the world loads', async () => {
+it('shows "Opening room" with an indeterminate bar and Back while the world loads', async () => {
   fetchMock.mockReturnValue(new Promise(() => {}));
   await render(ui(newClient()));
   expect(screen.getByTestId('world-loading')).toBeTruthy();
+  expect(screen.getByText('Opening room')).toBeTruthy();
+  expect(screen.getByTestId('world-loading-bar').props.accessibilityState).toEqual({ busy: true });
   expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
 });
 
@@ -129,12 +136,57 @@ it('404: this scan is not available', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1); // 4xx is final, no retry
 });
 
-it('not ready: no viewer', async () => {
+it('not ready: no viewer, and Back to Library goes back', async () => {
+  const { router } = jest.requireMock('expo-router');
   fetchMock.mockResolvedValue(ok({ world: world({ status: 'processing' }), assets: {} }));
   await render(ui(newClient()));
   await screen.findByText("This scan isn't ready yet");
   expect(screen.getByText('Open it again from your Library when it says Ready.')).toBeTruthy();
   expect(screen.queryByTestId('world-viewer')).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Back to Library' }));
+  expect(router.back).toHaveBeenCalled();
+});
+
+describe('viewer coach marks and haptics (UX-04)', () => {
+  const store = () => jest.requireMock('expo-secure-store').__store as Map<string, string>;
+  const open = async () => {
+    fetchMock.mockResolvedValue(ok({ world: world(), assets: ASSETS }));
+    await render(ui(newClient()));
+    await screen.findByTestId('world-viewer');
+    return viewerProps.current!;
+  };
+
+  it('coachSeen is empty on a fresh store', async () => {
+    expect((await open()).coachSeen).toEqual([]);
+  });
+
+  it('coachSeen reflects stored flags', async () => {
+    store().set('vm.coach.walk', '1');
+    expect((await open()).coachSeen).toEqual(['walk']);
+  });
+
+  it('onCoachSeen stores allow-listed ids only', async () => {
+    const v = await open();
+    await act(async () => {
+      await v.onCoachSeen!('measure');
+      await v.onCoachSeen!('bogus');
+    });
+    expect(store().get('vm.coach.measure')).toBe('1');
+    expect(store().has('vm.coach.bogus')).toBe(false);
+  });
+
+  it('onHaptic maps kinds to the haptics module', async () => {
+    const { haptic } = jest.requireMock('@/design/haptics');
+    const v = await open();
+    await act(async () => {
+      await v.onHaptic!('selection');
+      await v.onHaptic!('light');
+      await v.onHaptic!('success');
+    });
+    expect(haptic.selection).toHaveBeenCalledTimes(1);
+    expect(haptic.light).toHaveBeenCalledTimes(1);
+    expect(haptic.success).toHaveBeenCalledTimes(1);
+  });
 });
 
 it('network failure: retried twice, then Try again refetches', async () => {

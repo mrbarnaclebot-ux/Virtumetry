@@ -4,7 +4,7 @@ import { Stack } from 'expo-router';
 export default function WorldLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="[id]/index" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="[id]/index" options={{ gestureEnabled: false, animation: 'fade' }} />
       {/* D-18: iOS page sheet over the viewer. */}
       <Stack.Screen name="[id]/share" options={{ presentation: 'modal' }} />
       {/* D-11: failure sheet (retry or scan again), opened from the Library. */}

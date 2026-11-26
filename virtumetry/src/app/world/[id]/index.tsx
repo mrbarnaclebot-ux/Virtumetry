@@ -2,11 +2,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { ProgressBar } from '@/components/ui/progress-bar';
+import { isCoachSeen, markCoachSeen } from '@/design/first-run';
+import { haptic } from '@/design/haptics';
 import { ApiError, useWorld, WORLD_URL_FRESH_MS } from '@/lib/api';
 import { initialRecovery, recoveryReducer } from '@/viewer/recovery';
 import { VT } from '@/viewer/tokens';
@@ -15,47 +21,15 @@ import WorldViewer from '@/viewer/world-viewer';
 
 const TOP_BAR = 44;
 const CHROME = 1.3; // maxFontSizeMultiplier on viewer chrome (UI-SPEC Typography)
-function Message({
-  heading,
-  body,
-  onRetry,
-  retryLabel = 'Try again',
-}: {
-  heading: string;
-  body: string;
-  onRetry?: () => void;
-  retryLabel?: string;
-}) {
-  return (
-    <View style={styles.center}>
-      <Text style={styles.heading} maxFontSizeMultiplier={CHROME}>
-        {heading}
-      </Text>
-      <Text style={styles.body} maxFontSizeMultiplier={CHROME}>
-        {body}
-      </Text>
-      {onRetry && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={retryLabel}
-          onPress={onRetry}
-          style={({ pressed }) => [styles.retry, { backgroundColor: pressed ? VT.color.surface.pressed : VT.color.surface.raised }]}>
-          <Text style={styles.retryLabel} maxFontSizeMultiplier={CHROME}>
-            {retryLabel}
-          </Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
+const BAR_W = 200;
 
 function Reconnecting() {
   return (
     <View style={[StyleSheet.absoluteFill, styles.center, styles.reconnect]} accessibilityLiveRegion="polite">
-      <ActivityIndicator size="large" color={VT.color.primary} />
-      <Text style={styles.reconnectLabel} maxFontSizeMultiplier={CHROME}>
+      <ProgressBar value={null} style={styles.bar} />
+      <ThemedText type="label" maxFontSizeMultiplier={CHROME}>
         Reconnecting viewer…
-      </Text>
+      </ThemedText>
     </View>
   );
 }
@@ -106,6 +80,16 @@ export default function WorldScreen() {
     dispatch({ type: 'ready' });
   }, []);
   const onPose = useCallback(async (pose: Pose) => dispatch({ type: 'pose', pose }), []);
+  // Pattern 9: coach state read once; the DOM keeps its own dismissed set. Ids from the WebView are allow-listed (T-06.1-33).
+  const [coachSeen] = useState(() => (['walk', 'measure'] as const).filter(isCoachSeen));
+  const onCoachSeen = useCallback(async (cid: string) => {
+    if (cid === 'walk' || cid === 'measure') markCoachSeen(cid);
+  }, []);
+  const onHaptic = useCallback(async (kind: 'selection' | 'light' | 'success') => {
+    if (kind === 'selection') haptic.selection();
+    else if (kind === 'light') haptic.light();
+    else if (kind === 'success') haptic.success();
+  }, []);
   const onError = useCallback(
     async (e: { code: string }) => {
       setDomUp(true);
@@ -129,42 +113,66 @@ export default function WorldScreen() {
 
   let content;
   if (isPending) {
-    content = <ActivityIndicator testID="world-loading" size="large" color={VT.color.primary} style={styles.fill} />;
+    content = (
+      <View testID="world-loading" style={[styles.center, styles.loading]}>
+        <ThemedText type="label" tone="muted" maxFontSizeMultiplier={CHROME}>
+          Opening room
+        </ThemedText>
+        <ProgressBar value={null} testID="world-loading-bar" accessibilityLabel="Opening room" style={styles.bar} />
+      </View>
+    );
   } else if (error) {
     content =
       error instanceof ApiError && error.status === 404 ? (
-        <Message heading="This scan isn't available" body="It may have been deleted." />
+        <View style={styles.center}>
+          <ErrorState icon="warning" cap={CHROME} title="This scan isn't available" body="It may have been deleted." />
+        </View>
       ) : (
-        <Message
-          heading="Couldn't open this scan"
-          body="Check your connection, then try again."
-          onRetry={() => refetch()}
-        />
+        <View style={styles.center}>
+          <ErrorState
+            icon="offline"
+            cap={CHROME}
+            title="Couldn't open this scan"
+            body="Check your connection, then try again."
+            action={{ label: 'Try again', onPress: () => void refetch() }}
+          />
+        </View>
       );
   } else if (world?.status !== 'ready' || !splatUrl) {
     content = (
-      <Message
-        heading="This scan isn't ready yet"
-        body="Open it again from your Library when it says Ready."
-      />
+      <View style={styles.center}>
+        <ErrorState
+          icon="processing"
+          cap={CHROME}
+          title="This scan isn't ready yet"
+          body="Open it again from your Library when it says Ready."
+          action={{ label: 'Back to Library', onPress: () => router.back() }}
+        />
+      </View>
     );
   } else if (rec.capped && refreshing) {
     content = <Reconnecting />;
   } else if (rec.capped) {
     content = (
-      <Message
-        heading="The viewer stopped working"
-        body="This can happen when the phone is low on memory. Reload to try again."
-        retryLabel="Reload viewer"
-        onRetry={() => {
-          if (reloading.current) return; // IN-03: a double tap queues one reload
-          reloading.current = true;
-          void freshen().then(() => {
-            reloading.current = false;
-            dispatch({ type: 'reload' });
-          });
-        }}
-      />
+      <View style={styles.center}>
+        <ErrorState
+          icon="warning"
+          cap={CHROME}
+          title="The viewer stopped working"
+          body="This can happen when the phone is low on memory. Reload to try again."
+          action={{
+            label: 'Reload viewer',
+            onPress: () => {
+              if (reloading.current) return; // IN-03: a double tap queues one reload
+              reloading.current = true;
+              void freshen().then(() => {
+                reloading.current = false;
+                dispatch({ type: 'reload' });
+              });
+            },
+          }}
+        />
+      </View>
     );
   } else {
     content = (
@@ -183,6 +191,9 @@ export default function WorldScreen() {
           onReady={onReady}
           onError={onError}
           onPose={onPose}
+          coachSeen={coachSeen}
+          onCoachSeen={onCoachSeen}
+          onHaptic={onHaptic}
           dom={dom}
         />
         {rec.reconnecting || refreshing ? (
@@ -190,7 +201,7 @@ export default function WorldScreen() {
         ) : (
           !domUp && (
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.center]}>
-              <ActivityIndicator size="large" color={VT.color.primary} />
+              <ProgressBar value={null} style={styles.bar} />
             </View>
           )
         )}
@@ -203,34 +214,24 @@ export default function WorldScreen() {
       <StatusBar style="light" />
       {content}
       <View style={[styles.topBar, { paddingTop: safe.top }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.back, pressed && { backgroundColor: VT.color.surface.pressed }]}>
-          <SymbolView name="chevron.left" size={20} tintColor={VT.color.text} />
-          <Text style={styles.backLabel} maxFontSizeMultiplier={CHROME}>
-            Back
-          </Text>
-        </Pressable>
+        <Button variant="ghost" size="md" icon="back" label="Back" onPress={() => router.back()} haptic={false} />
         {world && (
-          <Text
+          <ThemedText
+            type="heading"
             accessibilityRole="header"
             numberOfLines={1}
             ellipsizeMode="tail"
             maxFontSizeMultiplier={CHROME}
             style={[styles.title, !ready && styles.titlePad]}>
             {title}
-          </Text>
+          </ThemedText>
         )}
         {ready && (
-          <Pressable
-            accessibilityRole="button"
+          <IconButton
+            icon="share"
             accessibilityLabel="Share this room"
             onPress={() => router.push({ pathname: '/world/[id]/share', params: { id } })}
-            style={({ pressed }) => [styles.share, pressed && { backgroundColor: VT.color.surface.pressed }]}>
-            <SymbolView name="square.and.arrow.up" size={20} tintColor={VT.color.text} />
-          </Pressable>
+          />
         )}
       </View>
     </View>
@@ -239,48 +240,22 @@ export default function WorldScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: VT.color.bg },
-  fill: { flex: 1 },
   topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    minHeight: TOP_BAR,
     flexDirection: 'row',
     alignItems: 'center',
     gap: VT.space.sm,
     paddingHorizontal: VT.space.sm,
     backgroundColor: VT.color.scrim.hud,
   },
-  back: {
-    height: TOP_BAR,
-    minWidth: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: VT.space.xs,
-    paddingHorizontal: VT.space.xs,
-    borderRadius: VT.radius.sm,
-  },
-  backLabel: { color: VT.color.text, fontSize: VT.type.body.fontSize },
-  title: { flex: 1, color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
+  title: { flex: 1 },
   titlePad: { marginRight: 44 }, // balances Back when Share is hidden
-  share: { width: 44, height: TOP_BAR, alignItems: 'center', justifyContent: 'center', borderRadius: VT.radius.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.xl },
-  heading: { color: VT.color.text, fontSize: VT.type.heading.fontSize, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
-  body: {
-    color: VT.color.textMuted,
-    fontSize: VT.type.body.fontSize,
-    lineHeight: 24,
-    textAlign: 'center',
-    marginTop: VT.space.sm,
-  },
-  retry: {
-    marginTop: VT.space.xl,
-    height: 44,
-    paddingHorizontal: VT.space.xl,
-    borderRadius: VT.radius.md,
-    justifyContent: 'center',
-  },
-  retryLabel: { color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
+  loading: { gap: VT.space.md },
+  bar: { width: BAR_W },
   reconnect: { backgroundColor: VT.color.bg, gap: VT.space.sm },
-  reconnectLabel: { color: VT.color.text, fontSize: VT.type.label.fontSize, lineHeight: 20 },
 });
