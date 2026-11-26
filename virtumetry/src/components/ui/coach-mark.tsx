@@ -5,13 +5,12 @@ import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } 
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
-import { isCoachSeen, markCoachSeen, type CoachId } from '@/design/first-run';
+import { coachDismissed as done, isCoachSeen, markCoachSeen, type CoachId } from '@/design/first-run';
 import { ease, useReduceMotion } from '@/design/motion';
 import { color, elevation, motion, radius, space } from '@/design/tokens';
 
 type Lock = { active: CoachId | null; leaving: boolean };
 let lock: Lock = { active: null, leaving: false };
-const done = new Set<CoachId>(); // dismissed this session (SecureStore is unavailable on web)
 const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => {
   listeners.add(l);

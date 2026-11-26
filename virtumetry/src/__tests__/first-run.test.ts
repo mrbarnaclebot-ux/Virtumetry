@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import {
   __resetFirstRunForTest,
+  coachDismissed,
   consumeIntent,
   getOnboarded,
   getOnboardingSkipped,
@@ -76,5 +77,29 @@ describe('coach marks', () => {
     await Promise.resolve();
     for (const id of ['capture-prep', 'walk', 'measure']) expect(secure.__store.has(`vm.coach.${id}`)).toBe(false);
     expect(secure.__store.get('vm.onboarding.v1')).toBe('1');
+  });
+});
+
+describe('code review 06.1 fixes', () => {
+  it('WR-01: useOnboarded renders on the server (has a server snapshot)', () => {
+    const { renderToString } = require('react-dom/server') as typeof import('react-dom/server');
+    const React = require('react') as typeof import('react');
+    const Probe = () => React.createElement('span', null, String(useOnboarded()));
+    expect(() => renderToString(React.createElement(Probe))).not.toThrow();
+  });
+
+  it('WR-02: resetCoachMarks also clears coach marks dismissed this session', () => {
+    coachDismissed.add('capture-prep');
+    resetCoachMarks();
+    expect(coachDismissed.size).toBe(0);
+  });
+
+  it('IN-01: a failed keychain read fails open and is not cached', () => {
+    const SecureStore = jest.requireMock('expo-secure-store') as { getItem: (k: string) => string | null };
+    jest.spyOn(SecureStore, 'getItem').mockImplementationOnce(() => {
+      throw new Error('locked');
+    });
+    expect(getOnboarded()).toBe(true);
+    expect(getOnboarded()).toBe(false); // read again, fresh store
   });
 });

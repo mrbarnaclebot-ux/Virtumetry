@@ -10,14 +10,15 @@ const SKIPPED = 'vm.onboarding.skipped.v1';
 const COACH_IDS: CoachId[] = ['capture-prep', 'walk', 'measure'];
 const coachKey = (id: CoachId) => `vm.coach.${id}`;
 
-// Secure store is unavailable on web; flags then read as unset.
-const read = (k: string) => {
+// Secure store is unavailable on web; flags then read as unset. null = the read failed (e.g. locked keychain): don't cache it.
+const tryRead = (k: string): boolean | null => {
   try {
     return SecureStore.getItem(k) === '1';
   } catch {
-    return false;
+    return null;
   }
 };
+const read = (k: string) => tryRead(k) ?? false;
 const write = (k: string, v: boolean) => {
   try {
     SecureStore.setItem(k, v ? '1' : '0');
@@ -35,8 +36,8 @@ const subscribe = (l: () => void) => {
 
 export const getOnboarded = () => {
   if (Platform.OS === 'web') return true;
-  if (onboarded === null) onboarded = read(ONBOARDED);
-  return onboarded;
+  if (onboarded === null) onboarded = tryRead(ONBOARDED);
+  return onboarded ?? true; // a failed read fails open to the Library, and is retried next render
 };
 
 export const markOnboarded = (next?: 'scan') => {
@@ -59,7 +60,7 @@ export const getOnboardingSkipped = () => {
   return skipped;
 };
 
-export const useOnboarded = () => useSyncExternalStore(subscribe, getOnboarded);
+export const useOnboarded = () => useSyncExternalStore(subscribe, getOnboarded, getOnboarded);
 
 export const consumeIntent = () => {
   const i = intent;
@@ -67,10 +68,14 @@ export const consumeIntent = () => {
   return i;
 };
 
+/** Coach marks dismissed this session (SecureStore is unavailable on web). Cleared by resetCoachMarks. */
+export const coachDismissed = new Set<CoachId>();
+
 export const isCoachSeen = (id: CoachId) => read(coachKey(id));
 export const markCoachSeen = (id: CoachId) => write(coachKey(id), true);
 
 export const resetCoachMarks = () => {
+  coachDismissed.clear();
   for (const id of COACH_IDS) {
     try {
       SecureStore.deleteItemAsync(coachKey(id)).catch(() => {});

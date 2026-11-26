@@ -820,6 +820,9 @@ html, body { margin: 0; background: ${color.bg}; overscroll-behavior: none; }
 .vm-fill { transition: width ${motion.duration.progress}ms ${motion.css.linear}; }
 .vm-fade { transition: opacity ${motion.duration.base}ms, visibility 0s linear ${motion.duration.base}ms; }
 .vm-seg { transition: background-color ${motion.duration.base}ms ${ease}, color ${motion.duration.base}ms ${ease}; }
+/* 36-high pill inside the 44 bar: the hit area reaches the bar edges (44 pt target). */
+.vm-seg { position: relative; }
+.vm-seg::before { content: ''; position: absolute; inset: -4px 0; }
 .vm-panel { transition: opacity ${motion.duration.base}ms ${ease}, transform ${motion.duration.base}ms ${ease},
   visibility 0s linear ${motion.duration.base}ms; }
 .vm-panel[aria-hidden="false"] { transition-delay: 0s; }
