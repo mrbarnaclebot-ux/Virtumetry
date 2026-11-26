@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
  (executed 2026-11-25; awaiting owner UAT)
 - [x] **Phase 6: Live Echo-3 Provider** - One approved scan is processed by real Echo-3 exactly once, within budget, with safe retry
  (completed 2026-11-25)
-- [ ] **Phase 6.1: UI/UX Makeover** (INSERTED) - Brand design system on the owner's palette, every screen redesigned, onboarding, coach marks, toasts, motion and haptics, no zombie UI
+- [x] **Phase 6.1: UI/UX Makeover** (INSERTED) - Brand design system on the owner's palette, every screen redesigned, onboarding, coach marks, toasts, motion and haptics, no zombie UI (completed 2026-11-26)
 - [ ] **Phase 7: Native Build Readiness** - Apple membership bought, Swift compile-checked on macOS CI, first EAS dev build on the iPhone with push and crash reporting
 - [ ] **Phase 8: Native ARKit Capture & Sign in with Apple** - Owner consents, then scans a real room with the iPhone and it comes back as a walkable world
 - [ ] **Phase 9: Privacy & Retention Hardening** - Enforced retention and purge, plus the on-device upload-survival matrix
@@ -285,25 +285,25 @@ Plans:
 
 Plans:
 - Wave 1
-  - [ ] 06.1-01-PLAN.md — Wave 0 jest infra (Reanimated resolver), 3 approved deps, tokens/glyphs/fonts/haptics/motion/first-run + contrast test
+  - [x] 06.1-01-PLAN.md — Wave 0 jest infra (Reanimated resolver), 3 approved deps, tokens/glyphs/fonts/haptics/motion/first-run + contrast test
 - Wave 2
-  - [ ] 06.1-02-PLAN.md — dark-only theme unification, role-based ThemedText, nav theme, font loading + splash rule
-  - [ ] 06.1-03-PLAN.md — PIL brand renderer, icon/splash/adaptive/favicon, app.json brand config, starter asset cleanup
-  - [ ] 06.1-04-PLAN.md — VT alias, DOM viewer chrome redesign, in-viewer walk/measure coach marks, onHaptic
+  - [x] 06.1-02-PLAN.md — dark-only theme unification, role-based ThemedText, nav theme, font loading + splash rule
+  - [x] 06.1-03-PLAN.md — PIL brand renderer, icon/splash/adaptive/favicon, app.json brand config, starter asset cleanup
+  - [x] 06.1-04-PLAN.md — VT alias, DOM viewer chrome redesign, in-viewer walk/measure coach marks, onHaptic
 - Wave 3
-  - [ ] 06.1-05-PLAN.md — core primitives (Icon, Glyph, BrandMark, Button, IconButton, Screen, Surface, ListRow, StatusPill, TextField, SheetHeader, SegmentedControl)
+  - [x] 06.1-05-PLAN.md — core primitives (Icon, Glyph, BrandMark, Button, IconButton, Screen, Surface, ListRow, StatusPill, TextField, SheetHeader, SegmentedControl)
 - Wave 4
-  - [ ] 06.1-06-PLAN.md — toast system (FullWindowOverlay host, queue, a11y, haptics) + CoachMark
-  - [ ] 06.1-07-PLAN.md — state primitives (Banner, EmptyState/ErrorState, Skeleton, ProgressBar)
+  - [x] 06.1-06-PLAN.md — toast system (FullWindowOverlay host, queue, a11y, haptics) + CoachMark
+  - [x] 06.1-07-PLAN.md — state primitives (Banner, EmptyState/ErrorState, Skeleton, ProgressBar)
 - Wave 5
-  - [ ] 06.1-08-PLAN.md — onboarding (art, pager, route, guards), ToastProvider mount, Settings Replay intro, tabs
-  - [ ] 06.1-09-PLAN.md — Library redesign: honest states, banners, toasts, first-ready moment, onboarding intent
-  - [ ] 06.1-10-PLAN.md — sign-in + web share page / password gate redesign
-  - [ ] 06.1-11-PLAN.md — capture prep + scan HUD, capture-prep coach mark, capture haptics
-  - [ ] 06.1-12-PLAN.md — approval module, review/quote/upload steps, retry sheet
-  - [ ] 06.1-13-PLAN.md — world screen chrome + viewer coach/haptic wiring, share sheet
+  - [x] 06.1-08-PLAN.md — onboarding (art, pager, route, guards), ToastProvider mount, Settings Replay intro, tabs
+  - [x] 06.1-09-PLAN.md — Library redesign: honest states, banners, toasts, first-ready moment, onboarding intent
+  - [x] 06.1-10-PLAN.md — sign-in + web share page / password gate redesign
+  - [x] 06.1-11-PLAN.md — capture prep + scan HUD, capture-prep coach mark, capture haptics
+  - [x] 06.1-12-PLAN.md — approval module, review/quote/upload steps, retry sheet
+  - [x] 06.1-13-PLAN.md — world screen chrome + viewer coach/haptic wiring, share sheet
 - Wave 6
-  - [ ] 06.1-14-PLAN.md — hex/dash/no-dead-control sweeps, phase gate, web export check, Phase 7 deferrals
+  - [x] 06.1-14-PLAN.md — hex/dash/no-dead-control sweeps, phase gate, web export check, Phase 7 deferrals
 **UI hint**: yes
 
 ### Phase 7: Native Build Readiness
@@ -366,7 +366,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. $0 Capture-to-World Loop | 9/9 | Complete   | 2026-11-24 |
 | 5. Viewer, Floor Plan, Measure & Share | 8/8 | Awaiting UAT | - |
 | 6. Live Echo-3 Provider | 8/8 | Complete   | 2026-11-25 |
-| 6.1. UI/UX Makeover (INSERTED) | 0/TBD | Not started | - |
+| 6.1. UI/UX Makeover (INSERTED) | 14/14 | Complete   | 2026-11-26 |
 | 7. Native Build Readiness | 0/TBD | Not started | - |
 | 8. Native ARKit Capture & Sign in with Apple | 0/TBD | Not started | - |
 | 9. Privacy & Retention Hardening | 0/TBD | Not started | - |
