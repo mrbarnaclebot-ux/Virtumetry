@@ -33,11 +33,11 @@ export function Skeleton({ width, height, radius = radii.sm, testID }: Props) {
   );
 }
 
-/** Library row placeholder: 64 thumb + two bars. The caller's container carries the a11y label + busy state. */
+/** Library row placeholder: 88x66 (4:3) thumb + two bars. The caller's container carries the a11y label + busy state. */
 export function SkeletonRow({ testID }: { testID?: string }) {
   return (
     <View testID={testID} style={styles.row} accessible={false}>
-      <Skeleton width={64} height={64} radius={radii.sm} />
+      <Skeleton width={88} height={66} radius={radii.sm} />
       <View style={styles.bars}>
         <Skeleton width="70%" height={16} />
         <Skeleton width="40%" height={14} />

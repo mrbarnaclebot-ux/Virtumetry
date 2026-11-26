@@ -76,7 +76,7 @@ describe('Skeleton', () => {
     expect(screen.getByTestId('s', HIDDEN).props.accessible).toBe(false);
   });
 
-  it('SkeletonRow: 64 thumb + two bars', async () => {
+  it('SkeletonRow: 4:3 88x66 thumb + two bars', async () => {
     await render(<SkeletonRow testID="row" />);
     const blocks: { width: unknown; height: unknown }[] = [];
     const walk = (n: unknown) => {
@@ -89,7 +89,7 @@ describe('Skeleton', () => {
     };
     walk(screen.toJSON());
     expect(blocks).toEqual([
-      { width: 64, height: 64 },
+      { width: 88, height: 66 },
       { width: '70%', height: 16 },
       { width: '40%', height: 14 },
     ]);
@@ -174,7 +174,7 @@ describe('EmptyState', () => {
     expect(screen.getByTestId('art')).toBeTruthy();
     expect(screen.getByRole('header', { name: 'No scans yet' })).toBeTruthy();
     expect(screen.getByText('Your rooms show up here.')).toBeTruthy();
-    for (const n of ['01', '02', '03']) expect(screen.getByText(n)).toBeTruthy();
+    for (const n of ['1.', '2.', '3.']) expect(screen.getByText(n)).toBeTruthy();
     for (const s of steps) expect(screen.getByText(s)).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Scan a room' }));
     expect(onPress).toHaveBeenCalledTimes(1);

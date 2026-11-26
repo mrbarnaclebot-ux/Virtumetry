@@ -38,8 +38,8 @@ export function EmptyState({ art, icon, title, body, steps, action, compact = fa
         <View style={styles.steps}>
           {steps.map((step, i) => (
             <View key={step} style={styles.step}>
-              <ThemedText type="eyebrow" tone="muted" style={styles.numeral}>
-                {String(i + 1).padStart(2, '0')}
+              <ThemedText type="label" tone="muted" style={styles.numeral}>
+                {`${i + 1}.`}
               </ThemedText>
               <ThemedText type="body" style={styles.stepText}>
                 {step}
