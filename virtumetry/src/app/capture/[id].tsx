@@ -1,9 +1,8 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCaptureConfig } from '@/capture/capture-config';
@@ -13,7 +12,6 @@ import { LABEL } from '@/capture/readiness';
 import { discardLocalScan, getLocalScan, updateLocalScan, useLocalScan } from '@/capture/store';
 import {
   Layout,
-  Neutral,
   overBudget,
   Primary,
   QUOTE_ERROR,
@@ -25,13 +23,20 @@ import {
 import { ReadinessPill } from '@/components/readiness-pill';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { Group } from '@/components/ui/list-row';
+import { ProgressBar } from '@/components/ui/progress-bar';
+import { StatusPill } from '@/components/ui/status-pill';
+import { toast } from '@/components/ui/toast';
+import { haptic } from '@/design/haptics';
+import { color, radius, space } from '@/design/tokens';
 import { toDisplayState, type LocalScan } from '@/library/display-state';
 import { ApiError, createScan, getQuote } from '@/lib/api';
 import { kickUploadManager, useUploadProgress } from '@/upload/manager';
 
-// D-14..D-21: one route, three steps (review -> quote -> upload), system theme (UI-SPEC §5-§7).
+// D-14..D-21: one route, three steps (review -> quote -> upload) (06.1-UI-SPEC §7.6-§7.8).
 type Step = 'review' | 'quote' | 'upload';
 
 const close = () => router.back();
@@ -73,12 +78,12 @@ export default function CaptureScreen() {
   );
 }
 
-// --- Review (D-14/D-15, UI-SPEC §5) ---
+// --- Review (D-14/D-15, §7.6) ---
 
 function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
-  const theme = useTheme();
   const cfg = useCaptureConfig();
   const issues = scan.precheckIssues ?? [];
+  const firstIssue = issues[0] && checkReason(issues[0]);
   const level = scan.readiness ?? 'idle';
   const readiness = {
     level,
@@ -96,8 +101,9 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
         onPress: () => {
           try {
             discardLocalScan(scan.id); // the missing-scan effect closes the screen
+            toast.success('Scan discarded');
           } catch {
-            Alert.alert("Couldn't discard", 'Try again. If it keeps failing, restart the app.', [{ text: 'Back to Review' }]);
+            toast.error("Couldn't discard. Try again.");
           }
         },
       },
@@ -105,13 +111,7 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
 
   const top = (
     <View style={styles.topBar}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Library"
-        onPress={close}
-        style={({ pressed }) => [styles.topButton, pressed && styles.pressed]}>
-        <ThemedText maxFontSizeMultiplier={1.6}>Library</ThemedText>
-      </Pressable>
+      <Button variant="ghost" size="md" icon="back" label="Library" onPress={close} style={styles.topButton} />
     </View>
   );
 
@@ -121,33 +121,22 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
       title="Review scan"
       actions={
         <>
-          <Primary
-            label="Upload"
-            disabled={issues.length > 0}
-            hint={issues[0] && checkReason(issues[0])}
-            onPress={onUpload}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Discard"
-            onPress={discard}
-            style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
-            <ThemedText type="smallBold" themeColor="destructive" maxFontSizeMultiplier={1.6}>
-              Discard
+          <Primary label="Upload" disabled={issues.length > 0} hint={firstIssue} onPress={onUpload} />
+          {firstIssue && (
+            <ThemedText type="caption" tone="muted" style={styles.center}>
+              {firstIssue}
             </ThemedText>
-          </Pressable>
+          )}
+          <Button variant="destructive" label="Discard" onPress={discard} />
         </>
       }>
       <View style={styles.saved}>
-        <SymbolView name="iphone" size={14} tintColor={theme.textSecondary} />
-        <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6}>
-          Saved on phone
-        </ThemedText>
+        <StatusPill kind="saved_on_phone" label="Saved on phone" />
       </View>
 
       <ScrollView horizontal accessible={false} style={styles.section} contentContainerStyle={styles.strip}>
         {sample(scan.frameCount).map((i) => (
-          <View key={i} accessible={false} style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
+          <View key={i} accessible={false} style={styles.thumb}>
             <Image
               source={{ uri: `${scan.dir}/frames/${String(i).padStart(6, '0')}.jpg` }}
               style={styles.thumb}
@@ -157,43 +146,46 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
         ))}
       </ScrollView>
 
-      <ThemedView type="backgroundElement" style={[styles.card, styles.section, styles.rows]}>
-        <StatRow label="Frames" value={String(scan.frameCount)} />
-        <StatRow label="Duration" value={mss(scan.durationS)} />
-        <StatRow label="Estimated cost" value={formatCost(costFor(scan.frameCount, cfg.pricing))} />
-      </ThemedView>
+      <View style={styles.section}>
+        <Group>
+          <StatRow label="Frames" value={String(scan.frameCount)} />
+          <StatRow label="Duration" value={mss(scan.durationS)} />
+          <StatRow label="Estimated cost" value={formatCost(costFor(scan.frameCount, cfg.pricing))} />
+        </Group>
+      </View>
 
-      <ThemedView type="backgroundElement" style={[styles.card, styles.section]}>
-        <ReadinessPill result={readiness} scheme="system" />
-        <View style={[styles.hairline, { backgroundColor: theme.backgroundSelected }]} />
-        {issues.length === 0 ? (
-          <View accessible accessibilityLabel="Checks passed" style={styles.check}>
-            <SymbolView name="checkmark.circle.fill" size={20} tintColor={theme.accent} />
-            <ThemedText type="smallBold" maxFontSizeMultiplier={1.6}>
-              Checks passed
-            </ThemedText>
+      <View style={styles.section}>
+        <Group>
+          <View style={styles.cell}>
+            <ReadinessPill result={readiness} scheme="system" />
           </View>
-        ) : (
-          <View style={styles.rows}>
-            <ThemedText type="smallBold" themeColor="destructive" maxFontSizeMultiplier={1.6}>
-              {"Didn't pass checks"}
-            </ThemedText>
-            {issues.map((issue) => (
-              <View key={issue.code} accessible accessibilityLabel={`Failed check: ${checkReason(issue)}`} style={styles.check}>
-                <SymbolView name="xmark.circle.fill" size={20} tintColor={theme.destructive} />
-                <ThemedText type="small" maxFontSizeMultiplier={1.6} style={styles.flex}>
-                  {checkReason(issue)}
-                </ThemedText>
-              </View>
-            ))}
-          </View>
-        )}
-      </ThemedView>
+          {issues.length === 0 ? (
+            <View accessible accessibilityLabel="Checks passed" style={[styles.cell, shared.check]}>
+              <Icon name="ready" color={color.success} />
+              <ThemedText type="bodyStrong">Checks passed</ThemedText>
+            </View>
+          ) : (
+            <View style={[styles.cell, styles.rows]}>
+              <ThemedText type="bodyStrong" tone="danger">
+                {"Didn't pass checks"}
+              </ThemedText>
+              {issues.map((issue) => (
+                <View key={issue.code} accessible accessibilityLabel={`Failed check: ${checkReason(issue)}`} style={shared.check}>
+                  <Icon name="failedCheck" color={color.danger} />
+                  <ThemedText type="label" style={styles.flex}>
+                    {checkReason(issue)}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          )}
+        </Group>
+      </View>
     </Layout>
   );
 }
 
-// --- Quote (D-18/D-19, UI-SPEC §6) ---
+// --- Quote (D-18/D-19, §7.7) ---
 
 const APPROVE_ERROR = "Couldn't start the upload. Check your connection and try again.";
 
@@ -227,7 +219,11 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
       }
       kickUploadManager();
     },
-    onSuccess: onApproved,
+    onSuccess: () => {
+      haptic.success();
+      onApproved();
+    },
+    onError: () => haptic.error(),
   });
 
   const over = overBudget(data, 'scan');
@@ -246,37 +242,28 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
             hint={over ?? undefined}
             onPress={() => data && approve.mutate(data.credits)}
           />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={onBack}
-            style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
-            <ThemedText maxFontSizeMultiplier={1.6}>Back</ThemedText>
-          </Pressable>
+          <Button variant="ghost" label="Back" onPress={onBack} />
         </>
       }>
       <QuoteCard quote={quote} noun="scan" />
       {approve.isError && (
-        <ThemedText
-          type="small"
-          themeColor="destructive"
-          accessibilityLiveRegion="polite"
-          maxFontSizeMultiplier={1.6}
-          style={styles.section}>
-          {APPROVE_ERROR}
-        </ThemedText>
+        <View accessibilityLiveRegion="polite" style={[shared.check, styles.section]}>
+          <Icon name="warning" color={color.danger} />
+          <ThemedText type="label" tone="danger" style={styles.flex}>
+            {APPROVE_ERROR}
+          </ThemedText>
+        </View>
       )}
-      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.section}>
+      <ThemedText type="caption" tone="muted" style={styles.section}>
         {"Nothing is charged until you approve. If the scan fails checks, you're not charged."}
       </ThemedText>
     </Layout>
   );
 }
 
-// --- Upload (D-17/D-21, UI-SPEC §7) ---
+// --- Upload (D-17/D-21, §7.8) ---
 
 function Upload({ scan }: { scan: LocalScan }) {
-  const theme = useTheme();
   const live = useUploadProgress(scan.id) ?? scan.progress;
   const state = scan.uploadState;
   const blocked = state === 'blocked';
@@ -284,66 +271,61 @@ function Upload({ scan }: { scan: LocalScan }) {
   const failedLine = failed ? toDisplayState({ ...scan, local: true }, new Date()).statusLine : null;
   useAnnounce(blocked ? "Didn't pass checks" : failedLine);
 
-  const actions = <Neutral label="Back to Library" onPress={close} />;
+  const actions = <Button variant="secondary" label="Back to Library" onPress={close} />;
 
   if (blocked || failed) {
     return (
       <Layout title="Uploading" actions={actions}>
         <View accessibilityLiveRegion="polite" style={styles.blocked}>
-          <View accessible={false}>
-            <SymbolView name="xmark.circle.fill" size={48} tintColor={theme.destructive} />
-          </View>
-          <ThemedText type="subtitle" accessibilityRole="header" maxFontSizeMultiplier={1.6} style={styles.blockedHeading}>
-            {blocked ? "Didn't pass checks" : failedLine}
-          </ThemedText>
-          {blocked && (
-            <ThemedText maxFontSizeMultiplier={1.6} style={[styles.center, styles.gap]}>
-              {serverReason(scan.failureCode ?? null)}
+          <ErrorState
+            tone="danger"
+            icon="failedCheck"
+            title={blocked ? "Didn't pass checks" : (failedLine ?? '')}
+            body={blocked ? serverReason(scan.failureCode ?? null) : ''}>
+            <ThemedText type="caption" tone="muted">
+              Not charged
             </ThemedText>
-          )}
-          <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.gap}>
-            Not charged
-          </ThemedText>
+          </ErrorState>
         </View>
       </Layout>
     );
   }
 
   const done = state === 'done';
+  const paused = state === 'paused';
   const pct = live && live.total > 0 ? Math.round((live.uploaded / live.total) * 100) : null;
   const status = done
     ? 'Uploaded · Processing started'
-    : state === 'paused'
+    : paused
       ? 'Upload paused · Waiting for connection'
       : pct != null
         ? `Uploading · ${pct}%`
         : 'Uploading…';
-  const fill = done ? 100 : pct;
+  // Paused with no known count keeps an empty track rather than a moving bar.
+  const value = done ? 100 : pct ?? (paused ? 0 : null);
+  const lead: { icon: IconName; tint: string } = done
+    ? { icon: 'ready', tint: color.success }
+    : paused
+      ? { icon: 'offline', tint: color.textMuted }
+      : { icon: 'uploading', tint: color.textMuted };
 
   return (
     <Layout title="Uploading" actions={actions}>
       <View style={styles.section}>
-        <ThemedText
-          type="smallBold"
-          themeColor={state === 'paused' ? 'textSecondary' : 'text'}
-          maxFontSizeMultiplier={1.6}
-          style={styles.tabular}>
-          {status}
-        </ThemedText>
-        <View
-          accessible
-          accessibilityRole="progressbar"
-          accessibilityValue={{ min: 0, max: 100, now: fill ?? 0 }}
-          style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
-          {fill != null && <View style={[styles.fill, { width: `${fill}%`, backgroundColor: theme.accent }]} />}
+        <View style={shared.check}>
+          <Icon name={lead.icon} color={lead.tint} hierarchical />
+          <ThemedText type="bodyStrong" tone={paused ? 'muted' : 'text'} style={[styles.flex, shared.tabular]}>
+            {status}
+          </ThemedText>
         </View>
+        <ProgressBar testID="upload-progress" value={value} height={6} tone={done ? 'success' : 'accent'} style={styles.bar} />
         {live && !done && (
-          <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={[styles.gap, styles.tabular]}>
+          <ThemedText type="readout" tone="muted" style={styles.files}>
             {`${live.uploaded} of ${live.total} files`}
           </ThemedText>
         )}
       </View>
-      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.section}>
+      <ThemedText type="body" tone="muted" style={styles.section}>
         {done
           ? "You'll see progress in your library."
           : 'You can close this screen. The upload picks up where it left off when you open the app again.'}
@@ -356,17 +338,16 @@ function Upload({ scan }: { scan: LocalScan }) {
 const styles = {
   ...shared,
   ...StyleSheet.create({
-    topBar: { height: 44, justifyContent: 'center', paddingHorizontal: Spacing.three },
-    topButton: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
-    saved: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, marginTop: Spacing.two },
-    strip: { gap: Spacing.two },
-    thumb: { width: 64, height: 64, borderRadius: 8, overflow: 'hidden' },
-    rows: { gap: Spacing.two },
-    hairline: { height: StyleSheet.hairlineWidth, marginTop: Spacing.two, marginBottom: Spacing.three },
-    track: { height: 4, borderRadius: 2, marginTop: Spacing.one, overflow: 'hidden' },
-    fill: { height: 4, borderRadius: 2 },
-    blocked: { alignItems: 'center', marginTop: Spacing.five },
-    blockedHeading: { marginTop: Spacing.three, textAlign: 'center' },
+    topBar: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm },
+    topButton: { alignSelf: 'flex-start' },
+    saved: { marginTop: space.sm },
+    strip: { gap: space.sm },
+    thumb: { width: 64, height: 64, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: color.surface.raised },
+    cell: { paddingHorizontal: space.lg, paddingVertical: space.md },
+    rows: { gap: space.sm },
+    bar: { marginTop: space.md },
+    files: { marginTop: space.sm },
+    blocked: { marginTop: space.xxxl },
     center: { textAlign: 'center' },
   }),
 };

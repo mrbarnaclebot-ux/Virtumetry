@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useNetworkState } from 'expo-network';
 
 import CaptureScreen from '@/app/capture/[id]';
 import { __setLocalScansForTest, getLocalScan, updateLocalScan } from '@/capture/store';
+import { haptic } from '@/design/haptics';
 import type { LocalScan } from '@/library/display-state';
 import type { Quote } from '@/lib/api';
 import { kickUploadManager, useUploadProgress } from '@/upload/manager';
@@ -12,6 +14,7 @@ jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV:
 jest.mock('@/lib/auth-client', () => ({ authClient: { getCookie: jest.fn(async () => 'c=1') } }));
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
 jest.mock('@/upload/manager', () => ({ kickUploadManager: jest.fn(), useUploadProgress: jest.fn() }));
+jest.mock('expo-network', () => ({ useNetworkState: jest.fn() }));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() },
   useLocalSearchParams: jest.fn(),
@@ -51,6 +54,7 @@ beforeEach(() => {
   });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   (useUploadProgress as jest.Mock).mockReturnValue(undefined);
+  (useNetworkState as jest.Mock).mockReturnValue({ isConnected: true, isInternetReachable: true });
 });
 
 async function renderStep(step: 'quote' | 'upload', s: LocalScan = scan()) {
@@ -70,13 +74,19 @@ describe('quote step', () => {
   it('Approve is disabled while the quote loads', async () => {
     quoteResponse = () => new Promise(() => {});
     await renderStep('quote');
-    expect(screen.getByText('Getting quote…')).toBeTruthy();
+    // 06.1 §7.7: skeleton with an a11y label, no visible text.
+    expect(screen.getByLabelText('Getting quote…')).toBeTruthy();
+    expect(screen.queryByText('Getting quote…')).toBeNull();
     expect(approve()).toBeDisabled();
   });
 
   it('within budget: shows the quote; only the Approve tap creates the scan and starts the upload', async () => {
+    const success = jest.spyOn(haptic, 'success');
     await renderStep('quote');
     await screen.findByText('~930 credits');
+    expect(screen.getByText('This scan will use')).toBeTruthy();
+    expect(screen.getByText('About $9.30')).toBeTruthy();
+    expect(screen.queryByText(/≈/)).toBeNull();
     expect(screen.getByText('4,070 credits left today')).toBeTruthy();
     expect(fetchMock.mock.calls[0][0]).toContain('/v1/quote?frames=30');
     expect(approve()).toBeEnabled();
@@ -91,6 +101,7 @@ describe('quote step', () => {
     expect(JSON.parse(posts[0][1].body).approved_max_credits).toBe(930);
     expect(getLocalScan('s1')).toMatchObject({ uploadState: 'uploading', serverWorldId: 'w1', approvedMaxCredits: 930 });
     expect(await screen.findByText('Uploading')).toBeTruthy();
+    expect(success).toHaveBeenCalledTimes(1);
   });
 
   it('over the daily budget: Approve stays disabled with the reason', async () => {
@@ -103,6 +114,7 @@ describe('quote step', () => {
   });
 
   it('a refused create (4xx) puts the scan back to saved and says so', async () => {
+    const error = jest.spyOn(haptic, 'error');
     fetchMock.mockImplementation(async (url: string) =>
       url.includes('/v1/quote') ? ok(QUOTE) : { ok: false, status: 429, json: async () => ({}) },
     );
@@ -112,6 +124,7 @@ describe('quote step', () => {
     await screen.findByText("Couldn't start the upload. Check your connection and try again.");
     expect(getLocalScan('s1')?.uploadState).toBe('saved');
     expect(kickUploadManager).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalled();
   });
 
   it('a refused inline create never reverts a scan the manager already created (iter-2 WR-02)', async () => {
@@ -150,6 +163,17 @@ describe('quote step', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByText('~930 credits');
   });
+
+  it('offline with no quote says so and offers Try again', async () => {
+    (useNetworkState as jest.Mock).mockReturnValue({ isConnected: false, isInternetReachable: false });
+    quoteResponse = async () => {
+      throw new TypeError('Network request failed');
+    };
+    await renderStep('quote');
+    await screen.findByText("You're offline. Connect to get a quote.");
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(approve()).toBeDisabled();
+  });
 });
 
 describe('upload step', () => {
@@ -158,7 +182,7 @@ describe('upload step', () => {
     await renderStep('upload', scan({ uploadState: 'uploading', serverWorldId: 'w1' }));
     expect(screen.getByText('Uploading · 38%')).toBeTruthy();
     expect(screen.getByText('12 of 32 files')).toBeTruthy();
-    expect(screen.getByRole('progressbar').props.accessibilityValue).toMatchObject({ now: 38 });
+    expect(screen.getByTestId('upload-progress').props.accessibilityValue).toMatchObject({ now: 38 });
     expect(
       screen.getByText('You can close this screen. The upload picks up where it left off when you open the app again.'),
     ).toBeTruthy();
@@ -168,6 +192,8 @@ describe('upload step', () => {
   it('shows Uploading… before the first reconcile', async () => {
     await renderStep('upload', scan({ uploadState: 'approved' }));
     expect(screen.getByText('Uploading…')).toBeTruthy();
+    // Unknown percent: indeterminate bar, never an invented number.
+    expect(screen.getByTestId('upload-progress').props.accessibilityValue.now).toBeUndefined();
   });
 
   it('paused waits for a connection and keeps the stored progress', async () => {
@@ -180,6 +206,7 @@ describe('upload step', () => {
     await renderStep('upload', scan({ uploadState: 'done' }));
     expect(screen.getByText('Uploaded · Processing started')).toBeTruthy();
     expect(screen.getByText("You'll see progress in your library.")).toBeTruthy();
+    expect(screen.getByTestId('upload-progress').props.accessibilityValue).toMatchObject({ now: 100 });
   });
 
   it('blocked by checks shows the mapped reason and Not charged', async () => {
@@ -192,5 +219,7 @@ describe('upload step', () => {
   it('other failures use the library failed copy', async () => {
     await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'UPLOAD_STALE' }));
     expect(screen.getByText("Failed · Upload didn't finish")).toBeTruthy();
+    expect(screen.getByText('Not charged')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to Library' })).toBeTruthy();
   });
 });

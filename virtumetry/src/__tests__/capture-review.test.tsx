@@ -4,7 +4,9 @@ import { router } from 'expo-router';
 import { Alert, type AlertButton } from 'react-native';
 
 import CaptureScreen from '@/app/capture/[id]';
+import * as store from '@/capture/store';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
+import { __resetToastsForTest, toast } from '@/components/ui/toast';
 import type { LocalScan } from '@/library/display-state';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -27,14 +29,21 @@ const seedScan = (over: Partial<LocalScan> = {}): LocalScan => ({
   imageW: 640,
   imageH: 480,
   readiness: 'red',
-  readinessReason: 'Keep going — 120 more frames',
+  readinessReason: 'Keep going: 120 more frames',
   precheckIssues: [],
   uploadState: 'saved',
   ...over,
 });
 
+let toastSuccess: jest.SpyInstance;
+let toastError: jest.SpyInstance;
+
 beforeEach(() => {
+  jest.restoreAllMocks();
   jest.clearAllMocks();
+  __resetToastsForTest();
+  toastSuccess = jest.spyOn(toast, 'success').mockImplementation(() => {});
+  toastError = jest.spyOn(toast, 'error').mockImplementation(() => {});
   // capture config: offline -> bundled defaults
   globalThis.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })) as unknown as typeof fetch;
 });
@@ -57,7 +66,7 @@ it('shows frames, duration, cost, readiness and passing checks with Upload enabl
   expect(screen.getByText('0:08')).toBeTruthy();
   expect(screen.getByText('$9.30 · 930 credits')).toBeTruthy();
   expect(screen.getByText('Keep scanning')).toBeTruthy();
-  expect(screen.getByText('Keep going — 120 more frames')).toBeTruthy();
+  expect(screen.getByText('Keep going: 120 more frames')).toBeTruthy();
   expect(screen.getByText('Checks passed')).toBeTruthy();
   const upload = screen.getByRole('button', { name: 'Upload' });
   expect(upload).toBeEnabled();
@@ -69,10 +78,11 @@ it('a failing check disables Upload and explains why', async () => {
   const reason = 'Too few photos (8 of 20 needed). Scan again and keep walking.';
   await renderReview(seedScan({ frameCount: 8, precheckIssues: [{ code: 'FRAME_COUNT_OUT_OF_RANGE', n: 8, min: 20, max: 5000 }] }));
   expect(screen.getByText("Didn't pass checks")).toBeTruthy();
-  expect(screen.getByText(reason)).toBeTruthy();
   const upload = screen.getByRole('button', { name: 'Upload' });
   expect(upload).toBeDisabled();
   expect(upload.props.accessibilityHint).toBe(reason);
+  // Sighted users see why too: once in the checks list, once under the button.
+  expect(screen.getAllByText(reason)).toHaveLength(2);
 });
 
 it('Discard confirms, then deletes the scan and closes', async () => {
@@ -89,4 +99,20 @@ it('Discard confirms, then deletes the scan and closes', async () => {
   await act(async () => buttons.find((b) => b.text === 'Discard')!.onPress!());
   expect(getLocalScans()).toHaveLength(0);
   await waitFor(() => expect(router.back).toHaveBeenCalled());
+  expect(toastSuccess).toHaveBeenCalledWith('Scan discarded');
+});
+
+it('a failed discard keeps the scan and says so in a toast, not a second Alert', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  jest.spyOn(store, 'discardLocalScan').mockImplementation(() => {
+    throw new Error('disk');
+  });
+  await renderReview(seedScan());
+  await fireEvent.press(screen.getByRole('button', { name: 'Discard' }));
+  const buttons = alert.mock.calls[0][2] as AlertButton[];
+  await act(async () => buttons.find((b) => b.text === 'Discard')!.onPress!());
+  expect(toastError).toHaveBeenCalledWith("Couldn't discard. Try again.");
+  expect(toastSuccess).not.toHaveBeenCalled();
+  expect(alert).toHaveBeenCalledTimes(1);
+  expect(getLocalScans()).toHaveLength(1);
 });
