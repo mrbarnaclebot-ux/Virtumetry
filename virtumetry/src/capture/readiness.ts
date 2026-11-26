@@ -23,14 +23,14 @@ export function readiness(frames: KeyframeEvent[], sectorsSeen: number, cfg: Rea
     [
       'tracking',
       atMost(share((f) => f.tracking !== 'normal'), cfg.maxTrackingGapShareGreen, cfg.maxTrackingGapShareAmber),
-      'Tracking dropped — move slower and keep the lights on',
+      'Tracking dropped. Move slower and keep the lights on',
     ],
     [
       'blur',
       atMost(share((f) => (f.blurPx ?? 0) > BLUR_PX_THRESHOLD), cfg.maxBlurShareGreen, cfg.maxBlurShareAmber),
-      'Slow down — too many blurry photos',
+      'Too many blurry photos. Slow down',
     ],
-    ['frames', atLeast(n, cfg.minFramesGreen, cfg.minFramesAmber), `Keep going — ${missing} more frame${missing === 1 ? '' : 's'}`],
+    ['frames', atLeast(n, cfg.minFramesGreen, cfg.minFramesAmber), `Keep going: ${missing} more frame${missing === 1 ? '' : 's'}`],
     ['coverage', atLeast(sectorsSeen, cfg.minSectorsGreen, cfg.minSectorsAmber), 'Look around the rest of the room'],
   ];
 

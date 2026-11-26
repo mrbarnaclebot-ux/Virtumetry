@@ -44,9 +44,9 @@ describe('readiness (D-07)', () => {
       level: 'red',
       signal: 'frames',
       label: 'Keep scanning',
-      reason: 'Keep going — 17 more frames',
+      reason: 'Keep going: 17 more frames',
     });
-    expect(readiness(frames(24), 1, DEV).reason).toBe('Keep going — 1 more frame');
+    expect(readiness(frames(24), 1, DEV).reason).toBe('Keep going: 1 more frame');
     expect(readiness(frames(20), 1, DEV)).toMatchObject({ level: 'amber', label: 'Almost there' });
   });
 
@@ -55,18 +55,18 @@ describe('readiness (D-07)', () => {
     expect(r).toMatchObject({
       level: 'red',
       signal: 'tracking',
-      reason: 'Tracking dropped — move slower and keep the lights on',
+      reason: 'Tracking dropped. Move slower and keep the lights on',
     });
   });
 
   it('puts blur ahead of frames when tracking is fine', () => {
     const r = readiness(frames(10, (k) => (k < 3 ? { blurPx: 80 } : {})), 1, DEV);
-    expect(r).toMatchObject({ level: 'red', signal: 'blur', reason: 'Slow down — too many blurry photos' });
+    expect(r).toMatchObject({ level: 'red', signal: 'blur', reason: 'Too many blurry photos. Slow down' });
   });
 
   it('puts frames ahead of coverage under production defaults', () => {
     const r = readiness(frames(30), 1, DEFAULT_CAPTURE_CONFIG.readiness);
-    expect(r).toMatchObject({ level: 'red', signal: 'frames', reason: 'Keep going — 120 more frames' });
+    expect(r).toMatchObject({ level: 'red', signal: 'frames', reason: 'Keep going: 120 more frames' });
   });
 
   it('names coverage when only coverage is short', () => {
