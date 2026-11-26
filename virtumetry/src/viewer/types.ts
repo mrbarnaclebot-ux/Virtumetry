@@ -30,5 +30,11 @@ export type ViewerProps = {
   onReady?: () => Promise<void>;
   onError?: (e: { code: string }) => Promise<void>;
   onPose?: (p: Pose) => Promise<void>;
+  /** Coach ids already seen (app: SecureStore). Read once on mount; undefined = web, use localStorage. */
+  coachSeen?: string[];
+  /** Native action: persist a viewer coach mark as seen ('walk' | 'measure'). */
+  onCoachSeen?: (id: string) => Promise<void>;
+  /** Native action: play a haptic (mode change = selection, measure point / teleport = light). Web passes none. */
+  onHaptic?: (kind: 'selection' | 'light' | 'success') => Promise<void>;
   dom?: import('expo/dom').DOMProps;
 };

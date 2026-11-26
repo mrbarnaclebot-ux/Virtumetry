@@ -39,7 +39,7 @@ function Message({
           accessibilityRole="button"
           accessibilityLabel={retryLabel}
           onPress={onRetry}
-          style={({ pressed }) => [styles.retry, { backgroundColor: pressed ? VT.surfaceSelected : VT.surface }]}>
+          style={({ pressed }) => [styles.retry, { backgroundColor: pressed ? VT.color.surface.pressed : VT.color.surface.raised }]}>
           <Text style={styles.retryLabel} maxFontSizeMultiplier={CHROME}>
             {retryLabel}
           </Text>
@@ -52,7 +52,7 @@ function Message({
 function Reconnecting() {
   return (
     <View style={[StyleSheet.absoluteFill, styles.center, styles.reconnect]} accessibilityLiveRegion="polite">
-      <ActivityIndicator size="large" color={VT.accent} />
+      <ActivityIndicator size="large" color={VT.color.primary} />
       <Text style={styles.reconnectLabel} maxFontSizeMultiplier={CHROME}>
         Reconnecting viewer…
       </Text>
@@ -129,7 +129,7 @@ export default function WorldScreen() {
 
   let content;
   if (isPending) {
-    content = <ActivityIndicator testID="world-loading" size="large" color={VT.accent} style={styles.fill} />;
+    content = <ActivityIndicator testID="world-loading" size="large" color={VT.color.primary} style={styles.fill} />;
   } else if (error) {
     content =
       error instanceof ApiError && error.status === 404 ? (
@@ -190,7 +190,7 @@ export default function WorldScreen() {
         ) : (
           !domUp && (
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.center]}>
-              <ActivityIndicator size="large" color={VT.accent} />
+              <ActivityIndicator size="large" color={VT.color.primary} />
             </View>
           )
         )}
@@ -207,8 +207,8 @@ export default function WorldScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back"
           onPress={() => router.back()}
-          style={({ pressed }) => [styles.back, pressed && { backgroundColor: VT.surfaceSelected }]}>
-          <SymbolView name="chevron.left" size={20} tintColor={VT.text} />
+          style={({ pressed }) => [styles.back, pressed && { backgroundColor: VT.color.surface.pressed }]}>
+          <SymbolView name="chevron.left" size={20} tintColor={VT.color.text} />
           <Text style={styles.backLabel} maxFontSizeMultiplier={CHROME}>
             Back
           </Text>
@@ -228,8 +228,8 @@ export default function WorldScreen() {
             accessibilityRole="button"
             accessibilityLabel="Share this room"
             onPress={() => router.push({ pathname: '/world/[id]/share', params: { id } })}
-            style={({ pressed }) => [styles.share, pressed && { backgroundColor: VT.surfaceSelected }]}>
-            <SymbolView name="square.and.arrow.up" size={20} tintColor={VT.text} />
+            style={({ pressed }) => [styles.share, pressed && { backgroundColor: VT.color.surface.pressed }]}>
+            <SymbolView name="square.and.arrow.up" size={20} tintColor={VT.color.text} />
           </Pressable>
         )}
       </View>
@@ -238,7 +238,7 @@ export default function WorldScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: VT.bg },
+  root: { flex: 1, backgroundColor: VT.color.bg },
   fill: { flex: 1 },
   topBar: {
     position: 'absolute',
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: VT.space.sm,
     paddingHorizontal: VT.space.sm,
-    backgroundColor: VT.scrim,
+    backgroundColor: VT.color.scrim.hud,
   },
   back: {
     height: TOP_BAR,
@@ -260,27 +260,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: VT.space.xs,
     borderRadius: VT.radius.sm,
   },
-  backLabel: { color: VT.text, fontSize: VT.font.body },
-  title: { flex: 1, color: VT.text, fontSize: VT.font.body, fontWeight: '600' },
+  backLabel: { color: VT.color.text, fontSize: VT.type.body.fontSize },
+  title: { flex: 1, color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
   titlePad: { marginRight: 44 }, // balances Back when Share is hidden
   share: { width: 44, height: TOP_BAR, alignItems: 'center', justifyContent: 'center', borderRadius: VT.radius.sm },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.lg },
-  heading: { color: VT.text, fontSize: VT.font.heading, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.xl },
+  heading: { color: VT.color.text, fontSize: VT.type.heading.fontSize, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
   body: {
-    color: VT.textSecondary,
-    fontSize: VT.font.body,
+    color: VT.color.textMuted,
+    fontSize: VT.type.body.fontSize,
     lineHeight: 24,
     textAlign: 'center',
     marginTop: VT.space.sm,
   },
   retry: {
-    marginTop: VT.space.lg,
+    marginTop: VT.space.xl,
     height: 44,
-    paddingHorizontal: VT.space.lg,
+    paddingHorizontal: VT.space.xl,
     borderRadius: VT.radius.md,
     justifyContent: 'center',
   },
-  retryLabel: { color: VT.text, fontSize: VT.font.body, fontWeight: '600' },
-  reconnect: { backgroundColor: VT.bg, gap: VT.space.sm },
-  reconnectLabel: { color: VT.text, fontSize: VT.font.label, lineHeight: 20 },
+  retryLabel: { color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
+  reconnect: { backgroundColor: VT.color.bg, gap: VT.space.sm },
+  reconnectLabel: { color: VT.color.text, fontSize: VT.type.label.fontSize, lineHeight: 20 },
 });

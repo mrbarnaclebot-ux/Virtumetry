@@ -42,7 +42,7 @@ function Message({ heading, body, action, onPress }: { heading: string; body: st
             accessibilityRole="button"
             accessibilityLabel={action}
             onPress={onPress}
-            style={({ pressed }) => [styles.secondary, { backgroundColor: pressed ? VT.surfaceSelected : VT.surface }]}>
+            style={({ pressed }) => [styles.secondary, { backgroundColor: pressed ? VT.color.surface.pressed : VT.color.surface.raised }]}>
             <Text style={styles.secondaryLabel}>{action}</Text>
           </Pressable>
         )}
@@ -167,7 +167,7 @@ export default function SharePage() {
   if (state.k === 'checking') {
     content = (
       <View style={styles.center}>
-        <ActivityIndicator testID="share-checking" color={VT.accent} />
+        <ActivityIndicator testID="share-checking" color={VT.color.primary} />
       </View>
     );
   } else if (state.k === 'notFound') {
@@ -247,7 +247,7 @@ export default function SharePage() {
         <Suspense
           fallback={
             <View style={styles.center}>
-              <ActivityIndicator color={VT.accent} />
+              <ActivityIndicator color={VT.color.primary} />
             </View>
           }>
           {data.assets.splat_url && (
@@ -285,52 +285,52 @@ export default function SharePage() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: VT.bg },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.md },
+  root: { flex: 1, backgroundColor: VT.color.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.lg },
   block: { width: '100%', maxWidth: 400, alignItems: 'center' },
   card: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: VT.surface,
+    backgroundColor: VT.color.surface.raised,
     borderRadius: VT.radius.lg,
-    padding: VT.space.lg,
+    padding: VT.space.xl,
   },
-  heading: { color: VT.text, fontSize: VT.font.heading, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
+  heading: { color: VT.color.text, fontSize: VT.type.heading.fontSize, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
   body: {
-    color: VT.textSecondary,
-    fontSize: VT.font.body,
+    color: VT.color.textMuted,
+    fontSize: VT.type.body.fontSize,
     lineHeight: 24,
     textAlign: 'center',
     marginTop: VT.space.sm,
   },
-  label: { color: VT.text, fontSize: VT.font.label, lineHeight: 20, marginTop: VT.space.lg },
+  label: { color: VT.color.text, fontSize: VT.type.label.fontSize, lineHeight: 20, marginTop: VT.space.xl },
   input: {
     height: 48,
     marginTop: VT.space.sm,
-    paddingHorizontal: VT.space.md,
+    paddingHorizontal: VT.space.lg,
     borderRadius: VT.radius.md,
-    backgroundColor: VT.surfaceSelected,
-    color: VT.text,
-    fontSize: VT.font.body,
+    backgroundColor: VT.color.surface.pressed,
+    color: VT.color.text,
+    fontSize: VT.type.body.fontSize,
   },
-  error: { color: VT.destructive, fontSize: VT.font.label, lineHeight: 20, marginTop: VT.space.sm },
+  error: { color: VT.color.danger, fontSize: VT.type.label.fontSize, lineHeight: 20, marginTop: VT.space.sm },
   primary: {
     height: 52,
-    marginTop: VT.space.md,
+    marginTop: VT.space.lg,
     borderRadius: VT.radius.md,
-    backgroundColor: VT.accent,
+    backgroundColor: VT.color.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryLabel: { color: VT.onAccent, fontSize: VT.font.body, fontWeight: '600' },
+  primaryLabel: { color: VT.color.onPrimary, fontSize: VT.type.body.fontSize, fontWeight: '600' },
   secondary: {
-    marginTop: VT.space.lg,
+    marginTop: VT.space.xl,
     height: 44,
-    paddingHorizontal: VT.space.lg,
+    paddingHorizontal: VT.space.xl,
     borderRadius: VT.radius.md,
     justifyContent: 'center',
   },
-  secondaryLabel: { color: VT.text, fontSize: VT.font.body, fontWeight: '600' },
+  secondaryLabel: { color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
   topBar: {
     position: 'absolute',
     top: 0,
@@ -338,8 +338,8 @@ const styles = StyleSheet.create({
     right: 0,
     height: TOP_BAR,
     justifyContent: 'center',
-    paddingHorizontal: VT.space.md,
-    backgroundColor: VT.scrim,
+    paddingHorizontal: VT.space.lg,
+    backgroundColor: VT.color.scrim.hud,
   },
-  title: { color: VT.text, fontSize: VT.font.body, fontWeight: '600' },
+  title: { color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
 });
