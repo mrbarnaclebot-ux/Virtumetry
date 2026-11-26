@@ -588,7 +588,7 @@ export default function WorldViewer(props: ViewerProps) {
           <div
             ref={planImgRef}
             role="button"
-            aria-label="Floor plan. Tap a spot to move there."
+            aria-label={t('Floor plan. Tap a spot to move there.', 'Floor plan. Click a spot to move there.')}
             style={S.planImage}
             onPointerDown={onPlanDown}
             onPointerUp={onPlanUp}
@@ -612,7 +612,7 @@ export default function WorldViewer(props: ViewerProps) {
               <div style={S.youDot} />
             </div>
           </div>
-          <span style={S.planHint}>Tap to jump there</span>
+          <span style={S.planHint}>{t('Tap to jump there', 'Click to jump there')}</span>
         </div>
       )}
 
@@ -703,7 +703,7 @@ export default function WorldViewer(props: ViewerProps) {
                   {split > 0 && <span style={S.distanceNote}>{distText.slice(split + 1)}</span>}
                 </span>
               ) : (
-                <span style={S.stage}>Tap two points</span>
+                <span style={S.stage}>{t('Tap two points', 'Click two points')}</span>
               )}
               <button
                 type="button"

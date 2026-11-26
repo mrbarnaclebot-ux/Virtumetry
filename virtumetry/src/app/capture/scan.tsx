@@ -282,7 +282,7 @@ export default function ScanScreen() {
 
       {fixture && (
         <View style={styles.scenarios}>
-          <T type="eyebrow" tone="muted" style={styles.eyebrow}>
+          <T type="label" tone="muted" style={styles.eyebrow}>
             Test scenario
           </T>
           <SegmentedControl

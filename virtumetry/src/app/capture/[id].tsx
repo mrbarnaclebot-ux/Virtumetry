@@ -34,7 +34,7 @@ import { toast } from '@/components/ui/toast';
 import { haptic } from '@/design/haptics';
 import { useReduceMotion } from '@/design/motion';
 import { color, motion, radius, space } from '@/design/tokens';
-import { failureGuidance, toDisplayState, type LocalScan } from '@/library/display-state';
+import { failureGuidance, frameUri, toDisplayState, type LocalScan } from '@/library/display-state';
 import { ApiError, createScan, getQuote } from '@/lib/api';
 import { kickUploadManager, useUploadProgress } from '@/upload/manager';
 
@@ -55,7 +55,6 @@ function sample(n: number, k = 5): number[] {
   return Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1)) + 1);
 }
 
-const frameUri = (scan: LocalScan, i: number) => `${scan.dir}/frames/${String(i).padStart(6, '0')}.jpg`;
 
 export default function CaptureScreen() {
   const { id, step: initial } = useLocalSearchParams<{ id: string; step?: Step }>();

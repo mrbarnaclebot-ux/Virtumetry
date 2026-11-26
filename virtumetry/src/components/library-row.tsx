@@ -10,7 +10,7 @@ import { ProgressBar } from '@/components/ui/progress-bar';
 import { StatusPill, type StatusKind } from '@/components/ui/status-pill';
 import { ease, useReduceMotion } from '@/design/motion';
 import { color, motion, radius, space } from '@/design/tokens';
-import { toDisplayState, type DisplayState, type LibraryItem, type LocalScan } from '@/library/display-state';
+import { frameUri, toDisplayState, type DisplayState, type LibraryItem, type LocalScan } from '@/library/display-state';
 
 export type RowItem = LibraryItem | (LocalScan & { local: true });
 
@@ -95,7 +95,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
   const thumbnailUrl =
     'local' in item
       ? item.uploadState !== 'done' && item.frameCount > 0 && item.dir
-        ? `${item.dir}/frames/000001.jpg`
+        ? frameUri(item, 1)
         : undefined
       : item.assets?.thumbnail_url;
   // Review WR-03: failure is keyed to the URL, so a fresh presigned URL after refetch retries the image.

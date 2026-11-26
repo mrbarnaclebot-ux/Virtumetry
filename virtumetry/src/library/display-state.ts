@@ -152,6 +152,9 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, 
 /** Critique F3: an unnamed scan is titled by when it was captured. */
 const formatDateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { ...DATE, hour: 'numeric', minute: '2-digit' });
 
+/** One place for the on-phone frame path (fixture-source writes it; the native module must match or change this). */
+export const frameUri = (scan: Pick<LocalScan, 'dir'>, i: number) => `${scan.dir}/frames/${String(i).padStart(6, '0')}.jpg`;
+
 /** Shared by Library rows and the world screen: the name, or the capture date/time. */
 export const scanTitle = (title: string | null | undefined, created: string) => title?.trim() || formatDateTime(created);
 
