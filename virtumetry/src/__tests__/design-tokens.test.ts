@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import ts from 'typescript';
 
 import { glyphs } from '@/design/glyphs';
 import { color, tokens, type } from '@/design/tokens';
@@ -122,5 +123,69 @@ describe('token shape', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'design', f), 'utf8');
     expect(src).not.toMatch(/^\s*import\s/m);
     expect(src).not.toMatch(/require\(/);
+  });
+});
+
+// ---- Phase gate sweeps (UI-SPEC §1 hex rule, §6 copy rule) ----
+
+const SRC = path.join(__dirname, '..');
+const rel = (f: string) => path.relative(SRC, f).split(path.sep).join('/');
+const walk = (dir: string): string[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    return e.isDirectory() ? walk(p) : /\.tsx?$/.test(e.name) ? [p] : [];
+  });
+
+const HEX = /#[0-9a-fA-F]{3,8}\b|rgba?\(/;
+const hexAllowed = (r: string) => r === 'design/tokens.ts' || r.startsWith('__tests__/') || /^capture\/fixture-[^/]*\.ts$/.test(r);
+const hexOffenders = (name: string, src: string) =>
+  src.split(/\r?\n/).flatMap((line, i) => (HEX.test(line) ? [`${name}:${i + 1}`] : []));
+
+const DASH = /[—–]|--/;
+const dashOffenders = (name: string, src: string) => {
+  const out: string[] = [];
+  const sf = ts.createSourceFile(name, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const visit = (n: ts.Node) => {
+    if (
+      ts.isStringLiteral(n) ||
+      ts.isNoSubstitutionTemplateLiteral(n) ||
+      ts.isTemplateHead(n) ||
+      ts.isTemplateMiddle(n) ||
+      ts.isTemplateTail(n) ||
+      ts.isJsxText(n)
+    ) {
+      if (DASH.test(n.text)) out.push(`${name}: ${n.text.trim()}`);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+};
+
+describe('single colour source', () => {
+  it('detects a hex literal (self-check)', () => {
+    expect(hexOffenders('x.tsx', "const a = 1;\nconst c = '#fff';")).toEqual(['x.tsx:2']);
+    expect(hexOffenders('x.tsx', "const c = 'rgba(0,0,0,0.5)';")).toEqual(['x.tsx:1']);
+  });
+
+  it('no hex or rgb(a) literal outside design/tokens.ts', () => {
+    const files = walk(SRC).filter((f) => !hexAllowed(rel(f)));
+    expect(files.flatMap((f) => hexOffenders(rel(f), fs.readFileSync(f, 'utf8')))).toEqual([]);
+  });
+});
+
+describe('copy rules', () => {
+  it('detects an em dash in JSX text (self-check), ignores comments', () => {
+    expect(dashOffenders('x.tsx', 'const v = <Text>Room — ready</Text>;')).toHaveLength(1);
+    expect(dashOffenders('x.tsx', "const v = `a ${1} b--c`;")).toHaveLength(1);
+    expect(dashOffenders('x.tsx', "// a — comment\nconst s = 'ok';")).toEqual([]);
+  });
+
+  it('no em dash, en dash or -- in user-facing literals', () => {
+    const files = ['app', 'components', 'library', 'capture', 'viewer']
+      .flatMap((d) => walk(path.join(SRC, d)))
+      .filter((f) => !rel(f).includes('__tests__'));
+    expect(files.length).toBeGreaterThan(20);
+    expect(files.flatMap((f) => dashOffenders(rel(f), fs.readFileSync(f, 'utf8')))).toEqual([]);
   });
 });
