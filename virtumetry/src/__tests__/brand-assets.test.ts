@@ -43,6 +43,12 @@ describe('brand PNGs', () => {
   it('favicon is 64 square', () => {
     expect(ihdr('assets/images/favicon.png')).toMatchObject({ width: 64, height: 64 });
   });
+
+  it.each(['library', 'settings'])('tab icon %s is rendered at 1x/2x/3x (25 pt template)', (name) => {
+    [1, 2, 3].forEach((s) =>
+      expect(ihdr(`assets/images/tabIcons/${name}${s > 1 ? `@${s}x` : ''}.png`)).toEqual({ width: 25 * s, height: 25 * s, colorType: 6 }),
+    );
+  });
 });
 
 describe('starter leftovers', () => {
@@ -58,6 +64,8 @@ describe('starter leftovers', () => {
     'assets/images/react-logo@2x.png',
     'assets/images/react-logo@3x.png',
     'assets/images/tutorial-web.png',
+    'assets/images/tabIcons/home.png',
+    'assets/images/tabIcons/explore.png',
   ])('%s is gone', (rel) => {
     expect(fs.existsSync(path.join(root, rel))).toBe(false);
   });

@@ -2,7 +2,7 @@ import { NativeTabs } from 'expo-router/native-tabs';
 
 import { color } from '@/design/tokens';
 
-// UI-SPEC §7.15 tab tints.
+// UI-SPEC §7.15 tab tints. SF Symbols on iOS; the PNG fallbacks (stack, gear) come from scripts/render-brand.py.
 export default function AppTabs() {
   return (
     <NativeTabs
@@ -15,7 +15,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Library</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'square.stack.3d.up', selected: 'square.stack.3d.up.fill' }}
-          src={require('@/assets/images/tabIcons/home.png')}
+          src={require('@/assets/images/tabIcons/library.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
@@ -24,7 +24,7 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
-          src={require('@/assets/images/tabIcons/explore.png')}
+          src={require('@/assets/images/tabIcons/settings.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>

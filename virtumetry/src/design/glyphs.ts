@@ -18,8 +18,9 @@ export const glyphs = {
     dots: [{ cx: 12, cy: 12, r: 1.75 }],
   },
   walk: {
-    d: 'M12.5 8l-2 5 3 2.5 1 5 M10.5 13l-2.5 6.5 M12.5 8l3 2.5 2.5.5 M12.5 8l-3 1.5-1.5 3',
-    dots: [{ cx: 13.5, cy: 4.75, r: 1.75 }],
+    // Leaning stride: torso, bent front and back legs, counter-swinging arms (reads at 16 px).
+    d: 'M12.75 8L11 13.25 M11 13.25l2.75 2.75.75 4.5 M11 13.25l-1.25 3.5-3 3 M12.5 9l-2.75 1.5-1 2.75 M12.5 9l2.25 2.25 2.5.5',
+    dots: [{ cx: 13.75, cy: 4.5, r: 1.75 }],
   },
   measure: { d: 'M3.5 15.5l12-12 5 5-12 12z M7 12l1.5 1.5 M9.5 9.5l2.5 2.5 M12 7l1.5 1.5' },
   lock: { d: 'M6.5 11h11v9h-11z M8.5 11V8a3.5 3.5 0 0 1 7 0v3' },
@@ -28,9 +29,10 @@ export const glyphs = {
     d: 'M10 14a4 4 0 0 1 0-5.6l2-2a4 4 0 0 1 5.6 5.6l-1 1 M14 10a4 4 0 0 1 0 5.6l-2 2a4 4 0 0 1-5.6-5.6l1-1 M4 4l16 16',
   },
   // §13.1 "room corner with a scale": arms/stem in text (width 2), ticks + vertex dot in primary.
+  // Ticks (major + minor) sit on the stem: height is the measurement. Mirrored by scripts/render-brand.py.
   brandMark: {
     arms: 'M4 5L12 14M20 5L12 14M12 14V21',
-    ticks: 'M18 7.25l1.64 1.46 M16 9.5l1.64 1.46 M14 11.75l1.64 1.46',
+    ticks: 'M13.75 17h3 M13.75 20h1.75',
     dot: { cx: 12, cy: 14, r: 1.6 },
   },
 } as const satisfies Record<string, Glyph | { arms: string; ticks: string; dot: Dot }>;
