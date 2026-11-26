@@ -17,7 +17,7 @@ describe('Button', () => {
     const light = jest.spyOn(haptic, 'light');
     const onPress = jest.fn();
     await render(<Button label="Approve" onPress={onPress} />);
-    fireEvent.press(screen.getByRole('button', { name: 'Approve' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Approve' }));
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(light).toHaveBeenCalledTimes(1);
   });
@@ -25,14 +25,14 @@ describe('Button', () => {
   it.each(['ghost', 'secondary', 'destructive'] as const)('%s has no haptic', async (variant) => {
     const light = jest.spyOn(haptic, 'light');
     await render(<Button variant={variant} label="Go" onPress={jest.fn()} />);
-    fireEvent.press(screen.getByRole('button', { name: 'Go' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Go' }));
     expect(light).not.toHaveBeenCalled();
   });
 
   it('haptic={false} silences a primary', async () => {
     const light = jest.spyOn(haptic, 'light');
     await render(<Button haptic={false} label="Go" onPress={jest.fn()} />);
-    fireEvent.press(screen.getByRole('button', { name: 'Go' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Go' }));
     expect(light).not.toHaveBeenCalled();
   });
 
@@ -42,7 +42,7 @@ describe('Button', () => {
     const btn = screen.getByRole('button', { name: 'Approve' });
     expect(btn.props.accessibilityState).toMatchObject({ disabled: true });
     expect(btn.props.accessibilityHint).toBe('Finish the checks first');
-    fireEvent.press(btn);
+    await fireEvent.press(btn);
     expect(onPress).not.toHaveBeenCalled();
   });
 
@@ -62,7 +62,7 @@ describe('IconButton', () => {
     const btn = screen.getByRole('button', { name: 'More actions' });
     const style = Object.assign({}, ...[btn.props.style].flat(Infinity).filter(Boolean));
     expect(style).toMatchObject({ width: 44, height: 44 });
-    fireEvent.press(btn);
+    await fireEvent.press(btn);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
