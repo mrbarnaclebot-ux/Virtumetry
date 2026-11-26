@@ -1,4 +1,7 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { createElement } from 'react';
+// @ts-expect-error react-dom ships no types here; only renderToString is used.
+import { renderToString } from 'react-dom/server';
 import { Platform } from 'react-native';
 
 import {
@@ -82,10 +85,8 @@ describe('coach marks', () => {
 
 describe('code review 06.1 fixes', () => {
   it('WR-01: useOnboarded renders on the server (has a server snapshot)', () => {
-    const { renderToString } = require('react-dom/server') as typeof import('react-dom/server');
-    const React = require('react') as typeof import('react');
-    const Probe = () => React.createElement('span', null, String(useOnboarded()));
-    expect(() => renderToString(React.createElement(Probe))).not.toThrow();
+    const Probe = () => createElement('span', null, String(useOnboarded()));
+    expect(() => renderToString(createElement(Probe))).not.toThrow();
   });
 
   it('WR-02: resetCoachMarks also clears coach marks dismissed this session', () => {
