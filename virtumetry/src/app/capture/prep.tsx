@@ -11,9 +11,10 @@ import { ErrorState } from '@/components/ui/empty-state';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Group } from '@/components/ui/list-row';
 import { Screen } from '@/components/ui/screen';
+import { SheetHeader } from '@/components/ui/sheet-header';
 import { Surface } from '@/components/ui/surface';
 import { haptic } from '@/design/haptics';
-import { color, minTarget, space } from '@/design/tokens';
+import { color, layout, minTarget, space } from '@/design/tokens';
 
 const CHECKLIST: { icon: IconName; title: string; body: string }[] = [
   { icon: 'lights', title: 'Turn the lights on', body: 'Bright, even light gives the sharpest room.' },
@@ -76,9 +77,7 @@ export default function PrepScreen() {
 
   return (
     <Screen>
-      <View style={styles.topBar}>
-        <Button variant="ghost" size="md" label="Cancel" onPress={close} style={styles.inline} />
-      </View>
+      <SheetHeader leading={{ label: 'Library', onPress: close }} style={styles.topBar} />
       {denied ? (
         <View style={styles.denied} accessibilityLiveRegion="polite">
           <ErrorState
@@ -164,8 +163,7 @@ export default function PrepScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: { paddingTop: space.lg, paddingBottom: space.xl },
-  inline: { alignSelf: 'flex-start' },
-  topBar: { height: minTarget, flexDirection: 'row', alignItems: 'center' },
+  topBar: { marginHorizontal: -layout.gutter },
   checklist: { marginTop: space.xl, gap: space.lg },
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   badge: {

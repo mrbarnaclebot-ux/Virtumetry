@@ -88,12 +88,15 @@ const approve = () => screen.getByRole('button', { name: 'Approve and retry' });
 describe('retryable failure', () => {
   it('shows reason, guidance, charge line and one fresh quote', async () => {
     await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     expect(screen.getByText('Retry processing')).toBeTruthy();
     expect(screen.getByText('Failed · Something went wrong while processing')).toBeTruthy();
     expect(screen.getByText('The processing service had a problem on its side. Trying again often works.')).toBeTruthy();
     expect(screen.getByText('Not charged for this run')).toBeTruthy();
     expect(screen.getByText(/This retry will use/)).toBeTruthy();
+    // One money grammar: USD primary, credits secondary, then budget left.
+    expect(screen.getByText('930 credits')).toBeTruthy();
+    expect(screen.getByText('4,070 credits left today')).toBeTruthy();
     expect(screen.getByText('This is a new paid run. Nothing is charged until you approve.')).toBeTruthy();
     expect(screen.queryByText('raw provider text')).toBeNull();
     expect(quoteCalls()).toHaveLength(1);
@@ -113,7 +116,7 @@ describe('retryable failure', () => {
       throw new TypeError('Network request failed');
     };
     await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await screen.findByText("Couldn't start the retry. Check your connection and try again.");
     await waitFor(() => expect(approve()).toBeEnabled());
@@ -129,7 +132,7 @@ describe('retryable failure', () => {
   it('409 not_retryable hides the primary and turns Cancel into Close', async () => {
     retryResponse = async () => fail(409, { error: 'not_retryable' });
     await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await screen.findByText("This scan can't be retried anymore. Close this and check its status in your Library.");
     expect(screen.queryByRole('button', { name: 'Approve and retry' })).toBeNull();
@@ -140,7 +143,7 @@ describe('retryable failure', () => {
   it('approval_below_quote says the cost changed and refetches the quote', async () => {
     retryResponse = async () => fail(400, { error: 'approval_below_quote', quote_credits: 1000 });
     await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await screen.findByText('The cost changed. Check the new quote, then approve again.');
     await waitFor(() => expect(quoteCalls()).toHaveLength(2));
@@ -149,14 +152,14 @@ describe('retryable failure', () => {
   it('429 asks to wait', async () => {
     retryResponse = async () => fail(429, { error: 'rate_limited' });
     await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await screen.findByText('Too many tries. Wait a minute, then try again.');
   });
 
   it('success invalidates the worlds query and goes back', async () => {
     const { invalidate } = await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['worlds'] });
@@ -200,6 +203,6 @@ describe('world load', () => {
     worlds = [];
     detailResponse = async () => ok({ world: world(), assets: {} });
     await renderSheet();
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
   });
 });

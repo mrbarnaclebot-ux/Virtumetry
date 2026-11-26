@@ -3,7 +3,7 @@ import { useNetworkState } from 'expo-network';
 import { useEffect, type ReactNode } from 'react';
 import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { formatUsd } from '@/capture/cost';
+import { formatCredits, formatUsd } from '@/capture/cost';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -37,7 +37,8 @@ export function Layout({
   /** `heading` for sheet titles (retry sheet). */
   titleType?: 'title' | 'heading';
   children: ReactNode;
-  actions: ReactNode;
+  /** Pinned bottom area; omitted when the step has no primary (upload in progress). */
+  actions?: ReactNode;
 }) {
   return (
     <>
@@ -48,7 +49,7 @@ export function Layout({
         </ThemedText>
         {children}
       </ScrollView>
-      <View style={styles.actions}>{actions}</View>
+      {actions ? <View style={styles.actions}>{actions}</View> : null}
     </>
   );
 }
@@ -62,16 +63,23 @@ export function Neutral({ label, onPress, style }: { label: string; onPress: () 
   return <Button variant="ghost" label={label} onPress={onPress} style={style} />;
 }
 
-/** Non-pressable stat row: label muted, value as a tabular readout. */
-export function StatRow({ label, value }: { label: string; value: string }) {
+/** Non-pressable stat row: label muted, value as a tabular readout, optional muted secondary readout under it. */
+export function StatRow({ label, value, secondary }: { label: string; value: string; secondary?: string }) {
   return (
     <View style={styles.stat}>
       <ThemedText type="label" tone="muted" style={styles.flex}>
         {label}
       </ThemedText>
-      <ThemedText type="readout" style={styles.tabular}>
-        {value}
-      </ThemedText>
+      <View style={styles.statValue}>
+        <ThemedText type="readout" style={styles.tabular}>
+          {value}
+        </ThemedText>
+        {secondary ? (
+          <ThemedText type="readout" tone="muted" style={styles.tabular}>
+            {secondary}
+          </ThemedText>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -129,12 +137,12 @@ export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun:
         data && (
           <>
             {eyebrow}
-            <ThemedText type="readoutLarge" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.amount}>
-              {`~${data.credits.toLocaleString('en-US')}`}
-              <ThemedText type="body"> credits</ThemedText>
+            {/* One money grammar (critique R1 #4): USD primary, credits secondary, then budget left. */}
+            <ThemedText type="readoutLarge" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.amount, styles.tabular]}>
+              {`~${formatUsd(data.usd)}`}
             </ThemedText>
-            <ThemedText type="body" tone="muted" style={styles.usd}>
-              {`About ${formatUsd(data.usd)}`}
+            <ThemedText type="readout" tone="muted" style={[styles.usd, styles.tabular]}>
+              {formatCredits(data.credits)}
             </ThemedText>
             <ThemedText type="label" tone="muted" style={[styles.left, styles.tabular]}>
               {`${data.budgetRemaining.toLocaleString('en-US')} credits left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
@@ -171,7 +179,8 @@ export const styles = StyleSheet.create({
   amount: { marginTop: space.sm },
   usd: { marginTop: space.xs },
   left: { marginTop: space.md },
-  stat: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52, paddingHorizontal: space.lg },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52, paddingHorizontal: space.lg, paddingVertical: space.sm },
+  statValue: { alignItems: 'flex-end' },
   actions: {
     padding: layout.gutter,
     gap: space.sm,

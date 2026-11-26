@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useNetworkState } from 'expo-network';
 
 import CaptureScreen from '@/app/capture/[id]';
@@ -68,7 +68,7 @@ async function renderStep(step: 'quote' | 'upload', s: LocalScan = scan()) {
   );
 }
 
-const approve = () => screen.getByRole('button', { name: 'Approve & process' });
+const approve = () => screen.getByRole('button', { name: 'Approve and process' });
 
 describe('quote step', () => {
   it('Approve is disabled while the quote loads', async () => {
@@ -83,9 +83,13 @@ describe('quote step', () => {
   it('within budget: shows the quote; only the Approve tap creates the scan and starts the upload', async () => {
     const success = jest.spyOn(haptic, 'success');
     await renderStep('quote');
-    await screen.findByText('~930 credits');
+    // One money grammar: USD primary, credits secondary, then budget left.
+    await screen.findByText('~$9.30');
     expect(screen.getByText('This scan will use')).toBeTruthy();
-    expect(screen.getByText('About $9.30')).toBeTruthy();
+    expect(screen.getByText('930 credits')).toBeTruthy();
+    // One top-bar pattern: back to Review from the leading chevron, no bottom Back.
+    expect(screen.getByRole('button', { name: 'Review' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
     expect(screen.queryByText(/≈/)).toBeNull();
     expect(screen.getByText('4,070 credits left today')).toBeTruthy();
     expect(fetchMock.mock.calls[0][0]).toContain('/v1/quote?frames=30');
@@ -119,7 +123,7 @@ describe('quote step', () => {
       url.includes('/v1/quote') ? ok(QUOTE) : { ok: false, status: 429, json: async () => ({}) },
     );
     await renderStep('quote');
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await screen.findByText("Couldn't start the upload. Check your connection and try again.");
     expect(getLocalScan('s1')?.uploadState).toBe('saved');
@@ -135,7 +139,7 @@ describe('quote step', () => {
       return { ok: false, status: 429, json: async () => ({ error: 'rate_limited' }) };
     });
     await renderStep('quote');
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await screen.findByText("Couldn't start the upload. Check your connection and try again.");
     expect(getLocalScan('s1')).toMatchObject({ uploadState: 'uploading', serverWorldId: 'w1' });
@@ -147,7 +151,7 @@ describe('quote step', () => {
       throw new TypeError('Network request failed');
     });
     await renderStep('quote');
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     await fireEvent.press(approve());
     await waitFor(() => expect(kickUploadManager).toHaveBeenCalledTimes(1));
     expect(getLocalScan('s1')).toMatchObject({ uploadState: 'approved', approvedMaxCredits: 930 });
@@ -161,7 +165,7 @@ describe('quote step', () => {
     expect(approve()).toBeDisabled();
     quoteResponse = async () => ok(QUOTE);
     await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
   });
 
   it('offline with no quote says so and offers Try again', async () => {
@@ -186,7 +190,9 @@ describe('upload step', () => {
     expect(
       screen.getByText('You can close this screen. The upload picks up where it left off when you open the app again.'),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back to Library' })).toBeTruthy();
+    // Top Done is the only way out while uploading; no secondary Back to Library.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Back to Library' })).toBeNull();
   });
 
   it('shows Uploading… before the first reconcile', async () => {
@@ -211,15 +217,28 @@ describe('upload step', () => {
 
   it('blocked by checks shows the mapped reason and Not charged', async () => {
     await renderStep('upload', scan({ uploadState: 'blocked', failureCode: 'CAMERA_JUMP' }));
-    expect(screen.getByText("Didn't pass checks")).toBeTruthy();
+    expect(screen.getByRole('header', { name: "Didn't pass checks" })).toBeTruthy();
+    expect(screen.queryByText('Uploading')).toBeNull();
     expect(screen.getByText('The camera position jumped during the scan. Scan again, moving slowly.')).toBeTruthy();
     expect(screen.getByText('Not charged')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to Library' })).toBeTruthy();
   });
 
-  it('other failures use the library failed copy', async () => {
+  it('a failed upload says so, explains it and offers a next step', async () => {
     await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'UPLOAD_STALE' }));
+    expect(screen.getByRole('header', { name: 'Upload failed' })).toBeTruthy();
+    expect(screen.queryByText('Uploading')).toBeNull();
     expect(screen.getByText("Failed · Upload didn't finish")).toBeTruthy();
+    expect(
+      screen.getByText('The upload stopped before processing started. Your photos are still on your phone.'),
+    ).toBeTruthy();
     expect(screen.getByText('Not charged')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back to Library' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Back to Library' }));
+    expect(router.back).toHaveBeenCalled();
+  });
+
+  it('a failure with specific guidance shows that guidance', async () => {
+    await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'PROVIDER_UNAVAILABLE' }));
+    expect(screen.getByText('The processing service had a problem on its side. Trying again often works.')).toBeTruthy();
   });
 });

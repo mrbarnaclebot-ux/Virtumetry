@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Alert, type AlertButton } from 'react-native';
 
 import CaptureScreen from '@/app/capture/[id]';
+import { haptic } from '@/design/haptics';
 import * as store from '@/capture/store';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
 import { __resetToastsForTest, toast } from '@/components/ui/toast';
@@ -58,29 +59,51 @@ async function renderReview(scan: LocalScan) {
   );
 }
 
-it('shows frames, duration, cost, readiness and passing checks with Upload enabled', async () => {
+it('shows frames, duration, cost, readiness and passing checks with Check cost enabled', async () => {
   await renderReview(seedScan());
   expect(screen.getByText('Review scan')).toBeTruthy();
   expect(screen.getByText('Saved on phone')).toBeTruthy();
   expect(screen.getByText('30')).toBeTruthy();
   expect(screen.getByText('0:08')).toBeTruthy();
-  expect(screen.getByText('$9.30 · 930 credits')).toBeTruthy();
+  // One money grammar: USD primary, credits secondary.
+  expect(screen.getByText('$9.30')).toBeTruthy();
+  expect(screen.getByText('930 credits')).toBeTruthy();
   expect(screen.getByText('Keep scanning')).toBeTruthy();
   expect(screen.getByText('Keep going: 120 more frames')).toBeTruthy();
   expect(screen.getByText('Checks passed')).toBeTruthy();
-  const upload = screen.getByRole('button', { name: 'Upload' });
-  expect(upload).toBeEnabled();
-  await fireEvent.press(upload);
+  const checkCost = screen.getByRole('button', { name: 'Check cost' });
+  expect(checkCost).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Upload' })).toBeNull();
+  await fireEvent.press(checkCost);
   expect(screen.getByText('Approve processing')).toBeTruthy();
+  // One top-bar pattern: the quote goes back to Review from the leading chevron.
+  await fireEvent.press(screen.getByRole('button', { name: 'Review' }));
+  expect(screen.getByText('Review scan')).toBeTruthy();
 });
 
-it('a failing check disables Upload and explains why', async () => {
+it('shows the middle frame as the hero; a thumbnail swaps it with a selection haptic', async () => {
+  const selection = jest.spyOn(haptic, 'selection');
+  await renderReview(seedScan());
+  expect(screen.getByRole('button', { name: 'Library' })).toBeTruthy();
+  // 30 frames sample to 1, 8, 16, 23, 30: the middle one leads.
+  expect(screen.getByLabelText('Frame 16 of 30')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Show frame 16' }).props.accessibilityState).toMatchObject({ selected: true });
+  await fireEvent.press(screen.getByRole('button', { name: 'Show frame 1' }));
+  expect(screen.getByLabelText('Frame 1 of 30')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Show frame 1' }).props.accessibilityState).toMatchObject({ selected: true });
+  expect(selection).toHaveBeenCalledTimes(1);
+  // Tapping the current hero is a no-op.
+  await fireEvent.press(screen.getByRole('button', { name: 'Show frame 1' }));
+  expect(selection).toHaveBeenCalledTimes(1);
+});
+
+it('a failing check disables Check cost and explains why', async () => {
   const reason = 'Too few photos (8 of 20 needed). Scan again and keep walking.';
   await renderReview(seedScan({ frameCount: 8, precheckIssues: [{ code: 'FRAME_COUNT_OUT_OF_RANGE', n: 8, min: 20, max: 5000 }] }));
   expect(screen.getByText("Didn't pass checks")).toBeTruthy();
-  const upload = screen.getByRole('button', { name: 'Upload' });
-  expect(upload).toBeDisabled();
-  expect(upload.props.accessibilityHint).toBe(reason);
+  const checkCost = screen.getByRole('button', { name: 'Check cost' });
+  expect(checkCost).toBeDisabled();
+  expect(checkCost.props.accessibilityHint).toBe(reason);
   // Sighted users see why too: once in the checks list, once under the button.
   expect(screen.getAllByText(reason)).toHaveLength(2);
 });

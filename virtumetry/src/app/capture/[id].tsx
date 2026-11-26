@@ -2,11 +2,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCaptureConfig } from '@/capture/capture-config';
-import { costFor, formatCost } from '@/capture/cost';
+import { costFor, formatCredits, formatUsd } from '@/capture/cost';
 import { checkReason, serverReason } from '@/capture/precheck';
 import { LABEL } from '@/capture/readiness';
 import { discardLocalScan, getLocalScan, updateLocalScan, useLocalScan } from '@/capture/store';
@@ -27,12 +27,14 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/empty-state';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Group } from '@/components/ui/list-row';
+import { SheetHeader } from '@/components/ui/sheet-header';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { StatusPill } from '@/components/ui/status-pill';
 import { toast } from '@/components/ui/toast';
 import { haptic } from '@/design/haptics';
-import { color, radius, space } from '@/design/tokens';
-import { toDisplayState, type LocalScan } from '@/library/display-state';
+import { useReduceMotion } from '@/design/motion';
+import { color, motion, radius, space } from '@/design/tokens';
+import { failureGuidance, toDisplayState, type LocalScan } from '@/library/display-state';
 import { ApiError, createScan, getQuote } from '@/lib/api';
 import { kickUploadManager, useUploadProgress } from '@/upload/manager';
 
@@ -52,6 +54,8 @@ function sample(n: number, k = 5): number[] {
   return Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1)) + 1);
 }
 
+const frameUri = (scan: LocalScan, i: number) => `${scan.dir}/frames/${String(i).padStart(6, '0')}.jpg`;
+
 export default function CaptureScreen() {
   const { id, step: initial } = useLocalSearchParams<{ id: string; step?: Step }>();
   const scan = useLocalScan(id);
@@ -68,7 +72,7 @@ export default function CaptureScreen() {
   return (
     <ThemedView style={styles.flex}>
       <SafeAreaView style={styles.flex}>
-        {step === 'review' && <Review scan={scan} onUpload={() => setStep('quote')} />}
+        {step === 'review' && <Review scan={scan} onCheckCost={() => setStep('quote')} />}
         {step === 'quote' && (
           <Quote scan={scan} onBack={() => setStep('review')} onApproved={() => setStep('upload')} />
         )}
@@ -80,8 +84,19 @@ export default function CaptureScreen() {
 
 // --- Review (D-14/D-15, §7.6) ---
 
-function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
+function Review({ scan, onCheckCost }: { scan: LocalScan; onCheckCost: () => void }) {
   const cfg = useCaptureConfig();
+  const reduceMotion = useReduceMotion();
+  const frames = sample(scan.frameCount);
+  // Hero defaults to the middle sampled frame (critique R1 #2); tapping a thumbnail swaps it.
+  const [hero, setHero] = useState<number | undefined>(undefined);
+  const shown = hero ?? frames[Math.floor(frames.length / 2)];
+  const cost = costFor(scan.frameCount, cfg.pricing);
+  const pick = (i: number) => {
+    if (i === shown) return;
+    haptic.selection();
+    setHero(i);
+  };
   const issues = scan.precheckIssues ?? [];
   const firstIssue = issues[0] && checkReason(issues[0]);
   const level = scan.readiness ?? 'idle';
@@ -109,19 +124,13 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
       },
     ]);
 
-  const top = (
-    <View style={styles.topBar}>
-      <Button variant="ghost" size="md" icon="back" label="Library" onPress={close} style={styles.topButton} />
-    </View>
-  );
-
   return (
     <Layout
-      top={top}
+      top={<SheetHeader leading={{ label: 'Library', onPress: close }} />}
       title="Review scan"
       actions={
         <>
-          <Primary label="Upload" disabled={issues.length > 0} hint={firstIssue} onPress={onUpload} />
+          <Primary label="Check cost" disabled={issues.length > 0} hint={firstIssue} onPress={onCheckCost} />
           {firstIssue && (
             <ThemedText type="caption" tone="muted" style={styles.center}>
               {firstIssue}
@@ -134,23 +143,41 @@ function Review({ scan, onUpload }: { scan: LocalScan; onUpload: () => void }) {
         <StatusPill kind="saved_on_phone" label="Saved on phone" />
       </View>
 
-      <ScrollView horizontal accessible={false} style={styles.section} contentContainerStyle={styles.strip}>
-        {sample(scan.frameCount).map((i) => (
-          <View key={i} accessible={false} style={styles.thumb}>
-            <Image
-              source={{ uri: `${scan.dir}/frames/${String(i).padStart(6, '0')}.jpg` }}
-              style={styles.thumb}
-              contentFit="cover"
-            />
-          </View>
-        ))}
-      </ScrollView>
+      {shown != null && (
+        <View style={styles.section}>
+          <Image
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Frame ${shown} of ${scan.frameCount}`}
+            source={{ uri: frameUri(scan, shown) }}
+            style={styles.hero}
+            contentFit="cover"
+            transition={reduceMotion ? 0 : motion.duration.fast}
+          />
+          {frames.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripRow} contentContainerStyle={styles.strip}>
+              {frames.map((i) => (
+                <Pressable
+                  key={i}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show frame ${i}`}
+                  accessibilityState={{ selected: i === shown }}
+                  onPress={() => pick(i)}
+                  hitSlop={space.xs}
+                  style={[styles.thumb, i === shown && styles.thumbOn]}>
+                  <Image source={{ uri: frameUri(scan, i) }} style={styles.thumbImage} contentFit="cover" />
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      )}
 
       <View style={styles.section}>
         <Group>
           <StatRow label="Frames" value={String(scan.frameCount)} />
           <StatRow label="Duration" value={mss(scan.durationS)} />
-          <StatRow label="Estimated cost" value={formatCost(costFor(scan.frameCount, cfg.pricing))} />
+          <StatRow label="Estimated cost" value={formatUsd(cost.usd)} secondary={formatCredits(cost.credits)} />
         </Group>
       </View>
 
@@ -232,18 +259,16 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
 
   return (
     <Layout
+      top={<SheetHeader leading={{ label: 'Review', onPress: onBack }} />}
       title="Approve processing"
       actions={
-        <>
-          <Primary
-            label="Approve & process"
-            disabled={!(data?.withinBudget === true)}
-            busy={approve.isPending}
-            hint={over ?? undefined}
-            onPress={() => data && approve.mutate(data.credits)}
-          />
-          <Button variant="ghost" label="Back" onPress={onBack} />
-        </>
+        <Primary
+          label="Approve and process"
+          disabled={!(data?.withinBudget === true)}
+          busy={approve.isPending}
+          hint={over ?? undefined}
+          onPress={() => data && approve.mutate(data.credits)}
+        />
       }>
       <QuoteCard quote={quote} noun="scan" />
       {approve.isError && (
@@ -263,25 +288,35 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
 
 // --- Upload (D-17/D-21, §7.8) ---
 
+const UPLOAD_STOPPED = 'The upload stopped before processing started. Your photos are still on your phone.';
+
+/** Specific failure guidance when the code has one; the generic "can't be retried" line reads wrong here (files are kept). */
+function failedBody(code: string | null): string {
+  const generic = failureGuidance(null, null, false);
+  const guide = code ? failureGuidance(null, code, false) : generic;
+  return guide === generic ? UPLOAD_STOPPED : guide;
+}
+
 function Upload({ scan }: { scan: LocalScan }) {
   const live = useUploadProgress(scan.id) ?? scan.progress;
   const state = scan.uploadState;
   const blocked = state === 'blocked';
   const failed = state === 'failed';
   const failedLine = failed ? toDisplayState({ ...scan, local: true }, new Date()).statusLine : null;
-  useAnnounce(blocked ? "Didn't pass checks" : failedLine);
+  const title = blocked ? "Didn't pass checks" : failed ? 'Upload failed' : 'Uploading';
+  useAnnounce(blocked || failed ? title : null);
 
-  const actions = <Button variant="secondary" label="Back to Library" onPress={close} />;
+  const top = <SheetHeader trailing={{ label: 'Done', onPress: close }} />;
 
   if (blocked || failed) {
     return (
-      <Layout title="Uploading" actions={actions}>
+      <Layout top={top} title={title} actions={<Primary label="Back to Library" disabled={false} onPress={close} />}>
         <View accessibilityLiveRegion="polite" style={styles.blocked}>
           <ErrorState
             tone="danger"
             icon="failedCheck"
-            title={blocked ? "Didn't pass checks" : (failedLine ?? '')}
-            body={blocked ? serverReason(scan.failureCode ?? null) : ''}>
+            title={blocked ? 'Not sent for processing' : (failedLine ?? title)}
+            body={blocked ? serverReason(scan.failureCode ?? null) : failedBody(scan.failureCode ?? null)}>
             <ThemedText type="caption" tone="muted">
               Not charged
             </ThemedText>
@@ -310,7 +345,7 @@ function Upload({ scan }: { scan: LocalScan }) {
       : { icon: 'uploading', tint: color.textMuted };
 
   return (
-    <Layout title="Uploading" actions={actions}>
+    <Layout top={top} title={title}>
       <View style={styles.section}>
         <View style={shared.check}>
           <Icon name={lead.icon} color={lead.tint} hierarchical />
@@ -338,11 +373,21 @@ function Upload({ scan }: { scan: LocalScan }) {
 const styles = {
   ...shared,
   ...StyleSheet.create({
-    topBar: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm },
-    topButton: { alignSelf: 'flex-start' },
     saved: { marginTop: space.sm },
+    hero: { width: '100%', aspectRatio: 4 / 3, borderRadius: radius.lg, backgroundColor: color.surface.raised },
+    stripRow: { marginTop: space.sm },
     strip: { gap: space.sm },
-    thumb: { width: 64, height: 64, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: color.surface.raised },
+    thumb: {
+      width: 48,
+      height: 48,
+      borderRadius: radius.sm,
+      overflow: 'hidden',
+      borderWidth: 2,
+      borderColor: 'transparent',
+      backgroundColor: color.surface.raised,
+    },
+    thumbOn: { borderColor: color.primary },
+    thumbImage: { flex: 1 },
     cell: { paddingHorizontal: space.lg, paddingVertical: space.md },
     rows: { gap: space.sm },
     bar: { marginTop: space.md },
