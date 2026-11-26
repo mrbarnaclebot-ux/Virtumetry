@@ -1,18 +1,21 @@
 import type { UseQueryResult } from '@tanstack/react-query';
-import { SymbolView } from 'expo-symbols';
+import { useNetworkState } from 'expo-network';
 import { useEffect, type ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { formatCredits, formatUsd } from '@/capture/cost';
+import { formatUsd } from '@/capture/cost';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Surface } from '@/components/ui/surface';
+import { color, layout, space } from '@/design/tokens';
 import type { Quote } from '@/lib/api';
 
-// Shared approval UI (06-UI-SPEC reuse rule): capture Quote step and the retry sheet, one set of visuals.
+// Shared approval UI (06-UI-SPEC reuse rule, 06.1-UI-SPEC §5/§7.7): capture Quote step and the retry sheet.
 
 export const QUOTE_ERROR = "Couldn't get a quote. Check your connection and try again.";
+const QUOTE_OFFLINE = "You're offline. Connect to get a quote.";
 
 /** Polite live region + iOS announcement for errors and blocking headings. */
 export function useAnnounce(text: string | null) {
@@ -21,74 +24,52 @@ export function useAnnounce(text: string | null) {
   }, [text]);
 }
 
-/** Scrolling content + pinned action area with a hairline top separator. */
-export function Layout({ top, title, children, actions }: { top?: ReactNode; title: string; children: ReactNode; actions: ReactNode }) {
-  const theme = useTheme();
+/** Scrolling body on bg + pinned action area with a hairline top separator. */
+export function Layout({
+  top,
+  title,
+  titleType = 'title',
+  children,
+  actions,
+}: {
+  top?: ReactNode;
+  title: string;
+  /** `heading` for sheet titles (retry sheet). */
+  titleType?: 'title' | 'heading';
+  children: ReactNode;
+  actions: ReactNode;
+}) {
   return (
     <>
       {top}
       <ScrollView contentContainerStyle={styles.content}>
-        <ThemedText type="title" accessibilityRole="header" maxFontSizeMultiplier={1.6} style={styles.title}>
+        <ThemedText type={titleType} accessibilityRole="header" style={styles.title}>
           {title}
         </ThemedText>
         {children}
       </ScrollView>
-      <View style={[styles.actions, { backgroundColor: theme.background, borderTopColor: theme.backgroundSelected }]}>
-        {actions}
-      </View>
+      <View style={styles.actions}>{actions}</View>
     </>
   );
 }
 
+/** Primary lg Button; the accessible name stays `label` while busy. */
 export function Primary({ label, disabled, busy, hint, onPress }: { label: string; disabled: boolean; busy?: boolean; hint?: string; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={disabled ? hint : undefined}
-      accessibilityState={{ disabled: disabled || !!busy, busy: !!busy }}
-      disabled={disabled || busy}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: theme.accent },
-        disabled && styles.disabled,
-        pressed && styles.pressed,
-      ]}>
-      {busy ? (
-        <ActivityIndicator color={theme.onAccent} />
-      ) : (
-        <ThemedText type="smallBold" themeColor="onAccent" maxFontSizeMultiplier={1.6}>
-          {label}
-        </ThemedText>
-      )}
-    </Pressable>
-  );
+  return <Button label={label} disabled={disabled} busy={busy} hint={hint} onPress={onPress} />;
 }
 
-export function Neutral({ label, onPress, style }: { label: string; onPress: () => void; style?: object }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [styles.neutral, { backgroundColor: theme.backgroundSelected }, pressed && styles.pressed, style]}>
-      <ThemedText type="smallBold" maxFontSizeMultiplier={1.6}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
+export function Neutral({ label, onPress, style }: { label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
+  return <Button variant="ghost" label={label} onPress={onPress} style={style} />;
 }
 
+/** Non-pressable stat row: label muted, value as a tabular readout. */
 export function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.stat}>
-      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6}>
+      <ThemedText type="label" tone="muted" style={styles.flex}>
         {label}
       </ThemedText>
-      <ThemedText type="smallBold" maxFontSizeMultiplier={1.6} style={styles.tabular}>
+      <ThemedText type="readout" style={styles.tabular}>
         {value}
       </ThemedText>
     </View>
@@ -103,44 +84,65 @@ export function overBudget(data: Quote | undefined, noun: 'scan' | 'retry'): str
     : `This ${noun} would go over today's limit. Try again tomorrow.`;
 }
 
-/** Quote card body: loading, error + Try again, or cost + budget left + over-budget line. */
+/** Quote card (§7.7): skeleton while pending, offline / error + Try again, or cost + budget left + over-budget line. */
 export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun: 'scan' | 'retry' }) {
-  const theme = useTheme();
+  const network = useNetworkState();
   const data = quote.data;
   const over = overBudget(data, noun);
+  const offline = !data && network.isInternetReachable === false;
+  const eyebrow = (
+    <ThemedText type="eyebrow" tone="muted">
+      {`This ${noun} will use`}
+    </ThemedText>
+  );
+  const tryAgain = <Button variant="secondary" size="md" label="Try again" onPress={() => quote.refetch()} style={styles.retry} />;
+
   return (
-    <ThemedView type="backgroundElement" style={[styles.card, styles.section]}>
-      {quote.isPending ? (
-        <View style={styles.check}>
-          <ActivityIndicator color={theme.accent} />
-          <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6}>
-            Getting quote…
-          </ThemedText>
+    <Surface padded style={styles.section}>
+      {offline ? (
+        <View accessibilityLiveRegion="polite">
+          <View style={styles.check}>
+            <Icon name="offline" color={color.textMuted} />
+            <ThemedText type="label" tone="muted" style={styles.flex}>
+              {QUOTE_OFFLINE}
+            </ThemedText>
+          </View>
+          {tryAgain}
+        </View>
+      ) : quote.isPending ? (
+        <View accessible accessibilityLabel="Getting quote…" accessibilityState={{ busy: true }} style={styles.pending}>
+          {eyebrow}
+          <Skeleton width={160} height={32} />
+          <Skeleton width={120} height={16} />
         </View>
       ) : quote.isError ? (
         <View accessibilityLiveRegion="polite">
-          <ThemedText type="small" themeColor="destructive" maxFontSizeMultiplier={1.6}>
-            {QUOTE_ERROR}
-          </ThemedText>
-          <Neutral label="Try again" onPress={() => quote.refetch()} style={styles.retry} />
+          <View style={styles.check}>
+            <Icon name="warning" color={color.danger} />
+            <ThemedText type="label" tone="danger" style={styles.flex}>
+              {QUOTE_ERROR}
+            </ThemedText>
+          </View>
+          {tryAgain}
         </View>
       ) : (
         data && (
           <>
-            <ThemedText maxFontSizeMultiplier={1.6}>
-              {`This ${noun} will use `}
-              <ThemedText type="subtitle" style={styles.tabular}>
-                ~{formatCredits(data.credits)}
-              </ThemedText>
-              {` ≈ ${formatUsd(data.usd)}`}
+            {eyebrow}
+            <ThemedText type="readoutLarge" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.amount}>
+              {`~${data.credits.toLocaleString('en-US')}`}
+              <ThemedText type="body"> credits</ThemedText>
             </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.gap}>
-              {`${formatCredits(data.budgetRemaining)} left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
+            <ThemedText type="body" tone="muted" style={styles.usd}>
+              {`About ${formatUsd(data.usd)}`}
+            </ThemedText>
+            <ThemedText type="label" tone="muted" style={[styles.left, styles.tabular]}>
+              {`${data.budgetRemaining.toLocaleString('en-US')} credits left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
             </ThemedText>
             {over && (
               <View style={[styles.check, styles.gap]}>
-                <SymbolView name="exclamationmark.triangle.fill" size={20} tintColor={theme.warning} />
-                <ThemedText type="small" themeColor="warning" maxFontSizeMultiplier={1.6} style={styles.flex}>
+                <Icon name="warning" color={color.warning} />
+                <ThemedText type="label" tone="warning" style={styles.flex}>
                   {over}
                 </ThemedText>
               </View>
@@ -148,31 +150,35 @@ export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun:
           </>
         )
       )}
-    </ThemedView>
+    </Surface>
   );
 }
 
 export const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: {
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.five,
+    paddingHorizontal: layout.gutter,
+    paddingBottom: space.xxxl,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: layout.maxContent,
     alignSelf: 'center',
   },
-  title: { marginTop: Spacing.three },
-  section: { marginTop: Spacing.four },
-  gap: { marginTop: Spacing.two },
-  card: { borderRadius: 12, padding: Spacing.three },
-  stat: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  check: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  actions: { padding: Spacing.three, borderTopWidth: StyleSheet.hairlineWidth },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  neutral: { minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  retry: { marginTop: Spacing.three, minHeight: 44 },
-  textButton: { marginTop: Spacing.three, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  title: { marginTop: space.lg },
+  section: { marginTop: space.xl },
+  gap: { marginTop: space.sm },
+  check: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  pending: { gap: space.sm },
+  amount: { marginTop: space.sm },
+  usd: { marginTop: space.xs },
+  left: { marginTop: space.md },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 52, paddingHorizontal: space.lg },
+  actions: {
+    padding: layout.gutter,
+    gap: space.sm,
+    backgroundColor: color.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.hairline,
+  },
+  retry: { marginTop: space.md },
   tabular: { fontVariant: ['tabular-nums'] },
-  disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.8 },
 });
