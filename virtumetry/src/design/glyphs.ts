@@ -28,11 +28,11 @@ export const glyphs = {
   linkOff: {
     d: 'M10 14a4 4 0 0 1 0-5.6l2-2a4 4 0 0 1 5.6 5.6l-1 1 M14 10a4 4 0 0 1 0 5.6l-2 2a4 4 0 0 1-5.6-5.6l1-1 M4 4l16 16',
   },
-  // Room corner inside its isometric outline: three edges in text, outline + vertex dot in primary (round-2 critique: no letter read).
+  // Room corner inside its isometric outline, with measurement ticks on the near edge: text arms, primary outline + ticks + vertex dot.
   // Ticks (major + minor) sit on the stem: height is the measurement. Mirrored by scripts/render-brand.py.
   brandMark: {
-    arms: 'M12 14L3.77 9.25M12 14L20.23 9.25M12 14V23.5',
-    outline: 'M12.0 4.5L3.77 9.25L3.77 18.75L12.0 23.5L20.23 18.75L20.23 9.25Z',
+    arms: 'M12 14L4.03 9.4M12 14L19.97 9.4M12 14V23.2',
+    outline: 'M12.0 4.5L3.77 9.25L3.77 18.75L12.0 23.5L20.23 18.75L20.23 9.25Z M12 16.8h1.4 M12 18.6h2.4 M12 20.4h1.4',
     dot: { cx: 12, cy: 14, r: 1.6 },
   },
 } as const satisfies Record<string, Glyph | { arms: string; outline: string; dot: Dot }>;

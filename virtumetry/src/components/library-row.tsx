@@ -105,9 +105,11 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
   const label = [state.displayTitle, state.statusLine, state.secondaryLine].filter(Boolean).join(', ');
   const kind: StatusKind = 'local' in item && item.uploadState === 'paused' ? 'paused' : state.kind;
   const actions = rowActions(item);
+  // Critique R3 #1: a finished room is the payoff, so it gets a full-width 16:10 frame; other states stay compact rows.
+  const hero = kind === 'ready' && !('local' in item) && !!thumbnailUrl && !imageFailed;
 
   return (
-    <View style={[styles.row, { opacity: state.rowOpacity }]}>
+    <View style={[hero ? styles.heroRow : styles.row, { opacity: state.rowOpacity }]}>
       <Pressable
         accessible
         accessibilityLabel={label}
@@ -130,13 +132,13 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
                   onPress: () => onOpenFailed?.(item),
                 }
               : { disabled: true })}
-        style={({ pressed }) => [styles.main, pressed && styles.pressed]}>
-        <View accessible={false} style={styles.thumb}>
+        style={({ pressed }) => [hero ? styles.heroMain : styles.main, pressed && styles.pressed]}>
+        <View accessible={false} style={hero ? styles.heroThumb : styles.thumb}>
           {thumbnailUrl && !imageFailed ? (
             <Image
               testID="row-thumb"
               source={{ uri: thumbnailUrl }}
-              style={styles.thumb}
+              style={hero ? styles.heroThumb : styles.thumb}
               contentFit="cover"
               transition={motion.duration.fast}
               onError={() => setFailedUrl(thumbnailUrl)}
@@ -145,7 +147,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
             <Icon name="world" size={24} color={color.textMuted} />
           )}
         </View>
-        <View style={styles.text}>
+        <View style={[styles.text, hero && styles.heroText]}>
           <ThemedText type="bodyStrong" numberOfLines={2}>
             {state.displayTitle}
           </ThemedText>
@@ -164,6 +166,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
       {/* An approved or uploading local scan has no actions yet: no More button rather than an empty menu. */}
       {actions.length > 0 && (
         <IconButton
+          style={hero ? styles.heroMore : undefined}
           icon="more"
           accessibilityLabel={`More actions for ${state.displayTitle}`}
           accessibilityHint={actionHint(actions)}
@@ -190,6 +193,19 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface.raised,
   },
   text: { flex: 1 },
+  heroRow: { paddingVertical: space.lg },
+  heroMain: { gap: space.md },
+  heroThumb: {
+    width: '100%',
+    aspectRatio: 16 / 10,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: color.surface.raised,
+  },
+  heroText: { paddingRight: 44 + space.sm }, // room for the More button beside the title
+  heroMore: { position: 'absolute', right: 0, bottom: space.lg },
   status: { marginTop: space.sm },
   pulse: { position: 'absolute', left: 0, top: 0, bottom: 0, width: ICON, alignItems: 'center', justifyContent: 'center' },
   ring: {

@@ -15,8 +15,10 @@ PRIMARY = (162, 204, 203)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 
-ARMS = [((12, 14), (3.77, 9.25)), ((12, 14), (20.23, 9.25)), ((12, 14), (12, 23.5))]  # edges run to the outline: a solid corner
+ARMS = [((12, 14), (4.03, 9.4)), ((12, 14), (19.97, 9.4)), ((12, 14), (12.0, 23.2))]  # edges stop at the outline (cap inside it)
 # A room corner (three edges) inside its fine isometric outline: reads as a scanned room, never as a letter.
+# Measurement ticks on the near vertical edge (minor, major, minor): the "metry" in the mark.
+TICKS = [((12, 16.8), (13.4, 16.8)), ((12, 18.6), (14.4, 18.6)), ((12, 20.4), (13.4, 20.4))]
 OUTLINE = [((12.0, 4.5), (3.77, 9.25)), ((3.77, 9.25), (3.77, 18.75)), ((3.77, 18.75), (12.0, 23.5)), ((12.0, 23.5), (20.23, 18.75)), ((20.23, 18.75), (20.23, 9.25)), ((20.23, 9.25), (12.0, 4.5))]  # outline edges
 DOT = ((12, 14), 1.6)
 CENTER = (12, 14)  # middle of the outline (4.5..23.5)
@@ -44,6 +46,8 @@ def draw_mark(img, box, colors, stroke=1.6, tick=1.1):
     d = ImageDraw.Draw(img)
     for a, b in OUTLINE:
         _line(d, p(a), p(b), tick * scale, tick_c)
+    for a, b in TICKS:  # finer than the outline: graduations, not structure
+        _line(d, p(a), p(b), tick * 0.6 * scale, tick_c)
     for a, b in ARMS:
         _line(d, p(a), p(b), stroke * scale, arm_c)
     (cx, cy), r = p(DOT[0]), DOT[1] * scale

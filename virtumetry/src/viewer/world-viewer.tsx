@@ -640,7 +640,7 @@ export default function WorldViewer(props: ViewerProps) {
                 <>
                   <span style={S.percent}>{load.percent}%</span>
                   <div style={S.track}>
-                    <div className="vm-fill" style={{ ...S.fill, width: `${load.percent}%` }} />
+                    <div className="vm-fill" style={{ ...S.fill, transform: `scaleX(${load.percent / 100})` }} />
                   </div>
                 </>
               ) : (
@@ -817,7 +817,7 @@ html, body { margin: 0; background: ${color.bg}; overscroll-behavior: none; }
 @keyframes vm-coach-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes vm-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .vm-indet { animation: vm-indet ${motion.duration.indeterminate}ms ${motion.css.linear} infinite; }
-.vm-fill { transition: width ${motion.duration.progress}ms ${motion.css.linear}; }
+.vm-fill { transition: transform ${motion.duration.progress}ms ${motion.css.linear}; }
 .vm-fade { transition: opacity ${motion.duration.base}ms, visibility 0s linear ${motion.duration.base}ms; }
 .vm-seg { transition: background-color ${motion.duration.base}ms ${ease}, color ${motion.duration.base}ms ${ease}; }
 /* 36-high pill inside the 44 bar: the hit area reaches the bar edges (44 pt target). */
@@ -863,7 +863,7 @@ const S: Record<string, CSSProperties> = {
   stage: { ...labelText, color: color.textMuted },
   percent: mono('readoutLarge'),
   track: { position: 'relative', width: 200, height: 4, borderRadius: 2, background: color.surface.raised, overflow: 'hidden' },
-  fill: { height: 4, borderRadius: 2, background: color.accent },
+  fill: { width: '100%', height: 4, borderRadius: 2, background: color.accent, transformOrigin: 'left' }, // scaleX: no layout per tick
   indet: { width: '30%', height: 4, borderRadius: 2, background: color.accent },
   heading: {
     fontFamily: VT.font.css.heading,

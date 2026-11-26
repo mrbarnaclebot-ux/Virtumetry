@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { useNetworkState } from 'expo-network';
 import { router } from 'expo-router';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 
 import LibraryScreen, { __resetBudgetBannerForTest } from '@/app/(tabs)/index';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
@@ -280,6 +280,16 @@ describe('library screen', () => {
     expect(screen.queryByText(/Untitled/)).toBeNull();
     expect(screen.getByText('30 frames')).toBeTruthy();
     expect(JSON.stringify(screen.getByTestId('row-thumb').props.source)).toContain('file:///mock/document/sessions/l1/frames/000001.jpg');
+  });
+
+  it('a ready room with a thumbnail gets a full-width 16:10 frame; other rows stay compact (critique R3)', async () => {
+    fetchMock.mockResolvedValue(
+      page([w('Living room', { status: 'ready', assets: { thumbnail_url: 'https://r2.test.invalid/t.jpg' } as LibraryItem['assets'] }), w('Attic', { status: 'processing' })]),
+    );
+    await renderLibrary();
+    await screen.findByText('Ready');
+    const thumb = screen.getByTestId('row-thumb');
+    expect(StyleSheet.flatten(thumb.props.style)).toMatchObject({ width: '100%', aspectRatio: 16 / 10 });
   });
 
   it('labels rows, the more button and the progress bar', async () => {
