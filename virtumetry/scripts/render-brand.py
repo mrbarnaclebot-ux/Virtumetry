@@ -15,11 +15,11 @@ PRIMARY = (162, 204, 203)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 
-ARMS = [((4, 5), (12, 14)), ((20, 5), (12, 14)), ((12, 14), (12, 21))]
-# Ticks sit on the vertical stem: height is the measurement. Drawn under the arms so they read as one ruler.
-TICKS = [((13.75, 17), (16.75, 17)), ((13.75, 20), (15.5, 20))]  # major + minor
+ARMS = [((12, 14), (5.94, 10.5)), ((12, 14), (18.06, 10.5)), ((12, 14), (12.0, 21.0))]
+# A room corner (three edges) inside its fine isometric outline: reads as a scanned room, never as a letter.
+OUTLINE = [((12.0, 4.5), (3.77, 9.25)), ((3.77, 9.25), (3.77, 18.75)), ((3.77, 18.75), (12.0, 23.5)), ((12.0, 23.5), (20.23, 18.75)), ((20.23, 18.75), (20.23, 9.25)), ((20.23, 9.25), (12.0, 4.5))]  # outline edges
 DOT = ((12, 14), 1.6)
-CENTER = (12, 13)  # middle of the mark's bounding box (4..20, 5..21)
+CENTER = (12, 14)  # middle of the outline (4.5..23.5)
 
 SS = 4  # supersampling factor
 OUT = Path(__file__).resolve().parent.parent / "assets" / "images"
@@ -35,14 +35,14 @@ def _line(d, a, b, width, color):
         d.ellipse([x - r, y - r, x + r, y + r], fill=color)
 
 
-def draw_mark(img, box, colors, stroke=2.6, tick=2.2):
+def draw_mark(img, box, colors, stroke=2.1, tick=1.1):
     """Draw the 24-unit mark into img (supersampled), centred; box = 24 units as a fraction of the canvas."""
     arm_c, tick_c = colors
     size = img.size[0]
     scale = size * box / 24
     p = lambda pt: (size / 2 + (pt[0] - CENTER[0]) * scale, size / 2 + (pt[1] - CENTER[1]) * scale)  # noqa: E731
     d = ImageDraw.Draw(img)
-    for a, b in TICKS:
+    for a, b in OUTLINE:
         _line(d, p(a), p(b), tick * scale, tick_c)
     for a, b in ARMS:
         _line(d, p(a), p(b), stroke * scale, arm_c)
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     render("splash-icon.png", 1024, 0.80, (TEXT, PRIMARY), "RGBA")
     render("android-icon-foreground.png", 1024, 0.52, (TEXT, PRIMARY), "RGBA")
     render("android-icon-monochrome.png", 1024, 0.52, (WHITE, WHITE), "RGBA")
-    render("favicon.png", 64, 0.92, (TEXT, PRIMARY), "RGB", bg=BG, stroke=3, tick=2.6)
+    render("favicon.png", 64, 0.92, (TEXT, PRIMARY), "RGB", bg=BG, stroke=3, tick=1.6)
     render_tab("library", _stack)
     render_tab("settings", _gear)
     print("rendered to", OUT)

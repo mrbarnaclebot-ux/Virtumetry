@@ -16,13 +16,13 @@ type Props = {
 
 /** UI-SPEC §13.1 "room corner with a scale". Only the lockup is exposed to screen readers. */
 export function BrandMark({ size = 32, variant = 'mark', mono, color: monoColor = color.textMuted }: Props) {
-  const { arms, ticks, dot } = glyphs.brandMark;
+  const { arms, outline, dot } = glyphs.brandMark;
   const stem = mono ? monoColor : color.text;
   const accent = mono ? monoColor : color.primary;
   const mark = (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
       <Path d={arms} stroke={stem} strokeWidth={size <= 20 ? 1.75 : 2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <Path d={ticks} stroke={accent} strokeWidth={1.5} strokeLinecap="round" fill="none" />
+      <Path d={outline} stroke={accent} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" fill="none" />
       <Circle {...dot} fill={accent} />
     </Svg>
   );

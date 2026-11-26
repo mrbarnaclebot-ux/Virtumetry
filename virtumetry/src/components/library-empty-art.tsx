@@ -13,7 +13,7 @@ const ORIGIN = `translate(${160 - 12 * SCALE} ${86 - 13 * SCALE}) scale(${SCALE}
 
 /** Critique F3: brand corner on the flat drafting field (same as onboarding), accent walking path, no mint. Decorative. */
 export function LibraryEmptyArt() {
-  const { arms, ticks, dot } = glyphs.brandMark;
+  const { arms, outline, dot } = glyphs.brandMark;
   const [w, setW] = useState(0);
   return (
     <View accessible={false} importantForAccessibility="no-hide-descendants" style={styles.panel} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
@@ -23,7 +23,7 @@ export function LibraryEmptyArt() {
           <Path d="M70 130A90 100 0 0 1 250 130" stroke={color.accent} strokeWidth={3} strokeDasharray="2 10" strokeLinecap="round" fill="none" />
           <G transform={ORIGIN}>
             <Path d={arms} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <Path d={ticks} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.6} strokeLinecap="round" fill="none" />
+            <Path d={outline} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.6} strokeLinecap="round" fill="none" />
             <Circle {...dot} fill={color.accent} />
           </G>
         </Svg>

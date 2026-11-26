@@ -28,13 +28,13 @@ export const glyphs = {
   linkOff: {
     d: 'M10 14a4 4 0 0 1 0-5.6l2-2a4 4 0 0 1 5.6 5.6l-1 1 M14 10a4 4 0 0 1 0 5.6l-2 2a4 4 0 0 1-5.6-5.6l1-1 M4 4l16 16',
   },
-  // §13.1 "room corner with a scale": arms/stem in text (width 2), ticks + vertex dot in primary.
+  // Room corner inside its isometric outline: three edges in text, outline + vertex dot in primary (round-2 critique: no letter read).
   // Ticks (major + minor) sit on the stem: height is the measurement. Mirrored by scripts/render-brand.py.
   brandMark: {
-    arms: 'M4 5L12 14M20 5L12 14M12 14V21',
-    ticks: 'M13.75 17h3 M13.75 20h1.75',
+    arms: 'M12 14L5.94 10.5M12 14L18.06 10.5M12 14L12.0 21.0',
+    outline: 'M12.0 4.5L3.77 9.25L3.77 18.75L12.0 23.5L20.23 18.75L20.23 9.25Z',
     dot: { cx: 12, cy: 14, r: 1.6 },
   },
-} as const satisfies Record<string, Glyph | { arms: string; ticks: string; dot: Dot }>;
+} as const satisfies Record<string, Glyph | { arms: string; outline: string; dot: Dot }>;
 
 export type GlyphId = Exclude<keyof typeof glyphs, 'brandMark'>;
