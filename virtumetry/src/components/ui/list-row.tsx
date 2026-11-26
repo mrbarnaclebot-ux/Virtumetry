@@ -6,13 +6,13 @@ import { focusRing } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { color, minTarget, radius, space } from '@/design/tokens';
 
-/** Raised group with an eyebrow title, inset hairlines between rows and an optional caption footer. */
+/** Raised group with a muted label title (mono is for readouts only), inset hairlines between rows and an optional caption footer. */
 export function Group({ title, footer, children }: { title?: string; footer?: string; children: ReactNode }) {
   const rows = Children.toArray(children).filter(isValidElement);
   return (
     <View>
       {title && (
-        <ThemedText type="eyebrow" tone="muted" accessibilityRole="header" style={styles.groupTitle}>
+        <ThemedText type="label" tone="muted" accessibilityRole="header" style={styles.groupTitle}>
           {title}
         </ThemedText>
       )}

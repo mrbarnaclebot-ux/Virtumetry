@@ -635,7 +635,7 @@ export default function WorldViewer(props: ViewerProps) {
               aria-valuemax={100}
               {...(load.percent != null ? { 'aria-valuenow': load.percent } : {})}
               style={S.column}>
-              <span style={S.eyebrow}>Downloading room</span>
+              <span style={S.stage}>Downloading room</span>
               {load.percent != null ? (
                 <>
                   <span style={S.percent}>{load.percent}%</span>
@@ -857,14 +857,6 @@ const S: Record<string, CSSProperties> = {
   },
   overlayGone: { opacity: 0, visibility: 'hidden', pointerEvents: 'none' },
   column: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: space.sm, padding: space.lg },
-  eyebrow: {
-    fontFamily: VT.font.css.mono,
-    fontSize: type.eyebrow.fontSize,
-    lineHeight: px(type.eyebrow.lineHeight),
-    letterSpacing: type.eyebrow.letterSpacing,
-    textTransform: 'uppercase',
-    color: color.textMuted,
-  },
   stage: { ...labelText, color: color.textMuted },
   percent: mono('readoutLarge'),
   track: { position: 'relative', width: 200, height: 4, borderRadius: 2, background: color.surface.raised, overflow: 'hidden' },

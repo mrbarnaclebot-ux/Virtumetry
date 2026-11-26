@@ -15,7 +15,7 @@ PRIMARY = (162, 204, 203)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 
-ARMS = [((12, 14), (5.94, 10.5)), ((12, 14), (18.06, 10.5)), ((12, 14), (12.0, 21.0))]
+ARMS = [((12, 14), (3.77, 9.25)), ((12, 14), (20.23, 9.25)), ((12, 14), (12, 23.5))]  # edges run to the outline: a solid corner
 # A room corner (three edges) inside its fine isometric outline: reads as a scanned room, never as a letter.
 OUTLINE = [((12.0, 4.5), (3.77, 9.25)), ((3.77, 9.25), (3.77, 18.75)), ((3.77, 18.75), (12.0, 23.5)), ((12.0, 23.5), (20.23, 18.75)), ((20.23, 18.75), (20.23, 9.25)), ((20.23, 9.25), (12.0, 4.5))]  # outline edges
 DOT = ((12, 14), 1.6)
@@ -35,7 +35,7 @@ def _line(d, a, b, width, color):
         d.ellipse([x - r, y - r, x + r, y + r], fill=color)
 
 
-def draw_mark(img, box, colors, stroke=2.1, tick=1.1):
+def draw_mark(img, box, colors, stroke=1.6, tick=1.1):
     """Draw the 24-unit mark into img (supersampled), centred; box = 24 units as a fraction of the canvas."""
     arm_c, tick_c = colors
     size = img.size[0]
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     render("splash-icon.png", 1024, 0.80, (TEXT, PRIMARY), "RGBA")
     render("android-icon-foreground.png", 1024, 0.52, (TEXT, PRIMARY), "RGBA")
     render("android-icon-monochrome.png", 1024, 0.52, (WHITE, WHITE), "RGBA")
-    render("favicon.png", 64, 0.92, (TEXT, PRIMARY), "RGB", bg=BG, stroke=3, tick=1.6)
+    render("favicon.png", 64, 0.92, (TEXT, PRIMARY), "RGB", bg=BG, stroke=2.2, tick=1.6)
     render_tab("library", _stack)
     render_tab("settings", _gear)
     print("rendered to", OUT)

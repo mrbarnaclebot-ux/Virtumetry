@@ -182,9 +182,9 @@ describe('rename', () => {
     await screen.findByText('Rename scan');
     return screen.getByLabelText('Scan name');
   }
-  const saveButton = () => screen.getByRole('button', { name: 'Save Name' });
+  const saveButton = () => screen.getByRole('button', { name: 'Save name' });
 
-  it('prefills the title with a counter and disables Save Name for empty or unchanged names', async () => {
+  it('prefills the title with a counter and disables Save for empty or unchanged names', async () => {
     const input = await openRename();
     expect(input.props.value).toBe('Kitchen');
     expect(input.props.maxLength).toBe(80);

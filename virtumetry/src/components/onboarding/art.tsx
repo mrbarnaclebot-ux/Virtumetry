@@ -7,7 +7,7 @@ import { glyphs } from '@/design/glyphs';
 import { ease } from '@/design/motion';
 import { color, motion } from '@/design/tokens';
 
-// Critique F3: flat `secondary` field + faint drafting grid; art lines in text, highlights in accent (no mint).
+// Critique F3: flat `secondary` field + faint drafting grid; art lines in text, line highlights in info (3:1 on secondary), fills in accent with a text ring (no mint).
 const LINE = { stroke: color.text, strokeOpacity: 0.85, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 const GRID = 16;
 const GRID_OPACITY = 0.08;
@@ -55,7 +55,7 @@ function WalkTheRoom({ t }: { t: SharedValue<number> }) {
   return (
     <>
       <Path d="M140 240H52a12 12 0 0 1-12-12V52a12 12 0 0 1 12-12h216a12 12 0 0 1 12 12v176a12 12 0 0 1-12 12H180" {...LINE} strokeOpacity={0.6} fill="none" />
-      <Rect x={76} y={76} width={168} height={128} rx={48} stroke={color.accent} strokeWidth={3} strokeLinecap="round" strokeDasharray="2 10" fill="none" />
+      <Rect x={76} y={76} width={168} height={128} rx={48} stroke={color.info} strokeWidth={3} strokeLinecap="round" strokeDasharray="2 10" fill="none" />
       {DOTS.map(([cx, cy], i) => (
         <KeyDot key={cx} i={i} cx={cx} cy={cy} t={t} />
       ))}
@@ -128,7 +128,7 @@ function WeBuildIt({ t }: { t: SharedValue<number> }) {
         cx={160}
         cy={150}
         r={120}
-        stroke={color.accent}
+        stroke={color.info}
         strokeWidth={4}
         strokeLinecap="round"
         strokeDasharray={`${ARC_SHOWN} ${ARC}`}
@@ -145,7 +145,7 @@ function WalkMeasureShare() {
   return (
     <>
       <SolidRoom />
-      <Path d="M110 175L205 150" stroke={color.accent} strokeWidth={3} strokeLinecap="round" />
+      <Path d="M110 175L205 150" stroke={color.info} strokeWidth={3} strokeLinecap="round" />
       <Rect x={129.5} y={151.5} width={56} height={22} rx={11} fill={color.bg} fillOpacity={0.7} />
       {[
         [110, 175],

@@ -20,7 +20,7 @@ export function LibraryEmptyArt() {
       <DraftingField width={w} height={H}>
         <Svg width={w} height={H} viewBox="0 0 320 160" style={StyleSheet.absoluteFill} accessible={false}>
           {/* Walking path around the corner: semi-ellipse from (70,130) over the top to (250,130). */}
-          <Path d="M70 130A90 100 0 0 1 250 130" stroke={color.accent} strokeWidth={3} strokeDasharray="2 10" strokeLinecap="round" fill="none" />
+          <Path d="M70 130A90 100 0 0 1 250 130" stroke={color.info} strokeWidth={3} strokeDasharray="2 10" strokeLinecap="round" fill="none" />
           <G transform={ORIGIN}>
             <Path d={arms} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
             <Path d={outline} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.6} strokeLinecap="round" fill="none" />

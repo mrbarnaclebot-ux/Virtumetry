@@ -31,7 +31,7 @@ export const glyphs = {
   // Room corner inside its isometric outline: three edges in text, outline + vertex dot in primary (round-2 critique: no letter read).
   // Ticks (major + minor) sit on the stem: height is the measurement. Mirrored by scripts/render-brand.py.
   brandMark: {
-    arms: 'M12 14L5.94 10.5M12 14L18.06 10.5M12 14L12.0 21.0',
+    arms: 'M12 14L3.77 9.25M12 14L20.23 9.25M12 14V23.5',
     outline: 'M12.0 4.5L3.77 9.25L3.77 18.75L12.0 23.5L20.23 18.75L20.23 9.25Z',
     dot: { cx: 12, cy: 14, r: 1.6 },
   },

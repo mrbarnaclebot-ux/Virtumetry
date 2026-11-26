@@ -68,7 +68,7 @@ export function RenameModal({ id, title, onClose }: Props) {
             {/* Ghost button with the label in primary (§5); Button has no primary-ink ghost. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Save Name"
+              accessibilityLabel="Save name"
               accessibilityState={{ disabled, busy: saving }}
               disabled={disabled}
               onPress={save}
@@ -77,7 +77,7 @@ export function RenameModal({ id, title, onClose }: Props) {
                 <ActivityIndicator size="small" color={color.primary} />
               ) : (
                 <ThemedText type="bodyStrong" tone={disabled ? 'faint' : 'primary'}>
-                  Save Name
+                  Save
                 </ThemedText>
               )}
             </Pressable>
