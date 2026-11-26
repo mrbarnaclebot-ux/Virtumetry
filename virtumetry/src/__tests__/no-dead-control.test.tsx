@@ -288,7 +288,7 @@ describe('Review', () => {
     __setLocalScansForTest([local('s1', { frameCount: 8, precheckIssues: [{ code: 'FRAME_COUNT_OUT_OF_RANGE', n: 8, min: 20, max: 5000 }] })]);
     await show(<CaptureScreen />);
     await screen.findByText("Didn't pass checks");
-    expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Check cost' })).toBeDisabled();
     assertNoDeadControls();
   });
 });
@@ -300,7 +300,7 @@ describe('Quote', () => {
     handler = async (url) => (url.includes('/v1/quote') ? ok(QUOTE) : fail(503));
     await show(<CaptureScreen />);
     await screen.findByText('Approve processing');
-    await screen.findByRole('button', { name: 'Approve & process', disabled: false });
+    await screen.findByRole('button', { name: 'Approve and process', disabled: false });
     assertNoDeadControls();
     await screen.unmount();
 
@@ -361,7 +361,7 @@ describe('Retry', () => {
       return fail(503);
     };
     await show(<RetrySheet />);
-    await screen.findByText('~930 credits');
+    await screen.findByText('~$9.30');
     assertNoDeadControls();
   });
 });
