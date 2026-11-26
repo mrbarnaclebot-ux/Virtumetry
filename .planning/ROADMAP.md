@@ -281,7 +281,29 @@ Plans:
   5. Micro-interactions and screen transitions respect Reduce Motion; key actions give haptic feedback; touch targets are ≥44pt with accessibility labels and capped Dynamic Type *(tests + manual check)*
   6. No dead buttons, placeholder screens or fake controls remain; any native-only polish is deferred to Phase 7 and listed *(no-dead-control test + UI review)*
 
-**Plans**: TBD
+**Plans**: 14 plans in 6 waves
+
+Plans:
+- Wave 1
+  - [ ] 06.1-01-PLAN.md — Wave 0 jest infra (Reanimated resolver), 3 approved deps, tokens/glyphs/fonts/haptics/motion/first-run + contrast test
+- Wave 2
+  - [ ] 06.1-02-PLAN.md — dark-only theme unification, role-based ThemedText, nav theme, font loading + splash rule
+  - [ ] 06.1-03-PLAN.md — PIL brand renderer, icon/splash/adaptive/favicon, app.json brand config, starter asset cleanup
+  - [ ] 06.1-04-PLAN.md — VT alias, DOM viewer chrome redesign, in-viewer walk/measure coach marks, onHaptic
+- Wave 3
+  - [ ] 06.1-05-PLAN.md — core primitives (Icon, Glyph, BrandMark, Button, IconButton, Screen, Surface, ListRow, StatusPill, TextField, SheetHeader, SegmentedControl)
+- Wave 4
+  - [ ] 06.1-06-PLAN.md — toast system (FullWindowOverlay host, queue, a11y, haptics) + CoachMark
+  - [ ] 06.1-07-PLAN.md — state primitives (Banner, EmptyState/ErrorState, Skeleton, ProgressBar)
+- Wave 5
+  - [ ] 06.1-08-PLAN.md — onboarding (art, pager, route, guards), ToastProvider mount, Settings Replay intro, tabs
+  - [ ] 06.1-09-PLAN.md — Library redesign: honest states, banners, toasts, first-ready moment, onboarding intent
+  - [ ] 06.1-10-PLAN.md — sign-in + web share page / password gate redesign
+  - [ ] 06.1-11-PLAN.md — capture prep + scan HUD, capture-prep coach mark, capture haptics
+  - [ ] 06.1-12-PLAN.md — approval module, review/quote/upload steps, retry sheet
+  - [ ] 06.1-13-PLAN.md — world screen chrome + viewer coach/haptic wiring, share sheet
+- Wave 6
+  - [ ] 06.1-14-PLAN.md — hex/dash/no-dead-control sweeps, phase gate, web export check, Phase 7 deferrals
 **UI hint**: yes
 
 ### Phase 7: Native Build Readiness
