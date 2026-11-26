@@ -1,30 +1,20 @@
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button, focusRing } from '@/components/ui/button';
+import { Surface } from '@/components/ui/surface';
+import { TextField } from '@/components/ui/text-field';
+import { color, minTarget, radius, space } from '@/design/tokens';
 import { useRenameWorld } from '@/lib/api';
 
 type Props = { id: string; title: string; onClose: () => void };
 
-/** Rename modal per UI-SPEC §4. Mount it with key={id}; unmounting closes it. */
+/** Rename dialog (06.1 UI-SPEC §5): level-2 surface over scrim.modal. Mount it with key={id}; unmounting closes it. */
 export function RenameModal({ id, title, onClose }: Props) {
-  const theme = useTheme();
   const { width } = useWindowDimensions();
   const rename = useRenameWorld();
   const [value, setValue] = useState(title);
-  const [focused, setFocused] = useState(false);
   const [emptyError, setEmptyError] = useState(false);
   const trimmed = value.trim();
   const saving = rename.isPending;
@@ -39,32 +29,22 @@ export function RenameModal({ id, title, onClose }: Props) {
     if (!saving) onClose();
   };
 
-  let helper = <ThemedText type="small" themeColor="textSecondary" style={styles.counter}>{`${value.length}/80`}</ThemedText>;
-  if (rename.isError) {
-    helper = (
-      <ThemedText type="small" themeColor="destructive">
-        {"Couldn't rename. Check your connection and try again."}
-      </ThemedText>
-    );
-  } else if (emptyError) {
-    helper = (
-      <ThemedText type="small" themeColor="destructive">
-        {"Name can't be empty."}
-      </ThemedText>
-    );
-  }
+  const error = rename.isError
+    ? "Couldn't rename. Check your connection and try again."
+    : emptyError
+      ? "Name can't be empty."
+      : null;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={cancel}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.fill}>
         <Pressable accessible={false} onPress={cancel} style={[StyleSheet.absoluteFill, styles.backdrop]} />
-        <View
-          accessibilityViewIsModal
-          style={[styles.card, { width: Math.min(width - 48, 400), backgroundColor: theme.background }]}>
-          <ThemedText type="subtitle" accessibilityRole="header">
+        <Surface level={2} accessibilityViewIsModal style={[styles.card, { width: Math.min(width - 48, 400) }]}>
+          <ThemedText type="heading" accessibilityRole="header">
             Rename scan
           </ThemedText>
-          <TextInput
+          <TextField
+            label="Scan name"
             value={value}
             onChangeText={(t) => {
               setValue(t);
@@ -80,46 +60,29 @@ export function RenameModal({ id, title, onClose }: Props) {
             submitBehavior="blurAndSubmit"
             autoCapitalize="sentences"
             placeholder="Scan name"
-            accessibilityLabel="Scan name"
-            placeholderTextColor={theme.textSecondary}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            style={[
-              styles.input,
-              { backgroundColor: theme.backgroundElement, color: theme.text },
-              focused && { borderColor: theme.accent },
-            ]}
+            error={error}
+            helper={`${value.length}/80`}
           />
-          <View style={styles.helper}>{helper}</View>
           <View style={styles.buttons}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              onPress={cancel}
-              style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-              <ThemedText>Cancel</ThemedText>
-            </Pressable>
+            <Button variant="ghost" size="md" label="Cancel" onPress={cancel} />
+            {/* Ghost button with the label in primary (§5); Button has no primary-ink ghost. */}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Save Name"
-              accessibilityState={{ disabled }}
+              accessibilityState={{ disabled, busy: saving }}
               disabled={disabled}
               onPress={save}
-              style={({ pressed }) => [
-                styles.button,
-                disabled && !saving && styles.disabled,
-                pressed && styles.pressed,
-              ]}>
+              style={(s) => [styles.save, s.pressed && styles.pressed, focusRing(s)]}>
               {saving ? (
-                <ActivityIndicator size="small" color={theme.accent} />
+                <ActivityIndicator size="small" color={color.primary} />
               ) : (
-                <ThemedText type="smallBold" themeColor="accent">
+                <ThemedText type="bodyStrong" tone={disabled ? 'faint' : 'primary'}>
                   Save Name
                 </ThemedText>
               )}
             </Pressable>
           </View>
-        </View>
+        </Surface>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -127,21 +90,16 @@ export function RenameModal({ id, title, onClose }: Props) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  backdrop: { backgroundColor: 'rgba(0,0,0,0.4)' },
-  card: { borderRadius: 16, padding: Spacing.four },
-  input: {
-    marginTop: Spacing.three,
-    height: 48,
-    borderRadius: 12,
-    paddingHorizontal: Spacing.three,
-    fontSize: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+  backdrop: { backgroundColor: color.scrim.modal },
+  card: { padding: space.xl, gap: space.lg },
+  buttons: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm, marginTop: space.sm },
+  save: {
+    minWidth: minTarget,
+    height: minTarget,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  helper: { marginTop: Spacing.two },
-  counter: { textAlign: 'right' },
-  buttons: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.three, marginTop: Spacing.four },
-  button: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.8 },
+  pressed: { backgroundColor: color.surface.pressed },
 });
