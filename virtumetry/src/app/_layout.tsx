@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
+import { ToastProvider } from '@/components/ui/toast';
+import { useOnboarded } from '@/design/first-run';
 import { FONT_MAP } from '@/design/fonts';
 import { color } from '@/design/tokens';
 import { authClient } from '@/lib/auth-client';
@@ -63,6 +65,7 @@ function PublicLayout() {
 
 function AuthedLayout({ fontsReady }: { fontsReady: boolean }) {
   const { data, isPending } = authClient.useSession();
+  const onboarded = useOnboarded();
   const [fontTimedOut, setFontTimedOut] = useState(false);
 
   useEffect(() => {
@@ -90,17 +93,23 @@ function AuthedLayout({ fontsReady }: { fontsReady: boolean }) {
     <ThemeProvider value={navTheme}>
       <StatusBar style="light" />
       <QueryClientProvider client={queryClient}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Protected guard={!!data}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="capture" options={{ presentation: 'fullScreenModal' }} />
-            <Stack.Screen name="world" />
-          </Stack.Protected>
-          <Stack.Protected guard={!data}>
-            <Stack.Screen name="sign-in" />
-          </Stack.Protected>
-          <Stack.Screen name="r/[slug]" />
-        </Stack>
+        <ToastProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Protected guard={signedIn && onboarded}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="capture" options={{ presentation: 'fullScreenModal' }} />
+              <Stack.Screen name="world" />
+            </Stack.Protected>
+            {/* UI-SPEC §8.1: first sign-in without the flag lands here; a screen lives in one group only. */}
+            <Stack.Protected guard={signedIn}>
+              <Stack.Screen name="onboarding" options={{ presentation: 'fullScreenModal', gestureEnabled: false, animation: 'fade' }} />
+            </Stack.Protected>
+            <Stack.Protected guard={!signedIn}>
+              <Stack.Screen name="sign-in" />
+            </Stack.Protected>
+            <Stack.Screen name="r/[slug]" />
+          </Stack>
+        </ToastProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );
