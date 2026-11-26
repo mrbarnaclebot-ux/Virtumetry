@@ -125,6 +125,7 @@ export default function SignInScreen() {
         busy={submitting}
         busyLabel="Logging in…"
         disabled={!filled}
+        hint="Enter your email and password first."
         onPress={submit}
         style={styles.button}
       />
