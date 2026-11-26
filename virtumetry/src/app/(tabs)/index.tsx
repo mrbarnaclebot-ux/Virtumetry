@@ -6,7 +6,7 @@ import { AccessibilityInfo, Alert, RefreshControl, StyleSheet, View } from 'reac
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { LibraryEmptyArt } from '@/components/library-empty-art';
-import { LibraryRow, type RowItem } from '@/components/library-row';
+import { LibraryRow, rowActions, type RowItem } from '@/components/library-row';
 import { RenameModal } from '@/components/rename-modal';
 import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
@@ -106,33 +106,18 @@ export default function LibraryScreen() {
   const openRetry = (world: { id: string }) =>
     router.push({ pathname: '/world/[id]/retry', params: { id: world.id } } as unknown as Href);
 
-  // Row action menu (D-21). Local scans: Discard only while nothing is on the server side
-  // (saved/blocked/failed); once a server world exists, Delete removes both (CR-03).
+  // Row action menu (D-21): the entries come from rowActions, the same list that shows or hides
+  // the row's More button. A local scan's Delete targets its server world (iter-2 WR-02).
   const openRowMenu = (item: RowItem, state: DisplayState) => {
     const title = state.displayTitle;
-    if ('local' in item) {
-      // A server id always means Delete, so a local-only Discard never orphans a charged world (iter-2 WR-02).
-      const serverId = item.serverWorldId;
-      const discardable = item.uploadState === 'saved' || item.uploadState === 'blocked' || item.uploadState === 'failed';
-      Alert.alert(title, undefined, [
-        ...(serverId
-          ? [{ text: 'Delete', style: 'destructive' as const, onPress: () => confirmDelete(serverId, title) }]
-          : discardable
-            ? [{ text: 'Discard', style: 'destructive' as const, onPress: () => confirmDiscard(item.id, item.frameCount) }]
-            : []),
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-      return;
-    }
-    Alert.alert(title, undefined, [
-      // T-06-21: only the server's retryable flag offers Retry; missing = hidden.
-      ...(item.status === 'failed' && item.retryable === true
-        ? [{ text: 'Retry…', onPress: () => openRetry(item) }]
-        : []),
-      { text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) },
-      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(item.id, title) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    const worldId = 'local' in item ? item.serverWorldId : item.id;
+    const buttons = rowActions(item).map((a) => {
+      if (a === 'Retry') return { text: 'Retry…', onPress: () => openRetry(item) };
+      if (a === 'Rename') return { text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) };
+      if (a === 'Discard') return { text: 'Discard', style: 'destructive' as const, onPress: () => confirmDiscard(item.id, (item as LocalScan).frameCount) };
+      return { text: 'Delete', style: 'destructive' as const, onPress: () => worldId && confirmDelete(worldId, title) };
+    });
+    Alert.alert(title, undefined, [...buttons, { text: 'Cancel', style: 'cancel' }]);
   };
 
   const confirmDiscard = (id: string, n: number) => {
@@ -155,7 +140,8 @@ export default function LibraryScreen() {
   };
 
   const confirmDelete = (id: string, title: string) => {
-    Alert.alert(`Delete "${title}"?`, "This removes it from your phone, our servers and SpAItial. You can't undo this.", [
+    Alert.alert(`Delete "${title}"?`, "This removes it from your phone and our servers, including processed files. You can't undo this."
+, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteWorld.mutate(id) },
     ]);

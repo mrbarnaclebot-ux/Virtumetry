@@ -27,6 +27,27 @@ type Props = {
   justReady?: boolean;
 };
 
+export type RowAction = 'Retry' | 'Rename' | 'Delete' | 'Discard';
+
+/**
+ * The row menu's actions (D-21), shared by the menu and the More button so neither offers a dead entry.
+ * Local: Delete once a server id exists (CR-03), Discard while nothing is server side, else none.
+ * Server: Retry only on the server's retryable flag (T-06-21), then Rename and Delete.
+ */
+export function rowActions(item: RowItem): RowAction[] {
+  if ('local' in item) {
+    if (item.serverWorldId) return ['Delete'];
+    return item.uploadState === 'saved' || item.uploadState === 'blocked' || item.uploadState === 'failed' ? ['Discard'] : [];
+  }
+  return [...(item.status === 'failed' && item.retryable === true ? (['Retry'] as const) : []), 'Rename', 'Delete'];
+}
+
+/** "Retry, rename or delete" from the actions actually offered. */
+const actionHint = (actions: RowAction[]) => {
+  const words = actions.map((a, i) => (i === 0 ? a : a.toLowerCase()));
+  return words.length > 1 ? `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}` : words[0];
+};
+
 const ICON = 16;
 const HALF = motion.duration.pulse / 2;
 
@@ -81,6 +102,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
   const retryable = !('local' in item) && item.status === 'failed' && item.retryable === true;
   const label = [state.displayTitle, state.statusLine, state.secondaryLine].filter(Boolean).join(', ');
   const kind: StatusKind = 'local' in item && item.uploadState === 'paused' ? 'paused' : state.kind;
+  const actions = rowActions(item);
 
   return (
     <View style={[styles.row, { opacity: state.rowOpacity }]}>
@@ -137,12 +159,16 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
           )}
         </View>
       </Pressable>
-      <IconButton
-        icon="more"
-        accessibilityLabel={`More actions for ${state.displayTitle}`}
-        accessibilityHint={retryable ? 'Retry, rename or delete' : 'Rename or delete'}
-        onPress={() => onMore(item, state)}
-      />
+      {/* An approved or uploading local scan has no actions yet: no More button rather than an empty menu. */}
+      {actions.length > 0 && (
+        <IconButton
+          icon="more"
+          accessibilityLabel={`More actions for ${state.displayTitle}`}
+          accessibilityHint={actionHint(actions)}
+          onPress={() => onMore(item, state)}
+        />
+      )}
+
     </View>
   );
 }

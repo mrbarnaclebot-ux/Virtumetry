@@ -264,7 +264,8 @@ describe('delete', () => {
     await confirmDeleteOf('Bedroom');
     expect(alertSpy).toHaveBeenLastCalledWith(
       'Delete "Bedroom"?',
-      "This removes it from your phone, our servers and SpAItial. You can't undo this.",
+      "This removes it from your phone and our servers, including processed files. You can't undo this.",
+
       expect.any(Array),
     );
     expect(lastButtons().map((b) => [b.text, b.style])).toEqual([
@@ -375,11 +376,21 @@ describe('delete', () => {
     expect(lastButtons().map((b) => b.text)).toEqual(['Discard', 'Cancel']);
   });
 
-  it('an approved local scan without a server id offers neither Discard nor Delete', async () => {
-    __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState: 'approved' }]);
+  it.each(['approved', 'uploading', 'paused'] as const)(
+    'a %s local scan without a server id has no More button (no empty menu)',
+    async (uploadState) => {
+      __setLocalScansForTest([{ ...local('l1', 'Hallway'), uploadState }]);
+      await renderLibrary();
+      expect(screen.getByRole('button', { name: /^Hallway/ })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'More actions for Hallway' })).toBeNull();
+    },
+  );
+
+  it('local More hints name only the offered action', async () => {
+    __setLocalScansForTest([local('l1', 'Hallway'), { ...local('l2', 'Attic'), uploadState: 'uploading', serverWorldId: 'w9' }]);
     await renderLibrary();
-    await openMenu('Hallway');
-    expect(lastButtons().map((b) => b.text)).toEqual(['Cancel']);
+    expect(screen.getByRole('button', { name: 'More actions for Hallway' }).props.accessibilityHint).toBe('Discard');
+    expect(screen.getByRole('button', { name: 'More actions for Attic' }).props.accessibilityHint).toBe('Delete');
   });
 
   it('Cancel in the confirmation keeps the row and sends nothing', async () => {
