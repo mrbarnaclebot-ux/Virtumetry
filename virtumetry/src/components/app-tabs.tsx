@@ -1,19 +1,16 @@
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { color } from '@/design/tokens';
 
+// UI-SPEC §7.15 tab tints.
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      tintColor={colors.accent}
-      iconColor={{ selected: colors.accent }}
-      labelStyle={{ selected: { color: colors.accent } }}>
+      backgroundColor={color.bg}
+      indicatorColor={color.surface.raised}
+      tintColor={color.primary}
+      iconColor={{ default: color.textMuted, selected: color.primary }}
+      labelStyle={{ default: { color: color.textMuted }, selected: { color: color.primary } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Library</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

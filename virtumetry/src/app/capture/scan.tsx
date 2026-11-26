@@ -21,8 +21,8 @@ import { ReadinessPill } from '@/components/readiness-pill';
 import { ThemedText, type ThemedTextProps } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
 
-// Always dark (camera UI convention): Colors.dark directly, light status bar (UI-SPEC §4).
-const D = Colors.dark;
+// Always dark (camera UI convention): the app theme is always dark, light status bar (UI-SPEC §4).
+const D = Colors;
 const SCRIM = 'rgba(0,0,0,0.6)';
 const HUD = 1.3;
 

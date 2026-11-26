@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   listError: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flexWrap: 'wrap' },
   empty: { gap: Spacing.two, marginTop: Spacing.two },
   row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  rowText: { flex: 1, gap: Spacing.half },
+  rowText: { flex: 1, gap: Spacing.one },
   urlLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   url: { flexShrink: 1 },
   icon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

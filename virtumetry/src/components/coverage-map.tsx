@@ -42,7 +42,7 @@ export function CoverageMap({ frames }: { frames: KeyframeEvent[] }) {
           <Path
             key={k}
             d={arc(sectorScreenDeg(k))}
-            stroke={seen ? Colors.dark.accent : UNSEEN}
+            stroke={seen ? Colors.accent : UNSEEN}
             strokeWidth={6}
             fill="none"
           />
@@ -50,7 +50,7 @@ export function CoverageMap({ frames }: { frames: KeyframeEvent[] }) {
         {cov.path.length > 1 && (
           <Polyline
             points={cov.path.map((p) => { const q = at(p); return `${q.x},${q.y}`; }).join(' ')}
-            stroke={Colors.dark.text}
+            stroke={Colors.text}
             strokeWidth={2}
             fill="none"
           />
@@ -58,7 +58,7 @@ export function CoverageMap({ frames }: { frames: KeyframeEvent[] }) {
         {cov.ticks.map((t, k) => {
           const p = at(t);
           return (
-            <Line key={k} x1={p.x} y1={p.y} x2={p.x + t.dx * 6} y2={p.y + t.dy * 6} stroke={Colors.dark.textSecondary} strokeWidth={2} />
+            <Line key={k} x1={p.x} y1={p.y} x2={p.x + t.dx * 6} y2={p.y + t.dy * 6} stroke={Colors.textSecondary} strokeWidth={2} />
           );
         })}
         {cur && cov.current && (
@@ -68,10 +68,10 @@ export function CoverageMap({ frames }: { frames: KeyframeEvent[] }) {
               y1={cur.y}
               x2={cur.x + cov.current.dx * 10}
               y2={cur.y + cov.current.dy * 10}
-              stroke={Colors.dark.accent}
+              stroke={Colors.accent}
               strokeWidth={2}
             />
-            <Circle cx={cur.x} cy={cur.y} r={4} fill={Colors.dark.accent} />
+            <Circle cx={cur.x} cy={cur.y} r={4} fill={Colors.accent} />
           </G>
         )}
       </Svg>

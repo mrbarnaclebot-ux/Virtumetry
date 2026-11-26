@@ -5,7 +5,6 @@ import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 import type { Readiness } from '@/capture/readiness';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 
 // D-07: level is never color alone — icon shape + label word + reason (UI-SPEC §4).
 const LOOK: Record<Readiness['level'], { icon: SymbolViewProps['name'] | null; color: 'accent' | 'warning' | 'destructive' | 'text' }> = {
@@ -18,8 +17,8 @@ const LOOK: Record<Readiness['level'], { icon: SymbolViewProps['name'] | null; c
 type Props = { result: Readiness; scheme?: 'dark' | 'system' };
 
 export function ReadinessPill({ result, scheme = 'system' }: Props) {
-  const system = useTheme();
-  const theme = scheme === 'dark' ? Colors.dark : system;
+  // Dark-only app: both schemes share Colors; `scheme` still selects the font cap.
+  const theme = Colors;
   const font = scheme === 'dark' ? 1.3 : 1.6;
   const { icon, color } = LOOK[result.level];
   const label = `Readiness: ${result.label}. ${result.reason}`;
