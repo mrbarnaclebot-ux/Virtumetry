@@ -7,7 +7,6 @@ import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Glyph } from '@/components/ui/glyph';
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { SheetHeader } from '@/components/ui/sheet-header';
@@ -26,7 +25,7 @@ const shareUrl = (url: string) => RNShare.share(Platform.OS === 'ios' ? { url } 
 const createdOn = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-/** D-18 share sheet (UI-SPEC §7.11): create, list, count and revoke a ready room's links. */
+/** D-18 share sheet (UI-SPEC §7.11): create, list, count and turn off a ready room's links. */
 export default function ShareSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const shares = useShares(id);
@@ -62,7 +61,7 @@ export default function ShareSheet() {
       [
         { text: 'Keep link', style: 'cancel' },
         {
-          text: 'Revoke link',
+          text: 'Turn off link',
           style: 'destructive',
           onPress: () =>
             revoke.mutate(share.id, {
@@ -106,7 +105,7 @@ export default function ShareSheet() {
   } else if (shares.isError && !shares.data) {
     list = (
       <View style={styles.listError}>
-        <Glyph id="alert" size={16} color={color.danger} />
+        <Icon name="warning" size={16} color={color.danger} />
         <ThemedText type="label" tone="danger">
           {"Couldn't load your links."}
         </ThemedText>
@@ -147,15 +146,14 @@ export default function ShareSheet() {
             <ThemedText type="caption" tone="muted">{`${count} · Created ${date}`}</ThemedText>
           </View>
           <IconButton icon="share" accessibilityLabel="Share link" onPress={() => shareUrl(s.url).catch(() => {})} />
-          {/* Ghost destructive md; Button can't carry a distinct a11y name ("Revoke link" vs visible "Revoke"). */}
+          {/* Ghost destructive md; Button can't carry a distinct a11y name ("Turn off link" vs visible "Turn off"). */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Revoke link"
-            accessibilityHint="Turns this link off"
+            accessibilityLabel="Turn off link"
             onPress={() => confirmRevoke(s)}
             style={({ pressed }) => [styles.revoke, pressed && styles.pressed]}>
             <ThemedText type="bodyStrong" tone="danger">
-              Revoke
+              Turn off
             </ThemedText>
           </Pressable>
         </View>

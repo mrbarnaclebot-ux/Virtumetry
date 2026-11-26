@@ -227,7 +227,9 @@ describe('revoke', () => {
   async function confirmRevokeFirst() {
     await renderSheet();
     await screen.findByText(server[0].url);
-    await fireEvent.press(screen.getAllByRole('button', { name: 'Revoke link' })[0]);
+    expect(screen.getAllByText('Turn off')).toHaveLength(2); // one "Turn off" wording, never "Revoke"
+    expect(screen.queryByText('Revoke')).toBeNull();
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Turn off link' })[0]);
     expect(alertSpy).toHaveBeenLastCalledWith(
       'Turn off this link?',
       "Anyone with it won't be able to open the room anymore. People who already have it open keep what's loaded. You can't undo this.",
@@ -235,7 +237,7 @@ describe('revoke', () => {
     );
     expect(lastButtons().map((b) => [b.text, b.style])).toEqual([
       ['Keep link', 'cancel'],
-      ['Revoke link', 'destructive'],
+      ['Turn off link', 'destructive'],
     ]);
   }
 
@@ -251,7 +253,7 @@ describe('revoke', () => {
     mutate.mockReturnValue(new Promise<Response>((r) => (resolve = r)));
     await confirmRevokeFirst();
     const gone = server[0].url;
-    await pressAlert('Revoke link');
+    await pressAlert('Turn off link');
 
     await waitFor(() => expect(screen.queryByText(gone)).toBeNull());
     const [[url, init]] = calls('DELETE');
@@ -267,7 +269,7 @@ describe('revoke', () => {
   it('a failed DELETE puts the row back and shows the error as a toast', async () => {
     mutate.mockImplementation(async () => res(500));
     await confirmRevokeFirst();
-    await pressAlert('Revoke link');
+    await pressAlert('Turn off link');
     const msg = "Couldn't turn off the link. It still works. Try again.";
     expect(await screen.findByRole('alert', { name: msg })).toBeTruthy();
     expect(screen.getAllByText(msg)).toHaveLength(1); // toast only, no inline line
