@@ -3,11 +3,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { Alert, Share as RNShare, type AlertButton } from 'react-native';
 
 import ShareSheet from '@/app/world/[id]/share';
+import { ToastProvider, __resetToastsForTest } from '@/components/ui/toast';
 import { openCountLabel, type Share } from '@/lib/shares';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
 jest.mock('@/lib/auth-client', () => ({ authClient: { getCookie: jest.fn(async () => 'c=1') } }));
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
+jest.mock('@/design/haptics', () => ({
+  haptic: { selection: jest.fn(), light: jest.fn(), medium: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() },
+}));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn() },
   useLocalSearchParams: jest.fn(() => ({ id: 'w1' })),
@@ -40,6 +44,8 @@ let alertSpy: jest.SpyInstance;
 let shareSpy: jest.SpyInstance;
 
 beforeEach(() => {
+  __resetToastsForTest();
+  jest.clearAllMocks();
   server = [
     share('s2', { open_count: 3, has_password: true, created_at: '2026-11-24T11:00:00.000Z' }),
     share('s1', { open_count: 1 }),
@@ -54,7 +60,10 @@ beforeEach(() => {
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   shareSpy = jest.spyOn(RNShare, 'share').mockResolvedValue({ action: 'dismissedAction', activityType: undefined });
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  __resetToastsForTest();
+  jest.restoreAllMocks();
+});
 
 async function renderSheet() {
   const client = new QueryClient({
@@ -62,7 +71,9 @@ async function renderSheet() {
   });
   await render(
     <QueryClientProvider client={client}>
-      <ShareSheet />
+      <ToastProvider>
+        <ShareSheet />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -116,6 +127,17 @@ describe('list', () => {
     expect(shareSpy).toHaveBeenCalledWith({ url: server[1].url });
   });
 
+  it('loading shows a busy "Loading links" placeholder', async () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    await renderSheet();
+    expect(screen.getByLabelText('Loading links').props.accessibilityState).toEqual({ busy: true });
+  });
+
+  it('header is "Share"', async () => {
+    await renderSheet();
+    expect(screen.getByRole('header', { name: 'Share' })).toBeTruthy();
+  });
+
   it('Done goes back', async () => {
     const { router } = jest.requireMock('expo-router');
     await renderSheet();
@@ -136,6 +158,7 @@ describe('create', () => {
     await fireEvent.press(createButton());
 
     await waitFor(() => expect(shareSpy).toHaveBeenCalledWith({ url: created.url }));
+    expect(screen.getByText('Link created')).toBeTruthy();
     const [[url, init]] = calls('POST');
     expect(url).toBe(BASE);
     expect(JSON.parse(init.body as string)).toEqual({});
@@ -148,8 +171,10 @@ describe('create', () => {
     await renderSheet();
     await screen.findByText(server[0].url);
 
+    const { haptic } = jest.requireMock('@/design/haptics');
     const toggle = screen.getByLabelText('Protect with a password');
     await fireEvent(toggle, 'valueChange', true);
+    expect(haptic.selection).toHaveBeenCalledTimes(1);
     const input = screen.getByLabelText('Password');
     expect(input.props.secureTextEntry).toBe(true);
     expect(input.props.maxLength).toBe(64);
@@ -171,6 +196,19 @@ describe('create', () => {
     expect(JSON.parse(calls('POST')[0][1].body as string)).toEqual({ password: 'abcdef' });
     expect(screen.queryByLabelText('Password')).toBeNull();
     expect(screen.getByLabelText('Protect with a password').props.value).toBe(false);
+  });
+
+  it('offline: banner, and Create link disabled with the reason', async () => {
+    jest.requireMock('expo-network').useNetworkState.mockReturnValue({ isConnected: false, isInternetReachable: false });
+    await renderSheet();
+    await screen.findByText(server[0].url);
+    const reason = "You're offline. Connect to create or turn off links.";
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(createButton().props.accessibilityState).toMatchObject({ disabled: true });
+    expect(createButton().props.accessibilityHint).toBe(reason);
+    await fireEvent.press(createButton());
+    expect(mutate).not.toHaveBeenCalled();
+    jest.requireMock('expo-network').useNetworkState.mockReturnValue({ isConnected: true, isInternetReachable: true });
   });
 
   it('failure shows the create error and opens nothing', async () => {
@@ -223,13 +261,16 @@ describe('revoke', () => {
     server = server.map((s) => (s.id === 's2' ? { ...s, revoked_at: '2026-11-24T14:00:00.000Z' } : s));
     await act(async () => resolve(res(204)));
     await waitFor(() => expect(urls()).toEqual([server[1].url]));
+    expect(screen.getByText('Link turned off')).toBeTruthy();
   });
 
-  it('a failed DELETE puts the row back with the error line', async () => {
+  it('a failed DELETE puts the row back and shows the error as a toast', async () => {
     mutate.mockImplementation(async () => res(500));
     await confirmRevokeFirst();
     await pressAlert('Revoke link');
-    expect(await screen.findByText("Couldn't turn off the link. It still works. Try again.")).toBeTruthy();
+    const msg = "Couldn't turn off the link. It still works. Try again.";
+    expect(await screen.findByRole('alert', { name: msg })).toBeTruthy();
+    expect(screen.getAllByText(msg)).toHaveLength(1); // toast only, no inline line
     expect(urls()).toEqual([server[0].url, server[1].url]);
   });
 });
