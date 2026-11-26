@@ -1,22 +1,15 @@
+import { useNetworkState } from 'expo-network';
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  type TextInputProps,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { AccessibilityInfo, Platform, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Banner } from '@/components/ui/banner';
+import { BrandMark } from '@/components/ui/brand-mark';
+import { Button } from '@/components/ui/button';
+import { Screen } from '@/components/ui/screen';
+import { TextField } from '@/components/ui/text-field';
+import { haptic } from '@/design/haptics';
+import { space } from '@/design/tokens';
 import { authClient } from '@/lib/auth-client';
 import { consumeSessionEndedNotice } from '@/lib/session';
 
@@ -35,20 +28,24 @@ function errorCopy(status: number | undefined): string {
   return COPY.server;
 }
 
+/** UI-SPEC §7.1. */
 export default function SignInScreen() {
-  const theme = useTheme();
+  const network = useNetworkState();
   const [notice] = useState(consumeSessionEndedNotice);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [focused, setFocused] = useState<'email' | 'password' | null>(null);
   const passwordRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
-  const canSubmit = email.trim() !== '' && password.trim() !== '' && !submitting;
+  const offline = network.isInternetReachable === false;
+  const filled = email.trim() !== '' && password.trim() !== '';
+  const canSubmit = filled && !submitting;
 
   useEffect(() => {
-    if (error && Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(error);
+    if (!error) return;
+    haptic.error();
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(error);
   }, [error]);
 
   async function submit() {
@@ -66,148 +63,81 @@ export default function SignInScreen() {
     }
   }
 
-  const inputProps = (field: 'email' | 'password'): TextInputProps => ({
-    editable: !submitting,
-    placeholderTextColor: theme.textSecondary,
-    onFocus: () => setFocused(field),
-    onBlur: () => setFocused(null),
-    style: [
-      styles.input,
-      { backgroundColor: theme.backgroundElement, color: theme.text },
-      focused === field && { borderColor: theme.accent },
-    ],
-  });
-
   return (
-    <ThemedView style={styles.flex}>
-      <SafeAreaView style={styles.flex}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.content}>
-            <ThemedText type="title" accessibilityRole="header">
-              Virtumetry
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.tagline}>
-              Walk a room. Get it back in 3D.
-            </ThemedText>
+    <Screen maxWidth="form" keyboard scroll contentStyle={styles.content}>
+      <BrandMark size={48} />
+      <ThemedText type="display" accessibilityRole="header" style={styles.wordmark}>
+        Virtumetry
+      </ThemedText>
+      <ThemedText tone="muted" style={styles.tagline}>
+        Walk a room. Get it back in 3D.
+      </ThemedText>
 
-            {notice && (
-              <ThemedText type="small" themeColor="textSecondary" style={styles.notice}>
-                You were logged out. Log in again to continue.
-              </ThemedText>
-            )}
+      {(notice || offline) && (
+        <View style={styles.banners}>
+          {notice && <Banner tone="info" icon="info" title="You were logged out. Log in again to continue." />}
+          {offline && (
+            <Banner tone="neutral" icon="offline" title="You're offline. Connect to log in." />
+          )}
+        </View>
+      )}
 
-            <ThemedText type="small" style={styles.label}>
-              Email
-            </ThemedText>
-            <TextInput
-              {...inputProps('email')}
-              accessibilityLabel="Email"
-              value={email}
-              onChangeText={(v) => {
-                setEmail(v);
-                setError(null);
-              }}
-              placeholder="you@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-              textContentType="username"
-              returnKeyType="next"
-              submitBehavior="submit"
-              onSubmitEditing={() => passwordRef.current?.focus()}
-            />
+      <View style={[styles.fields, (notice || offline) && styles.afterBanner]}>
+        <TextField
+          label="Email"
+          editable={!submitting}
+          value={email}
+          onChangeText={(v) => {
+            setEmail(v);
+            setError(null);
+          }}
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          textContentType="username"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+        <TextField
+          ref={passwordRef}
+          label="Password"
+          error={error}
+          editable={!submitting}
+          value={password}
+          onChangeText={(v) => {
+            setPassword(v);
+            setError(null);
+          }}
+          placeholder="Your password"
+          secureTextEntry
+          autoComplete="current-password"
+          textContentType="password"
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
+      </View>
 
-            <ThemedText type="small" style={[styles.label, styles.fieldGap]}>
-              Password
-            </ThemedText>
-            <TextInput
-              {...inputProps('password')}
-              ref={passwordRef}
-              accessibilityLabel="Password"
-              value={password}
-              onChangeText={(v) => {
-                setPassword(v);
-                setError(null);
-              }}
-              placeholder="Your password"
-              secureTextEntry
-              autoComplete="current-password"
-              textContentType="password"
-              returnKeyType="go"
-              onSubmitEditing={submit}
-            />
-
-            {error && (
-              <ThemedText
-                type="small"
-                themeColor="destructive"
-                accessibilityLiveRegion="polite"
-                style={styles.fieldGap}>
-                {error}
-              </ThemedText>
-            )}
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Log in"
-              accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-              disabled={!canSubmit}
-              onPress={submit}
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: theme.accent },
-                !canSubmit && !submitting && styles.disabled,
-                pressed && styles.pressed,
-              ]}>
-              <View style={styles.buttonRow}>
-                {submitting && <ActivityIndicator color={theme.onAccent} />}
-                <ThemedText type="smallBold" themeColor="onAccent" maxFontSizeMultiplier={1.6}>
-                  {submitting ? 'Logging in…' : 'Log in'}
-                </ThemedText>
-              </View>
-            </Pressable>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </ThemedView>
+      <Button
+        label="Log in"
+        busy={submitting}
+        busyLabel="Logging in…"
+        disabled={!filled}
+        onPress={submit}
+        style={styles.button}
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.six,
-    paddingBottom: Spacing.four,
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-  },
-  tagline: { marginTop: Spacing.two, marginBottom: Spacing.five },
-  notice: { marginBottom: Spacing.three },
-  label: { marginBottom: Spacing.two },
-  fieldGap: { marginTop: Spacing.three },
-  input: {
-    height: 48,
-    borderRadius: 12,
-    paddingHorizontal: Spacing.three,
-    fontSize: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  button: {
-    marginTop: Spacing.three,
-    height: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.8 },
+  content: { paddingTop: space.huge, paddingBottom: space.xl },
+  wordmark: { marginTop: space.xl },
+  tagline: { marginTop: space.sm },
+  banners: { marginTop: space.xxl, gap: space.md },
+  fields: { marginTop: space.xxl, gap: space.lg },
+  afterBanner: { marginTop: space.lg },
+  button: { marginTop: space.xl },
 });

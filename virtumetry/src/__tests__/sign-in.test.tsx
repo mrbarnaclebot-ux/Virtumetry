@@ -1,14 +1,18 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { useNetworkState } from 'expo-network';
 
 import SignInScreen from '@/app/sign-in';
+import { haptic } from '@/design/haptics';
 import { authClient } from '@/lib/auth-client';
 import { consumeSessionEndedNotice } from '@/lib/session';
 
 jest.mock('@/lib/auth-client', () => ({ authClient: { signIn: { email: jest.fn() } } }));
+jest.mock('expo-network', () => ({ useNetworkState: jest.fn() }));
 jest.mock('@/lib/session', () => ({ consumeSessionEndedNotice: jest.fn(() => false) }));
 
 const signInEmail = authClient.signIn.email as unknown as jest.Mock;
 const consumeNotice = consumeSessionEndedNotice as jest.Mock;
+const networkState = useNetworkState as jest.Mock;
 
 const MISMATCH = "That email and password don't match. Try again.";
 
@@ -28,6 +32,7 @@ async function submitWith(result: unknown) {
 beforeEach(() => {
   signInEmail.mockReset();
   consumeNotice.mockReturnValue(false);
+  networkState.mockReturnValue({ isConnected: true, isInternetReachable: true });
 });
 
 describe('sign-in screen', () => {
@@ -82,5 +87,36 @@ describe('sign-in screen', () => {
     consumeNotice.mockReturnValue(true);
     await render(<SignInScreen />);
     expect(screen.getByText('You were logged out. Log in again to continue.')).toBeTruthy();
+  });
+
+  it('disables Log in until both fields are filled', async () => {
+    await render(<SignInScreen />);
+    const button = () => screen.getByRole('button', { name: 'Log in' });
+    expect(button().props.accessibilityState.disabled).toBe(true);
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'owner@example.com');
+    expect(button().props.accessibilityState.disabled).toBe(true);
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'pw-123456');
+    expect(button().props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('shows the offline banner and keeps Log in enabled once filled', async () => {
+    networkState.mockReturnValue({ isConnected: false, isInternetReachable: false });
+    await fill();
+    expect(screen.getByText("You're offline. Connect to log in.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log in' })).not.toBeDisabled();
+  });
+
+  it('hides the offline banner while reachability is unknown', async () => {
+    networkState.mockReturnValue({});
+    await render(<SignInScreen />);
+    expect(screen.queryByText("You're offline. Connect to log in.")).toBeNull();
+  });
+
+  it('plays the error haptic once when a submit fails', async () => {
+    const error = jest.spyOn(haptic, 'error');
+    await submitWith({ data: null, error: { status: 401 } });
+    expect(await screen.findByText(MISMATCH)).toBeTruthy();
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
   });
 });
