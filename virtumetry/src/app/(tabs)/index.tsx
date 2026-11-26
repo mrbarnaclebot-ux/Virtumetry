@@ -1,19 +1,28 @@
 import { useCameraPermissions } from 'expo-camera';
+import { useNetworkState } from 'expo-network';
 import { router, type Href } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useEffect, useEffectEvent, useState } from 'react';
+import { AccessibilityInfo, Alert, RefreshControl, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { LibraryEmptyArt } from '@/components/library-empty-art';
 import { LibraryRow, type RowItem } from '@/components/library-row';
 import { RenameModal } from '@/components/rename-modal';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Banner } from '@/components/ui/banner';
+import { Button } from '@/components/ui/button';
+import { EmptyState, ErrorState } from '@/components/ui/empty-state';
+import { Screen } from '@/components/ui/screen';
+import { SkeletonRow } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { getPrepFlags } from '@/capture/prep-flags';
 import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import { useLocalScans } from '@/capture/store';
-import type { DisplayState, LocalScan } from '@/library/display-state';
+import { consumeIntent } from '@/design/first-run';
+import { haptic } from '@/design/haptics';
+import { ease, useReduceMotion } from '@/design/motion';
+import { color, motion, space } from '@/design/tokens';
+import type { DisplayState, LibraryItem, LocalScan } from '@/library/display-state';
 import { useDeleteWorld, useWorlds, type BudgetAlert } from '@/lib/api';
 
 // D-13: dismissed/announced per window for this JS session only (no storage).
@@ -27,7 +36,6 @@ export function __resetBudgetBannerForTest() {
 }
 
 function BudgetBanner({ alert }: { alert: BudgetAlert }) {
-  const theme = useTheme();
   const [, setTick] = useState(0);
   const daily = alert.window === 'daily';
   const pct = Math.min(100, Math.floor((alert.spent / alert.budget) * 100));
@@ -44,30 +52,23 @@ function BudgetBanner({ alert }: { alert: BudgetAlert }) {
 
   if (hidden) return null;
   return (
-    <ThemedView type="backgroundElement" accessibilityRole="alert" style={styles.banner}>
-      <SymbolView name="exclamationmark.triangle.fill" size={20} tintColor={theme.warning} />
-      <View style={styles.bannerText}>
-        <ThemedText type="small">{line1}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {line2}
-        </ThemedText>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss budget alert"
-        onPress={() => {
-          dismissedAlerts.add(alert.window);
-          setTick((t) => t + 1);
-        }}
-        style={({ pressed }) => [styles.dismiss, pressed && { backgroundColor: theme.backgroundSelected }]}>
-        <SymbolView name="xmark" size={16} tintColor={theme.textSecondary} />
-      </Pressable>
-    </ThemedView>
+    <Banner
+      tone="warning"
+      icon="warning"
+      title={line1}
+      body={line2}
+      dismissLabel="Dismiss budget alert"
+      onDismiss={() => {
+        dismissedAlerts.add(alert.window);
+        setTick((t) => t + 1);
+      }}
+    />
   );
 }
 
+const STEPS = ['Scan the room slowly', 'Check the cost, then approve', 'Walk, measure and share'];
+
 export default function LibraryScreen() {
-  const theme = useTheme();
   const { scans, remove: removeLocal } = useLocalScans();
   const forcePoll = scans.some((s) => s.uploadState === 'approved' || s.uploadState === 'uploading' || s.uploadState === 'paused');
   const { data, error, isPending, refetch } = useWorlds({ forcePoll });
@@ -75,6 +76,8 @@ export default function LibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [camera] = useCameraPermissions();
+  const offline = useNetworkState()?.isInternetReachable === false;
+  const reduce = useReduceMotion();
 
   // D-11: skip prep when "Don't show again" is set and the camera is ready (or the fixture needs none).
   const newScan = () => {
@@ -83,18 +86,11 @@ export default function LibraryScreen() {
     router.push(skip && ready ? '/capture/scan' : '/capture/prep');
   };
 
-  const newScanButton = (style: 'pill' | 'button') => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="New scan"
-      onPress={newScan}
-      style={({ pressed }) => [styles[style], { backgroundColor: theme.accent }, pressed && styles.pressed]}>
-      {style === 'pill' && <SymbolView name="plus" size={16} tintColor={theme.onAccent} />}
-      <ThemedText type="smallBold" themeColor="onAccent" maxFontSizeMultiplier={1.6}>
-        New scan
-      </ThemedText>
-    </Pressable>
-  );
+  // §8.1: the onboarding "Scan your first room" CTA leaves a one-shot intent for the Library.
+  const onMountIntent = useEffectEvent(() => {
+    if (consumeIntent() === 'scan') newScan();
+  });
+  useEffect(() => onMountIntent(), []);
 
   const openScan = (scan: LocalScan) =>
     router.push({
@@ -149,10 +145,10 @@ export default function LibraryScreen() {
           try {
             removeLocal(id);
           } catch {
-            Alert.alert("Couldn't discard", 'Try again. If it keeps failing, restart the app.', [
-              { text: 'Back to Review' },
-            ]);
+            toast.error("Couldn't discard. Try again.");
+            return;
           }
+          toast.success('Scan discarded');
         },
       },
     ]);
@@ -189,6 +185,27 @@ export default function LibraryScreen() {
       }
     }
   }, [listed, scans, removeLocal]);
+
+  // First ready moment: a world seen non-ready earlier on this screen that is now ready (never on first load).
+  // Derived while rendering from the previous list (no effect setState); the haptic follows the count.
+  const [track, setTrack] = useState<{ listed?: LibraryItem[]; prev: ReadonlyMap<string, string>; ready: ReadonlySet<string> }>(
+    () => ({ prev: new Map(), ready: new Set() }),
+  );
+  if (listed && listed !== track.listed) {
+    const prev = new Map(track.prev);
+    const ready = new Set(track.ready);
+    for (const w of listed) {
+      const before = track.prev.get(w.id);
+      if (w.status === 'ready' && before !== undefined && before !== 'ready') ready.add(w.id);
+      prev.set(w.id, w.status);
+    }
+    setTrack({ listed, prev, ready });
+  }
+  const readyCount = track.ready.size;
+  useEffect(() => {
+    if (readyCount > 0) haptic.success();
+  }, [readyCount]);
+
   const shownScans = scans.filter((s) => {
     const status = s.serverWorldId ? serverStatus.get(s.serverWorldId) : undefined;
     return status === undefined || status === 'uploading';
@@ -200,153 +217,126 @@ export default function LibraryScreen() {
     ...(data?.worlds ?? []).filter((w) => !shadowed.has(w.id)),
   ];
   const noCache = !data && shownScans.length === 0;
+  const hasItems = items.length > 0;
 
   const header = (
-    <>
+    <View style={styles.header}>
       <View style={styles.headerRow}>
         <ThemedText type="title" accessibilityRole="header">
           Library
         </ThemedText>
-        {newScanButton('pill')}
+        {/* First run: the EmptyState CTA is the single primary instead. */}
+        {hasItems && <Button size="md" icon="newScan" label="New scan" onPress={newScan} />}
       </View>
-      {error && data && (
-        <ThemedText type="small" themeColor="destructive" style={styles.refreshError}>
-          {"Couldn't refresh. Showing your last saved list."}
-        </ThemedText>
+      {hasItems && offline && (
+        <Banner
+          tone="neutral"
+          icon="offline"
+          title="You're offline. Showing your last saved list."
+          body="Uploads resume when you're back online."
+        />
+      )}
+      {hasItems && !offline && error && data && (
+        <Banner
+          tone="neutral"
+          icon="refresh"
+          title="Couldn't refresh. Showing your last saved list."
+          action={{ label: 'Refresh', onPress: () => void refetch() }}
+        />
       )}
       {/* Never in the empty/error/loading states: those have no rows to sit above. */}
-      {data?.budgetAlert && items.length > 0 && <BudgetBanner alert={data.budgetAlert} />}
-    </>
+      {data?.budgetAlert && hasItems && <BudgetBanner alert={data.budgetAlert} />}
+    </View>
   );
 
   let empty;
-  if (noCache && isPending) {
+  if (noCache && offline) {
     empty = (
-      <View style={styles.center}>
-        <ActivityIndicator testID="library-loading" size="large" color={theme.accent} />
+      <ErrorState
+        icon="offline"
+        title="You're offline"
+        body="Your scans show up here when you're back online."
+        action={{ label: 'Try again', onPress: () => void refetch() }}
+        style={styles.center}
+      />
+    );
+  } else if (noCache && isPending) {
+    empty = (
+      <View testID="library-loading" accessible accessibilityLabel="Loading your scans" accessibilityState={{ busy: true }}>
+        {[0, 1, 2, 3].map((i) => (
+          <SkeletonRow key={i} />
+        ))}
       </View>
     );
   } else if (noCache && error) {
     empty = (
-      <View style={styles.center}>
-        <ThemedText type="subtitle" style={styles.heading}>
-          {"Couldn't load your scans"}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.textCenter}>
-          Check your connection, then try again.
-        </ThemedText>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Try again"
-          onPress={() => refetch()}
-          style={({ pressed }) => [
-            styles.retry,
-            { backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement },
-          ]}>
-          <ThemedText type="smallBold">Try again</ThemedText>
-        </Pressable>
-      </View>
+      <ErrorState
+        icon="warning"
+        title="Couldn't load your scans"
+        body="Check your connection, then try again."
+        action={{ label: 'Try again', onPress: () => void refetch() }}
+        style={styles.center}
+      />
     );
   } else {
     empty = (
-      <View style={styles.center}>
-        <View accessible={false}>
-          <SymbolView name="cube.transparent" size={48} tintColor={theme.textSecondary} />
-        </View>
-        <ThemedText type="subtitle" style={styles.heading}>
-          No scans yet
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.textCenter}>
-          Walk slowly around a room with your phone, and it comes back here in 3D.
-        </ThemedText>
-        {newScanButton('button')}
-      </View>
+      <EmptyState
+        art={<LibraryEmptyArt />}
+        title="No scans yet"
+        body="Walk slowly around a room with your phone, and it comes back here in 3D."
+        steps={STEPS}
+        action={{ label: 'Scan a room', icon: 'newScan', onPress: newScan }}
+        style={styles.empty}
+      />
     );
   }
 
   return (
-    <ThemedView style={styles.flex}>
-      <FlatList
+    <Screen edges={['top']} contentStyle={styles.column}>
+      <Animated.FlatList
         data={items}
         keyExtractor={(i) => ('local' in i ? `local-${i.id}` : i.id)}
+        itemLayoutAnimation={reduce ? undefined : LinearTransition.duration(motion.duration.base).easing(ease.outQuart)}
         renderItem={({ item }) => (
-          <LibraryRow
-            item={item}
-            onMore={openRowMenu}
-            onOpen={openScan}
-            onOpenWorld={openWorld}
-            onOpenFailed={openRetry}
-          />
+          // Pattern 4: layout animations on a wrapper, never on the row (its opacity is styled).
+          <Animated.View
+            entering={reduce ? undefined : FadeIn.duration(motion.duration.base)}
+            exiting={reduce ? undefined : FadeOut.duration(motion.duration.fast)}>
+            <LibraryRow
+              item={item}
+              onMore={openRowMenu}
+              onOpen={openScan}
+              onOpenWorld={openWorld}
+              onOpenFailed={openRetry}
+              justReady={!('local' in item) && track.ready.has(item.id)}
+            />
+          </Animated.View>
         )}
-        ItemSeparatorComponent={() => (
-          <View style={[styles.separator, { backgroundColor: theme.backgroundSelected }]} />
-        )}
+        ItemSeparatorComponent={Separator}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} colors={[color.primary]} />
         }
       />
       {renaming && <RenameModal key={renaming.id} {...renaming} onClose={() => setRenaming(null)} />}
-    </ThemedView>
+    </Screen>
   );
 }
 
+function Separator() {
+  return <View style={styles.separator} />;
+}
+
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.three,
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-  },
-  headerRow: {
-    marginTop: Spacing.three,
-    marginBottom: Spacing.four,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pill: {
-    height: 44,
-    borderRadius: 22,
-    paddingHorizontal: Spacing.three,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  button: {
-    marginTop: Spacing.four,
-    height: 52,
-    borderRadius: 12,
-    paddingHorizontal: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pressed: { opacity: 0.8 },
-  refreshError: { marginBottom: Spacing.three },
-  banner: {
-    borderRadius: 12,
-    padding: Spacing.three,
-    marginBottom: Spacing.three,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  bannerText: { flex: 1, gap: Spacing.one },
-  dismiss: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: Spacing.six },
-  heading: { marginTop: Spacing.three, marginBottom: Spacing.two, textAlign: 'center' },
-  textCenter: { textAlign: 'center' },
-  retry: {
-    marginTop: Spacing.four,
-    minHeight: 44,
-    paddingHorizontal: Spacing.three,
-    borderRadius: 12,
-    justifyContent: 'center',
-  },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 96 - Spacing.three },
+  column: { paddingHorizontal: 0 },
+  content: { flexGrow: 1, paddingHorizontal: space.lg, paddingBottom: space.xxl },
+  header: { gap: space.lg, marginTop: space.lg, marginBottom: space.xl },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
+  center: { flex: 1, justifyContent: 'center', paddingBottom: space.xxxl },
+  empty: { paddingBottom: space.xxl },
+  // Inset past the 64 thumb + 16 gap.
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: 80, backgroundColor: color.hairline },
 });

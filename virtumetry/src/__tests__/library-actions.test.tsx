@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { Directory, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import { Alert, type AlertButton } from 'react-native';
 
@@ -326,6 +327,25 @@ describe('delete', () => {
     await press('Discard');
     await waitFor(() => expect(screen.queryByText('Hallway')).toBeNull());
     expect(mutate).not.toHaveBeenCalled();
+    expect(toastSuccess).toHaveBeenCalledWith('Scan discarded');
+  });
+
+  it('a failed discard keeps the row and says so in a toast, not a second Alert (06.1 §9.3 row 4)', async () => {
+    __setLocalScansForTest([local('l1', 'Hallway')]);
+    new Directory(Paths.document, 'sessions', 'l1').create({ intermediates: true, idempotent: true });
+    jest.spyOn(Directory.prototype, 'delete').mockImplementation(() => {
+      throw new Error('disk');
+    });
+    await renderLibrary();
+    await openMenu('Hallway');
+    await press('Discard');
+    const confirms = alertSpy.mock.calls.length;
+    await press('Discard');
+    expect(toastError).toHaveBeenCalledWith("Couldn't discard. Try again.");
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledTimes(confirms);
+    expect(screen.getByText('Hallway')).toBeTruthy();
+    expect(getLocalScans()).toHaveLength(1);
   });
 
   it('an uploading local scan offers Delete (not Discard); success drops the local copy too (CR-03)', async () => {

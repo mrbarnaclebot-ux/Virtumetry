@@ -1,10 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { useNetworkState } from 'expo-network';
 import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
 import LibraryScreen, { __resetBudgetBannerForTest } from '@/app/(tabs)/index';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
+import { __resetFirstRunForTest, markOnboarded } from '@/design/first-run';
+import { haptic } from '@/design/haptics';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
 import { apiFetch, type BudgetAlert } from '@/lib/api';
 import { endSession } from '@/lib/session';
@@ -77,8 +80,13 @@ beforeEach(() => {
   (endSession as jest.Mock).mockClear();
   __setLocalScansForTest([]);
   __resetBudgetBannerForTest();
+  __resetFirstRunForTest();
+  (router.push as jest.Mock).mockClear();
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  (useNetworkState as jest.Mock).mockReturnValue({ isConnected: true, isInternetReachable: true });
+});
 
 async function renderLibrary() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -98,7 +106,8 @@ describe('library screen', () => {
 
     await screen.findByText('Uploading · 40%');
     expect(screen.getByText('Processing · Building your 3D room')).toBeTruthy();
-    expect(screen.getByText('Usually 30 min – 2 h')).toBeTruthy();
+    expect(screen.getByText('Usually 30 min to 2 h')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New scan' })).toBeTruthy();
     expect(screen.getByText('Ready')).toBeTruthy();
     expect(screen.getByText("Failed · The scan couldn't be turned into a room")).toBeTruthy();
     expect(screen.getByText(`Not charged · ${date}`)).toBeTruthy();
@@ -129,12 +138,76 @@ describe('library screen', () => {
     expect(
       screen.getByText('Walk slowly around a room with your phone, and it comes back here in 3D.'),
     ).toBeTruthy();
+    for (const step of ['Scan the room slowly', 'Check the cost, then approve', 'Walk, measure and share']) {
+      expect(screen.getByText(step)).toBeTruthy();
+    }
+    // The EmptyState CTA is the single primary; the header button is hidden.
+    expect(screen.queryByRole('button', { name: 'New scan' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Scan a room' }));
+    expect(router.push).toHaveBeenLastCalledWith('/capture/prep');
   });
 
-  it('shows a spinner on first load', async () => {
+  it('shows skeleton rows on first load', async () => {
     fetchMock.mockReturnValue(new Promise(() => {}));
     await renderLibrary();
-    expect(screen.getByTestId('library-loading')).toBeTruthy();
+    const loading = screen.getByTestId('library-loading');
+    expect(loading.props.accessibilityLabel).toBe('Loading your scans');
+    expect(loading.props.accessibilityState).toEqual({ busy: true });
+  });
+
+  it('offline with no cache says so and retries on Try again', async () => {
+    (useNetworkState as jest.Mock).mockReturnValue({ isConnected: false, isInternetReachable: false });
+    fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+    await renderLibrary();
+    await screen.findByText("You're offline");
+    expect(screen.getByText("Your scans show up here when you're back online.")).toBeTruthy();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('offline with a cached list shows the offline banner over the rows', async () => {
+    (useNetworkState as jest.Mock).mockReturnValue({ isConnected: false, isInternetReachable: false });
+    fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'ready' })]));
+    await renderLibrary();
+    expect(await screen.findByText("You're offline. Showing your last saved list.")).toBeTruthy();
+    expect(screen.getByText("Uploads resume when you're back online.")).toBeTruthy();
+    expect(screen.getByText('Ready')).toBeTruthy();
+    expect(screen.queryByText("Couldn't refresh. Showing your last saved list.")).toBeNull();
+  });
+
+  it('opens a new scan when onboarding left the scan intent', async () => {
+    markOnboarded('scan');
+    fetchMock.mockResolvedValue(page([]));
+    await renderLibrary();
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenLastCalledWith('/capture/prep');
+  });
+
+  it('does not open a new scan without the intent', async () => {
+    fetchMock.mockResolvedValue(page([]));
+    await renderLibrary();
+    await screen.findByText('No scans yet');
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('a world turning ready during the session fires one success haptic', async () => {
+    const success = jest.spyOn(haptic, 'success').mockImplementation(() => {});
+    fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'processing' }), w('Attic', { status: 'ready' })]));
+    const client = await renderLibrary();
+    await screen.findByText('Processing · Building your 3D room');
+    // Already ready on first load: no moment.
+    expect(success).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValue(page([w('Kitchen', { status: 'ready' }), w('Attic', { status: 'ready' })]));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['worlds'] });
+    });
+    await waitFor(() => expect(success).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['worlds'] });
+    });
+    expect(success).toHaveBeenCalledTimes(1);
   });
 
   it('shows the error block with no cache and retries on Try again', async () => {
@@ -160,6 +233,12 @@ describe('library screen', () => {
     });
     await screen.findByText("Couldn't refresh. Showing your last saved list.");
     expect(screen.getByText('Ready')).toBeTruthy();
+
+    fetchMock.mockResolvedValueOnce(page([w('Kitchen', { status: 'ready' })]));
+    const calls = fetchMock.mock.calls.length;
+    await fireEvent.press(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(screen.queryByText("Couldn't refresh. Showing your last saved list.")).toBeNull());
+    expect(fetchMock.mock.calls.length).toBe(calls + 1);
   });
 
   it('ends the session with a notice on 401', async () => {
