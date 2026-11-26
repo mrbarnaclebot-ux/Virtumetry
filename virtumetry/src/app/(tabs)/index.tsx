@@ -113,7 +113,7 @@ export default function LibraryScreen() {
     const worldId = 'local' in item ? item.serverWorldId : item.id;
     const buttons = rowActions(item).map((a) => {
       if (a === 'Retry') return { text: 'Retry…', onPress: () => openRetry(item) };
-      if (a === 'Rename') return { text: 'Rename', onPress: () => setRenaming({ id: item.id, title }) };
+      if (a === 'Rename') return { text: 'Rename', onPress: () => setRenaming({ id: item.id, title: item.title?.trim() ?? '' }) }; // review IN-05: never prefill the date fallback
       if (a === 'Discard') return { text: 'Discard', style: 'destructive' as const, onPress: () => confirmDiscard(item.id, (item as LocalScan).frameCount) };
       return { text: 'Delete', style: 'destructive' as const, onPress: () => worldId && confirmDelete(worldId, title) };
     });

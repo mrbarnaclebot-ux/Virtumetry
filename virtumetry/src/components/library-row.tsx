@@ -98,7 +98,9 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
         ? `${item.dir}/frames/000001.jpg`
         : undefined
       : item.assets?.thumbnail_url;
-  const [imageFailed, setImageFailed] = useState(false);
+  // Review WR-03: failure is keyed to the URL, so a fresh presigned URL after refetch retries the image.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const imageFailed = !!thumbnailUrl && failedUrl === thumbnailUrl;
   const retryable = !('local' in item) && item.status === 'failed' && item.retryable === true;
   const label = [state.displayTitle, state.statusLine, state.secondaryLine].filter(Boolean).join(', ');
   const kind: StatusKind = 'local' in item && item.uploadState === 'paused' ? 'paused' : state.kind;
@@ -137,7 +139,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
               style={styles.thumb}
               contentFit="cover"
               transition={motion.duration.fast}
-              onError={() => setImageFailed(true)}
+              onError={() => setFailedUrl(thumbnailUrl)}
             />
           ) : (
             <Icon name="world" size={24} color={color.textMuted} />
