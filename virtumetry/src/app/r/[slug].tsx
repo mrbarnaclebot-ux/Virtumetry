@@ -1,13 +1,19 @@
 import { useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import type { GenerateMetadataFunction } from 'expo-router/server';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { Platform, StyleSheet, TextInput, View } from 'react-native';
 
+import { ThemedText } from '@/components/themed-text';
+import { BrandMark } from '@/components/ui/brand-mark';
+import { Button } from '@/components/ui/button';
+import { Glyph } from '@/components/ui/glyph';
+import { ProgressBar } from '@/components/ui/progress-bar';
+import { TextField } from '@/components/ui/text-field';
+import { color, radius, space } from '@/design/tokens';
 import { ApiError } from '@/lib/api';
 import { getPublicShare, openPublicShare, type OpenedShare } from '@/lib/public-share';
 import { loadViewer } from '@/viewer/load-viewer';
-import { VT } from '@/viewer/tokens';
 
 // Pattern 10: never import the viewer statically. Spark compiles WASM at module load and three wants a DOM,
 // so the server render must not evaluate it. 'opened' is only reachable from the fetch in an effect, and effects
@@ -29,24 +35,40 @@ type State =
 
 const titleOf = (t: string | null | undefined) => t?.trim() || 'Untitled scan';
 
-function Message({ heading, body, action, onPress }: { heading: string; body: string; action?: string; onPress?: () => void }) {
+function Message({
+  glyph,
+  heading,
+  body,
+  action,
+  onPress,
+}: {
+  glyph: ReactNode;
+  heading: string;
+  body: string;
+  action?: string;
+  onPress?: () => void;
+}) {
   return (
     <View style={styles.center}>
       <View style={styles.block}>
-        <Text accessibilityRole="header" style={styles.heading}>
+        {glyph}
+        <ThemedText type="heading" accessibilityRole="header" style={[styles.centerText, styles.gap16]}>
           {heading}
-        </Text>
-        <Text style={styles.body}>{body}</Text>
-        {action && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={action}
-            onPress={onPress}
-            style={({ pressed }) => [styles.secondary, { backgroundColor: pressed ? VT.color.surface.pressed : VT.color.surface.raised }]}>
-            <Text style={styles.secondaryLabel}>{action}</Text>
-          </Pressable>
-        )}
+        </ThemedText>
+        <ThemedText tone="muted" style={[styles.centerText, styles.gap8]}>
+          {body}
+        </ThemedText>
+        {action && onPress && <Button variant="secondary" label={action} onPress={onPress} style={styles.gap24} />}
       </View>
+    </View>
+  );
+}
+
+/** Brand only: not a link, no upsell (T-06.1-24). */
+function Footer() {
+  return (
+    <View style={styles.footer}>
+      <BrandMark variant="lockup" size={20} mono />
     </View>
   );
 }
@@ -54,7 +76,7 @@ function Message({ heading, body, action, onPress }: { heading: string; body: st
 /** D-20 / SHARE-03: robots in the first HTML bytes (SDK 58 Head only lands after hydration). Server-only, stripped from the client. */
 export const generateMetadata: GenerateMetadataFunction = () => ({ title: 'Virtumetry', robots: 'noindex,nofollow' });
 
-/** D-19 public web share page: no session, no upload manager, always dark (UI-SPEC F). */
+/** D-19 public web share page: no session, no upload manager, no toasts, no Icon font, always dark (UI-SPEC §7.13). */
 export default function SharePage() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [state, setState] = useState<State>({ k: 'checking' });
@@ -166,73 +188,77 @@ export default function SharePage() {
   let content;
   if (state.k === 'checking') {
     content = (
-      <View style={styles.center}>
-        <ActivityIndicator testID="share-checking" color={VT.color.primary} />
+      <View testID="share-checking" accessibilityLabel="Opening room" style={[styles.center, styles.checking]}>
+        <BrandMark size={40} />
+        <ProgressBar value={null} testID="share-checking-bar" accessibilityLabel="Opening room" style={styles.checkingBar} />
       </View>
     );
   } else if (state.k === 'notFound') {
     content = (
-      <Message
-        heading="This link is no longer available"
-        body="The owner may have turned it off. Ask them for a new link."
-      />
+      <>
+        <Message
+          glyph={<Glyph id="linkOff" size={40} color={color.textMuted} />}
+          heading="This link is no longer available"
+          body="The owner may have turned it off. Ask them for a new link."
+        />
+        <Footer />
+      </>
     );
   } else if (state.k === 'error') {
     content = (
-      <Message
-        heading="Couldn't open this room"
-        body="Check your connection, then try again."
-        action="Try again"
-        onPress={retry}
-      />
+      <>
+        <Message
+          glyph={<Glyph id="alert" size={40} color={color.textMuted} />}
+          heading="Couldn't open this room"
+          body="Check your connection, then try again."
+          action="Try again"
+          onPress={retry}
+        />
+        <Footer />
+      </>
     );
   } else if (state.k === 'gate') {
     content = (
-      <View style={styles.center}>
-        <View style={styles.card}>
-          <Text accessibilityRole="header" style={styles.heading}>
-            This room is password protected
-          </Text>
-          <Text style={styles.body}>Enter the password the owner gave you.</Text>
-          <Text nativeID="share-pw-label" style={styles.label}>
-            Password
-          </Text>
-          <TextInput
-            ref={inputRef}
-            accessibilityLabel="Password"
-            aria-labelledby="share-pw-label"
-            aria-describedby={gateError ? 'share-pw-error' : undefined}
-            value={password}
-            onChangeText={setPassword}
-            onSubmitEditing={submit}
-            secureTextEntry
-            autoComplete="current-password"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus
-            returnKeyType="go"
-            style={styles.input}
-          />
-          {gateError && (
-            <Text nativeID="share-pw-error" accessibilityLiveRegion="polite" style={styles.error}>
-              {gateError}
-            </Text>
-          )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={submitting ? 'Opening…' : 'Open room'}
-            accessibilityState={{ disabled: submitting }}
-            disabled={submitting}
-            onPress={submit}
-            style={({ pressed }) => [styles.primary, (pressed || submitting) && { opacity: 0.8 }]}>
-            <Text style={styles.primaryLabel}>{submitting ? 'Opening…' : 'Open room'}</Text>
-          </Pressable>
+      <>
+        <View style={styles.center}>
+          <View style={styles.card}>
+            <View style={styles.lockCircle}>
+              <Glyph id="lock" size={24} color={color.text} />
+            </View>
+            <ThemedText type="heading" accessibilityRole="header" style={[styles.centerText, styles.gap16]}>
+              This room is password protected
+            </ThemedText>
+            <ThemedText tone="muted" style={[styles.centerText, styles.gap8]}>
+              Enter the password the owner gave you.
+            </ThemedText>
+            <View style={styles.gap24}>
+              {/* TextField names the input (aria-label) and links its error (aria-describedby → its own id). */}
+              <TextField
+                ref={inputRef}
+                label="Password"
+                inGroup
+                error={gateError}
+                value={password}
+                onChangeText={setPassword}
+                onSubmitEditing={submit}
+                secureTextEntry
+                autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="go"
+              />
+            </View>
+            <Button label="Open room" busy={submitting} busyLabel="Opening…" onPress={submit} style={styles.gap16} />
+          </View>
         </View>
-      </View>
+        <Footer />
+      </>
     );
   } else if (crashed) {
     content = (
       <Message
+        glyph={<Glyph id="alert" size={40} color={color.textMuted} />}
         heading="The viewer stopped working"
         body="This can happen when the phone is low on memory. Reload to try again."
         action="Reload page"
@@ -247,7 +273,7 @@ export default function SharePage() {
         <Suspense
           fallback={
             <View style={styles.center}>
-              <ActivityIndicator color={VT.color.primary} />
+              <ProgressBar value={null} accessibilityLabel="Opening room" style={styles.checkingBar} />
             </View>
           }>
           {data.assets.splat_url && (
@@ -265,9 +291,10 @@ export default function SharePage() {
           )}
         </Suspense>
         <View style={styles.topBar}>
-          <Text accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.title}>
+          <BrandMark size={20} />
+          <ThemedText type="heading" accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.title}>
             {title}
-          </Text>
+          </ThemedText>
         </View>
       </>
     );
@@ -285,61 +312,43 @@ export default function SharePage() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: VT.color.bg },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: VT.space.lg },
+  root: { flex: 1, backgroundColor: color.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg },
+  checking: { gap: space.lg },
+  checkingBar: { width: 160 },
   block: { width: '100%', maxWidth: 400, alignItems: 'center' },
+  centerText: { textAlign: 'center' },
+  gap8: { marginTop: space.sm },
+  gap16: { marginTop: space.lg },
+  gap24: { marginTop: space.xl },
   card: {
     width: '100%',
-    maxWidth: 360,
-    backgroundColor: VT.color.surface.raised,
-    borderRadius: VT.radius.lg,
-    padding: VT.space.xl,
+    maxWidth: 400,
+    backgroundColor: color.surface.raised,
+    borderRadius: radius.lg,
+    padding: space.xl,
   },
-  heading: { color: VT.color.text, fontSize: VT.type.heading.fontSize, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
-  body: {
-    color: VT.color.textMuted,
-    fontSize: VT.type.body.fontSize,
-    lineHeight: 24,
-    textAlign: 'center',
-    marginTop: VT.space.sm,
-  },
-  label: { color: VT.color.text, fontSize: VT.type.label.fontSize, lineHeight: 20, marginTop: VT.space.xl },
-  input: {
+  lockCircle: {
+    width: 48,
     height: 48,
-    marginTop: VT.space.sm,
-    paddingHorizontal: VT.space.lg,
-    borderRadius: VT.radius.md,
-    backgroundColor: VT.color.surface.pressed,
-    color: VT.color.text,
-    fontSize: VT.type.body.fontSize,
-  },
-  error: { color: VT.color.danger, fontSize: VT.type.label.fontSize, lineHeight: 20, marginTop: VT.space.sm },
-  primary: {
-    height: 52,
-    marginTop: VT.space.lg,
-    borderRadius: VT.radius.md,
-    backgroundColor: VT.color.primary,
+    borderRadius: radius.pill,
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: color.surface.overlay,
   },
-  primaryLabel: { color: VT.color.onPrimary, fontSize: VT.type.body.fontSize, fontWeight: '600' },
-  secondary: {
-    marginTop: VT.space.xl,
-    height: 44,
-    paddingHorizontal: VT.space.xl,
-    borderRadius: VT.radius.md,
-    justifyContent: 'center',
-  },
-  secondaryLabel: { color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
+  footer: { position: 'absolute', bottom: space.xl, left: 0, right: 0, alignItems: 'center' },
   topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     height: TOP_BAR,
-    justifyContent: 'center',
-    paddingHorizontal: VT.space.lg,
-    backgroundColor: VT.color.scrim.hud,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    backgroundColor: color.scrim.hud,
   },
-  title: { color: VT.color.text, fontSize: VT.type.body.fontSize, fontWeight: '600' },
+  title: { flex: 1 },
 });

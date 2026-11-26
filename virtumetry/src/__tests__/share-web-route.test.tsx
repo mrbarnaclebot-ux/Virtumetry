@@ -14,6 +14,12 @@ jest.mock('@/viewer/load-viewer', () => {
   }
   return { loadViewer: async () => ({ default: MockViewer }) };
 });
+// The web page must never render Icon (it would load the Material font): any SymbolView render fails the test.
+jest.mock('expo-symbols', () => ({
+  SymbolView: () => {
+    throw new Error('Icon rendered on the web share page');
+  },
+}));
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
 jest.mock('@/lib/auth-client', () => ({ authClient: { getCookie: jest.fn(async () => 'c=1') } }));
 jest.mock('@/lib/session', () => ({ endSession: jest.fn(async () => {}) }));
@@ -45,10 +51,18 @@ beforeEach(() => {
 
 const bodyOf = (call: unknown[]) => (call[1] as RequestInit).body;
 
-it('shows a spinner while the link is checked', async () => {
+it('shows an indeterminate bar while the link is checked', async () => {
   fetchMock.mockReturnValue(new Promise(() => {}));
   await render(<SharePage />);
-  expect(screen.getByTestId('share-checking')).toBeTruthy();
+  expect(screen.getByTestId('share-checking').props.accessibilityLabel).toBe('Opening room');
+  expect(screen.getByTestId('share-checking-bar').props).toMatchObject({ accessibilityRole: 'progressbar', accessibilityState: { busy: true } });
+});
+
+it('never renders the Icon font component (Glyph only on the web page)', async () => {
+  fetchMock.mockResolvedValueOnce(ok({ title: 'Kitchen', needs_password: true }));
+  await render(<SharePage />);
+  await screen.findByText('This room is password protected');
+  expect(screen.getByText('Enter the password the owner gave you.')).toBeTruthy();
 });
 
 it('opens an unprotected link without a password or cookie and mounts the viewer', async () => {
@@ -90,6 +104,7 @@ it('retries after a network error', async () => {
     .mockResolvedValueOnce(ok(OPEN));
   await render(<SharePage />);
   expect(await screen.findByText("Couldn't open this room")).toBeTruthy();
+  expect(screen.getByText('Check your connection, then try again.')).toBeTruthy();
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Try again' })));
   expect(await screen.findByTestId('world-viewer')).toBeTruthy();
 });
