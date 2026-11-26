@@ -4,6 +4,8 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@better-auth/expo": "1.7.27",
+    "@expo-google-fonts/martian-mono": "^0.4.2",
+    "@expo-google-fonts/schibsted-grotesk": "^0.4.2",
     "@expo/ui": "~58.0.29",
     "@sparkjsdev/spark": "2.4.0",
     "@tanstack/react-query": "^5.108.4",
@@ -16,6 +18,7 @@
     "expo-file-system": "~58.0.14",
     "expo-font": "~58.0.12",
     "expo-glass-effect": "~58.0.5",
+    "expo-haptics": "~58.0.8",
     "expo-image": "~58.0.18",
     "expo-keep-awake": "~58.0.4",
     "expo-linking": "~58.0.17",
@@ -64,8 +67,12 @@
   "private": true,
   "jest": {
     "preset": "jest-expo",
+    "resolver": "react-native-reanimated/jest/resolver",
     "setupFiles": [
       "<rootDir>/jest.setup.ts"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup-after.ts"
     ],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|better-auth|@better-auth/.*|better-call|nanostores|@nanostores/.*|@better-fetch/.*|standard-navigation|three|three-mesh-bvh)"
