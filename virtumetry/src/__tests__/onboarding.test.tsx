@@ -6,7 +6,7 @@ import { Text } from 'react-native';
 import RootLayout from '@/app/_layout';
 import OnboardingScreen from '@/app/onboarding';
 import { __setLocalScansForTest } from '@/capture/store';
-import { __resetFirstRunForTest, consumeIntent } from '@/design/first-run';
+import { __resetFirstRunForTest, consumeIntent, getOnboardingSkipped } from '@/design/first-run';
 import { queryClient } from '@/lib/query-client';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -61,6 +61,15 @@ describe('onboarding routing', () => {
     expect(secureStore.__store.get(FLAG)).toBe('1');
     expect(screen).toHavePathname('/');
     expect(consumeIntent()).toBeNull();
+    expect(getOnboardingSkipped()).toBe(true);
+  });
+
+  it('has no "1 of 4" eyebrow; the dots announce the page (critique F3)', async () => {
+    await renderRouter(routes, { initialUrl: '/' });
+    expect(screen.queryByText(/of 4/i)).toBeNull();
+    expect(screen.getByLabelText('Page 1 of 4')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByLabelText('Page 2 of 4')).toBeTruthy();
   });
 
   it('never shows onboarding to an onboarded user', async () => {
@@ -83,6 +92,7 @@ describe('onboarding routing', () => {
     await fireEvent.press(cta);
     expect(secureStore.__store.get(FLAG)).toBe('1');
     expect(consumeIntent()).toBe('scan');
+    expect(getOnboardingSkipped()).toBe(false);
     expect(screen).toHavePathname('/');
   });
 
@@ -125,6 +135,7 @@ describe('onboarding routing', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Done' }));
     expect(screen).toHavePathname('/');
     expect(secureStore.setItem).not.toHaveBeenCalledWith(FLAG, expect.anything());
+    expect(secureStore.setItem).not.toHaveBeenCalledWith('vm.onboarding.skipped.v1', expect.anything());
     expect(secureStore.__store.get(FLAG)).toBe('1');
   });
 });

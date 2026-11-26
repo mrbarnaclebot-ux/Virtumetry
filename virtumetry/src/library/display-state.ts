@@ -147,8 +147,13 @@ export function failureGuidance(
 export const chargeLine = (charged: boolean | null | undefined) =>
   charged === true ? 'Charged for this run' : charged === false ? 'Not charged for this run' : 'Charge unknown';
 
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+const DATE = { month: 'short', day: 'numeric', year: 'numeric' } as const;
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, DATE);
+/** Critique F3: an unnamed scan is titled by when it was captured. */
+const formatDateTime = (iso: string) => new Date(iso).toLocaleString(undefined, { ...DATE, hour: 'numeric', minute: '2-digit' });
+
+/** Secondary-line date, dropped when the title already is the date. */
+const withDate = (lead: string | null, date: string | null) => [lead, date].filter(Boolean).join(' · ') || null;
 
 function estimate(eta: number | null): string {
   if (eta == null) return 'Usually 30 min to 2 h';
@@ -174,10 +179,12 @@ const base = {
 } as const;
 
 export function toDisplayState(item: LibraryItem | (LocalScan & { local: true }), now: Date): DisplayState {
-  const displayTitle = item.title?.trim() || 'Untitled scan';
+  const created = 'local' in item ? item.createdAt : item.created_at;
+  const named = item.title?.trim();
+  const displayTitle = named || formatDateTime(created);
+  const date = named ? formatDate(created) : null;
 
   if ('local' in item) {
-    const date = formatDate(item.createdAt);
     switch (item.uploadState ?? 'saved') {
       case 'saved':
         return {
@@ -185,7 +192,7 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
           kind: 'saved_on_phone',
           displayTitle,
           statusLine: `Saved on phone · ${item.precheckIssues?.length ? CHECKS : 'Not uploaded'}`,
-          secondaryLine: item.frameCount != null ? `${item.frameCount} frames · ${date}` : date,
+          secondaryLine: withDate(item.frameCount != null ? `${item.frameCount} frames` : null, date),
           icon: 'iphone',
         };
       case 'blocked':
@@ -195,7 +202,7 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
           kind: 'failed',
           displayTitle,
           statusLine: `Failed · ${item.uploadState === 'blocked' ? CHECKS : failureText(item.failureCode ?? null, null)}`,
-          secondaryLine: `Not charged · ${date}`,
+          secondaryLine: withDate('Not charged', date),
           tone: 'destructive',
           icon: 'exclamationmark.triangle.fill',
         };
@@ -219,7 +226,6 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
     };
   }
 
-  const date = formatDate(item.created_at);
   switch (item.status) {
     case 'ready':
       return { ...base, kind: 'ready', displayTitle, statusLine: 'Ready', secondaryLine: date, tone: 'accent' };
@@ -233,7 +239,7 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
         kind: 'failed',
         displayTitle,
         statusLine: `Failed · ${failureText(item.failure_code, item.failure_stage, item.retryable === true)}`,
-        secondaryLine: `${charge} · ${date}`,
+        secondaryLine: withDate(charge, date),
         tone: 'destructive',
         icon: 'exclamationmark.triangle.fill',
       };

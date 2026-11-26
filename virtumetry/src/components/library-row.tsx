@@ -70,7 +70,13 @@ function ReadyPulse() {
 
 export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, justReady = false }: Props) {
   const state = toDisplayState(item, new Date());
-  const thumbnailUrl = 'local' in item ? undefined : item.assets?.thumbnail_url;
+  // Critique F3: local scans show their first frame (capture/[id] path convention) until upload deletes the files.
+  const thumbnailUrl =
+    'local' in item
+      ? item.uploadState !== 'done' && item.frameCount > 0 && item.dir
+        ? `${item.dir}/frames/000001.jpg`
+        : undefined
+      : item.assets?.thumbnail_url;
   const [imageFailed, setImageFailed] = useState(false);
   const retryable = !('local' in item) && item.status === 'failed' && item.retryable === true;
   const label = [state.displayTitle, state.statusLine, state.secondaryLine].filter(Boolean).join(', ');
@@ -104,6 +110,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
         <View accessible={false} style={styles.thumb}>
           {thumbnailUrl && !imageFailed ? (
             <Image
+              testID="row-thumb"
               source={{ uri: thumbnailUrl }}
               style={styles.thumb}
               contentFit="cover"
@@ -144,9 +151,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', minHeight: 96 },
   main: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: space.lg, paddingVertical: space.lg },
   pressed: { backgroundColor: color.surface.pressed },
+  // 4:3, like the frames.
   thumb: {
-    width: 64,
-    height: 64,
+    width: 88,
+    height: 66,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',

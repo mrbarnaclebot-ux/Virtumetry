@@ -33,7 +33,7 @@ type State =
   | { k: 'gate'; title: string }
   | { k: 'opened'; data: OpenedShare };
 
-const titleOf = (t: string | null | undefined) => t?.trim() || 'Untitled scan';
+const titleOf = (t: string | null | undefined) => t?.trim() || 'Shared room';
 
 function Message({
   glyph,

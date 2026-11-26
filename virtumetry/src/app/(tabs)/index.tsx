@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/toast';
 import { getPrepFlags } from '@/capture/prep-flags';
 import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import { useLocalScans } from '@/capture/store';
-import { consumeIntent } from '@/design/first-run';
+import { consumeIntent, getOnboardingSkipped } from '@/design/first-run';
 import { haptic } from '@/design/haptics';
 import { ease, useReduceMotion } from '@/design/motion';
 import { color, motion, space } from '@/design/tokens';
@@ -284,7 +284,8 @@ export default function LibraryScreen() {
         art={<LibraryEmptyArt />}
         title="No scans yet"
         body="Walk slowly around a room with your phone, and it comes back here in 3D."
-        steps={STEPS}
+        // Critique F3: the steps repeat the intro, so only users who skipped it see them.
+        steps={getOnboardingSkipped() ? STEPS : undefined}
         action={{ label: 'Scan a room', icon: 'newScan', onPress: newScan }}
         style={styles.empty}
       />
@@ -337,6 +338,6 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md },
   center: { flex: 1, justifyContent: 'center', paddingBottom: space.xxxl },
   empty: { paddingBottom: space.xxl },
-  // Inset past the 64 thumb + 16 gap.
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 80, backgroundColor: color.hairline },
+  // Inset past the 88 thumb + 16 gap.
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: 104, backgroundColor: color.hairline },
 });

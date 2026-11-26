@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ScrollView, StyleSheet, type ScrollViewInstance, useWindowDimensions, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OnboardingArt } from '@/components/onboarding/art';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Screen } from '@/components/ui/screen';
+import { markOnboardingSkipped } from '@/design/first-run';
 import { haptic } from '@/design/haptics';
 import { ease, useReduceMotion } from '@/design/motion';
 import { color, layout, motion, radius, space } from '@/design/tokens';
@@ -22,17 +24,17 @@ type Props = {
   replay?: boolean;
 };
 
-/** UI-SPEC §8.1: horizontal paging ScrollView, fixed top row, dots and primary button. */
+/** UI-SPEC §8.1 + critique F3: full-bleed art field (top 52%), Skip over it, dots and primary button. */
 export function OnboardingPager({ pages, ctaLabel, onFinish, onSkip, replay }: Props) {
   const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const reduce = useReduceMotion();
   const scroller = useRef<ScrollViewInstance>(null);
   const [pageW, setPageW] = useState(Math.min(window.width, layout.maxContent));
   const [index, setIndex] = useState(0);
   const last = index === pages.length - 1;
 
-  const artW = pageW - layout.gutter * 2;
-  const artH = Math.min(artW * 0.85, window.height * 0.46);
+  const artH = Math.round(window.height * 0.52);
 
   const settle = (i: number) => {
     if (i === index) return;
@@ -49,12 +51,18 @@ export function OnboardingPager({ pages, ctaLabel, onFinish, onSkip, replay }: P
     settle(index + 1);
   };
 
+  // Replay leaves the first-run record alone.
+  const skip = () => {
+    if (!replay) markOnboardingSkipped(true);
+    onSkip();
+  };
+  const finish = () => {
+    if (!replay) markOnboardingSkipped(false);
+    onFinish();
+  };
+
   return (
-    <Screen contentStyle={styles.column}>
-      <View style={styles.top}>
-        <ThemedText type="eyebrow" tone="muted">{`${index + 1} of ${pages.length}`}</ThemedText>
-        <Button variant="ghost" size="md" label={replay ? 'Close' : 'Skip'} onPress={onSkip} />
-      </View>
+    <Screen edges={['bottom', 'left', 'right']} contentStyle={styles.column}>
       <ScrollView
         ref={scroller}
         horizontal
@@ -64,46 +72,30 @@ export function OnboardingPager({ pages, ctaLabel, onFinish, onSkip, replay }: P
         onMomentumScrollEnd={onMomentumScrollEnd}
         style={styles.flex}>
         {pages.map((p, i) => (
-          <View key={p.headline} accessible accessibilityLabel={`${p.headline}. ${p.body}`} style={[styles.page, { width: pageW }]}>
-            <ArtEnter active={i === index} reduce={reduce}>
-              <OnboardingArt page={i as 0 | 1 | 2 | 3} width={artW} height={artH} />
-            </ArtEnter>
-            <ThemedText type="display" style={styles.headline}>
-              {p.headline}
-            </ThemedText>
-            <ThemedText type="body" tone="muted" style={styles.body}>
-              {p.body}
-            </ThemedText>
+          <View key={p.headline} accessible accessibilityLabel={`${p.headline}. ${p.body}`} style={{ width: pageW }}>
+            <OnboardingArt page={i as 0 | 1 | 2 | 3} width={pageW} height={artH} active={i === index} reduce={reduce} />
+            <View style={styles.copy}>
+              <ThemedText type="display">{p.headline}</ThemedText>
+              <ThemedText type="body" tone="muted" style={styles.body}>
+                {p.body}
+              </ThemedText>
+            </View>
           </View>
         ))}
       </ScrollView>
-      <View style={styles.dots}>
+      <View style={[styles.top, { top: insets.top }]}>
+        <Button variant="ghost" size="md" label={replay ? 'Close' : 'Skip'} onPress={skip} />
+      </View>
+      <View accessible accessibilityLabel={`Page ${index + 1} of ${pages.length}`} style={styles.dots}>
         {pages.map((p, i) => (
           <Dot key={p.headline} active={i === index} reduce={reduce} />
         ))}
       </View>
       <View style={styles.action}>
-        <Button size="lg" label={last ? ctaLabel : 'Next'} onPress={last ? onFinish : next} />
+        <Button size="lg" label={last ? ctaLabel : 'Next'} onPress={last ? finish : next} />
       </View>
     </Screen>
   );
-}
-
-const timing = { duration: motion.duration.slow, easing: ease.outQuart };
-
-/** Art enters with opacity 0→1 + translateX 16→0 (250 ms outQuart); instant under Reduce Motion. */
-function ArtEnter({ active, reduce, children }: { active: boolean; reduce: boolean; children: ReactNode }) {
-  const t = useSharedValue(1);
-  useEffect(() => {
-    if (!active || reduce) {
-      t.set(1);
-      return;
-    }
-    t.set(0);
-    t.set(withTiming(1, timing));
-  }, [active, reduce, t]);
-  const style = useAnimatedStyle(() => ({ opacity: t.get(), transform: [{ translateX: (1 - t.get()) * 16 }] }));
-  return <Animated.View style={style}>{children}</Animated.View>;
 }
 
 /** 8x8 border dot; the active one is a 24x8 accent pill (width 200 ms outQuart, instant when reduced). */
@@ -120,17 +112,8 @@ function Dot({ active, reduce }: { active: boolean; reduce: boolean }) {
 const styles = StyleSheet.create({
   column: { paddingHorizontal: 0 },
   flex: { flex: 1 },
-  top: {
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingLeft: layout.gutter,
-    paddingRight: space.sm,
-    marginBottom: space.lg,
-  },
-  page: { paddingHorizontal: layout.gutter },
-  headline: { marginTop: space.xxl },
+  top: { position: 'absolute', right: space.sm, height: 44, justifyContent: 'center' },
+  copy: { paddingHorizontal: layout.gutter, paddingTop: space.xxl },
   body: { marginTop: space.md },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: space.sm, marginBottom: space.xl },
   dot: { height: 8, borderRadius: radius.pill },

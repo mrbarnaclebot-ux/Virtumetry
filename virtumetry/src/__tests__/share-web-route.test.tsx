@@ -176,3 +176,10 @@ it('re-opens for fresh URLs when an asset fetch fails after 14 minutes, once per
   expect(viewer.current!.splatUrl).toBe(fresh3.assets.splat_url);
   now.mockRestore();
 });
+
+it('titles an unnamed shared room "Shared room" (critique F3)', async () => {
+  fetchMock.mockResolvedValueOnce(ok({ title: null, needs_password: false })).mockResolvedValueOnce(ok({ ...OPEN, title: '  ' }));
+  await render(<SharePage />);
+  await screen.findByTestId('world-viewer');
+  expect(screen.getByRole('header', { name: 'Shared room' })).toBeTruthy();
+});

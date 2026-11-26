@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 export type CoachId = 'capture-prep' | 'walk' | 'measure';
 
 const ONBOARDED = 'vm.onboarding.v1';
+const SKIPPED = 'vm.onboarding.skipped.v1';
 const COACH_IDS: CoachId[] = ['capture-prep', 'walk', 'measure'];
 const coachKey = (id: CoachId) => `vm.coach.${id}`;
 
@@ -24,6 +25,7 @@ const write = (k: string, v: boolean) => {
 };
 
 let onboarded: boolean | null = null; // cache: one sync read per session
+let skipped: boolean | null = null;
 let intent: 'scan' | null = null; // memory only, consumed once by Library
 const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => {
@@ -42,6 +44,19 @@ export const markOnboarded = (next?: 'scan') => {
   onboarded = true;
   intent = next ?? null;
   listeners.forEach((l) => l());
+};
+
+/** Critique F3: the empty Library shows the how-it-works steps only to users who skipped the intro. */
+export const markOnboardingSkipped = (v: boolean) => {
+  write(SKIPPED, v);
+  skipped = v;
+};
+
+// Web never shows onboarding, so it counts as skipped.
+export const getOnboardingSkipped = () => {
+  if (Platform.OS === 'web') return true;
+  if (skipped === null) skipped = read(SKIPPED);
+  return skipped;
 };
 
 export const useOnboarded = () => useSyncExternalStore(subscribe, getOnboarded);
@@ -65,5 +80,6 @@ export const resetCoachMarks = () => {
 
 export const __resetFirstRunForTest = () => {
   onboarded = null;
+  skipped = null;
   intent = null;
 };

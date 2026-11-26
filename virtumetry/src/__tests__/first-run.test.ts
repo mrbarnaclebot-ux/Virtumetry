@@ -5,9 +5,11 @@ import {
   __resetFirstRunForTest,
   consumeIntent,
   getOnboarded,
+  getOnboardingSkipped,
   isCoachSeen,
   markCoachSeen,
   markOnboarded,
+  markOnboardingSkipped,
   resetCoachMarks,
   useOnboarded,
 } from '@/design/first-run';
@@ -44,9 +46,20 @@ describe('onboarding flag', () => {
     expect(consumeIntent()).toBeNull();
   });
 
+  it('records skip versus finish and persists it (critique F3)', () => {
+    expect(getOnboardingSkipped()).toBe(false);
+    markOnboardingSkipped(true);
+    __resetFirstRunForTest();
+    expect(getOnboardingSkipped()).toBe(true);
+    markOnboardingSkipped(false);
+    __resetFirstRunForTest();
+    expect(getOnboardingSkipped()).toBe(false);
+  });
+
   it('is always onboarded on web', () => {
     jest.replaceProperty(Platform, 'OS', 'web');
     expect(getOnboarded()).toBe(true);
+    expect(getOnboardingSkipped()).toBe(true);
   });
 });
 

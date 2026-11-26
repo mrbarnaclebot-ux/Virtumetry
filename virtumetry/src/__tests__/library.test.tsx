@@ -6,7 +6,7 @@ import { Alert } from 'react-native';
 
 import LibraryScreen, { __resetBudgetBannerForTest } from '@/app/(tabs)/index';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
-import { __resetFirstRunForTest, markOnboarded } from '@/design/first-run';
+import { __resetFirstRunForTest, markOnboarded, markOnboardingSkipped } from '@/design/first-run';
 import { haptic } from '@/design/haptics';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
 import { apiFetch, type BudgetAlert } from '@/lib/api';
@@ -131,7 +131,17 @@ describe('library screen', () => {
     expect(init.headers.Cookie).toBe('better-auth.session_token=abc');
   });
 
-  it('shows the empty state when there are no scans', async () => {
+  it('empty state after a finished intro: headline, body and CTA, no steps (critique F3)', async () => {
+    markOnboardingSkipped(false);
+    fetchMock.mockResolvedValue(page([]));
+    await renderLibrary();
+    await screen.findByText('No scans yet');
+    expect(screen.queryByText('Scan the room slowly')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Scan a room' })).toBeTruthy();
+  });
+
+  it('shows the empty state with steps when the intro was skipped', async () => {
+    markOnboardingSkipped(true);
     fetchMock.mockResolvedValue(page([]));
     await renderLibrary();
     await screen.findByText('No scans yet');
@@ -258,6 +268,18 @@ describe('library screen', () => {
     await expect(apiFetch('/v1/scans/x/uploads:missing')).rejects.toMatchObject({ status: 404, code: 'world_not_found' });
     fetchMock.mockResolvedValueOnce({ ok: false, status: 404, json: async (): Promise<unknown> => { throw new SyntaxError('html'); } } as Response);
     await expect(apiFetch('/v1/scans/x/uploads:missing')).rejects.toMatchObject({ status: 404, code: undefined });
+  });
+
+  it('titles unnamed scans by capture date and time; local rows show their first frame (critique F3)', async () => {
+    __setLocalScansForTest([local('l1', '')]);
+    fetchMock.mockResolvedValue(page([w('w1', { title: null, status: 'ready' })]));
+    await renderLibrary();
+    await screen.findByText('Ready');
+    const when = new Date(CREATED).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    expect(screen.getAllByText(when)).toHaveLength(2);
+    expect(screen.queryByText(/Untitled/)).toBeNull();
+    expect(screen.getByText('30 frames')).toBeTruthy();
+    expect(JSON.stringify(screen.getByTestId('row-thumb').props.source)).toContain('file:///mock/document/sessions/l1/frames/000001.jpg');
   });
 
   it('labels rows, the more button and the progress bar', async () => {

@@ -250,8 +250,20 @@ describe('toDisplayState: local and titles', () => {
     expect(s.secondaryLine).toMatch(/^Not charged/);
   });
 
-  it.each([null, '', '   '])('title %p → Untitled scan', (title) => {
-    expect(ds({ title }).displayTitle).toBe('Untitled scan');
+  // Critique F3: an unnamed scan is titled by its capture date and time, and the secondary line drops the date.
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  it.each([null, '', '   '])('title %p → capture date and time', (title) => {
+    expect(ds({ title }).displayTitle).toBe(when(CREATED));
+  });
+
+  it('drops the duplicate date from the secondary line of unnamed scans', () => {
+    expect(ds({ title: null, status: 'ready' }).secondaryLine).toBeNull();
+    expect(ds({ title: null, status: 'failed', charged: false }).secondaryLine).toBe('Not charged');
+    expect(loc({ title: null }).displayTitle).toBe(when(CREATED));
+    expect(loc({ title: null }).secondaryLine).toBe('30 frames');
+    expect(loc({ title: null, uploadState: 'blocked' }).secondaryLine).toBe('Not charged');
   });
 });
 
