@@ -65,10 +65,10 @@ export default function SignInScreen() {
 
   return (
     <Screen maxWidth="form" keyboard scroll contentStyle={styles.content}>
-      <BrandMark size={48} />
-      <ThemedText type="display" accessibilityRole="header" style={styles.wordmark}>
-        Virtumetry
-      </ThemedText>
+      {/* One brand lockup (mark + wordmark); the wrapper is the screen's header. */}
+      <View accessible accessibilityRole="header" accessibilityLabel="Virtumetry" style={styles.lockup}>
+        <BrandMark variant="lockup" size={44} />
+      </View>
       <ThemedText tone="muted" style={styles.tagline}>
         Walk a room. Get it back in 3D.
       </ThemedText>
@@ -135,8 +135,8 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingTop: space.huge, paddingBottom: space.xl },
-  wordmark: { marginTop: space.xl },
-  tagline: { marginTop: space.sm },
+  lockup: { alignSelf: 'flex-start' },
+  tagline: { marginTop: space.lg },
   banners: { marginTop: space.xxl, gap: space.md },
   fields: { marginTop: space.xxl, gap: space.lg },
   afterBanner: { marginTop: space.lg },

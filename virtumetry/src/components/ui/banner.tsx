@@ -1,12 +1,12 @@
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { Button } from '@/components/ui/button';
+import { focusRing } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { ease } from '@/design/motion';
-import { color, motion, radius, space } from '@/design/tokens';
+import { color, minTarget, motion, radius, space } from '@/design/tokens';
 
 const TONES = {
   warning: { bg: color.warningSurface, ink: color.warning },
@@ -46,7 +46,21 @@ export function Banner({ tone, icon, title, body, action, onDismiss, dismissLabe
               {body}
             </ThemedText>
           )}
-          {action && <Button variant="ghost" size="md" label={action.label} onPress={action.onPress} style={styles.action} />}
+          {/* Link-style text button flush with the text; hitSlop keeps the 44 pt target. */}
+          {action && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+              onPress={action.onPress}
+              hitSlop={LINK_SLOP}
+              style={(s) => [styles.action, focusRing(s)]}>
+              {({ pressed }) => (
+                <ThemedText type="label" style={[styles.link, pressed && styles.linkPressed]}>
+                  {action.label}
+                </ThemedText>
+              )}
+            </Pressable>
+          )}
         </View>
         {onDismiss && <IconButton icon="close" accessibilityLabel={dismissLabel} onPress={onDismiss} style={styles.dismiss} />}
       </View>
@@ -54,10 +68,14 @@ export function Banner({ tone, icon, title, body, action, onDismiss, dismissLabe
   );
 }
 
+const LINK_SLOP = { top: (minTarget - 20) / 2, bottom: (minTarget - 20) / 2, left: space.sm, right: space.lg };
+
 const styles = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, padding: space.lg, borderRadius: radius.md },
   text: { flex: 1, gap: space.xs },
   title: { fontWeight: '600' },
-  action: { alignSelf: 'flex-start', marginLeft: -space.lg },
+  action: { alignSelf: 'flex-start', marginTop: space.xs },
+  link: { color: color.primary, fontWeight: '600' },
+  linkPressed: { color: color.primaryPressed },
   dismiss: { marginTop: -space.md, marginRight: -space.md },
 });

@@ -53,7 +53,7 @@ export default function SettingsScreen() {
       <View style={styles.footer}>
         <BrandMark size={20} mono />
         <ThemedText type="caption" tone="muted">
-          {`Virtumetry ${Constants.expoConfig?.version ?? ''} · ${APP_ENV}`}
+          {`Virtumetry ${Constants.expoConfig?.version ?? ''}${APP_ENV === 'production' ? '' : ` · ${APP_ENV}`}`}
         </ThemedText>
       </View>
     </Screen>

@@ -7,7 +7,13 @@ import { authClient } from '@/lib/auth-client';
 import { queryClient } from '@/lib/query-client';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
-jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
+let mockAppEnv = 'test';
+jest.mock('@/config/api', () => ({
+  API_URL: 'https://api.test.invalid',
+  get APP_ENV() {
+    return mockAppEnv;
+  },
+}));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '1.0.0' } } }));
 jest.mock('@/lib/auth-client', () => ({
   authClient: {
@@ -97,5 +103,15 @@ describe('settings screen', () => {
   it('shows the version and app env footer', async () => {
     await render(<SettingsScreen />);
     expect(screen.getByText('Virtumetry 1.0.0 · test')).toBeTruthy();
+  });
+
+  it('hides the app env in production', async () => {
+    mockAppEnv = 'production';
+    try {
+      await render(<SettingsScreen />);
+      expect(screen.getByText('Virtumetry 1.0.0')).toBeTruthy();
+    } finally {
+      mockAppEnv = 'test';
+    }
   });
 });
