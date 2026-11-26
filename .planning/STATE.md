@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-11-23)
 
 ## Current Position
 
-Phase: 6.1 (UI/UX Makeover, INSERTED) — DISCUSSING
+Phase: 6.1 (UI/UX Makeover, INSERTED): COMPLETE (verified in code and tests; human UAT pending)
 Plan: 0 of TBD
-Status: Phase 6.1 inserted; discuss → ui-phase → plan → execute
+Status: Phase 6.1 executed (14 plans), code review and UI audit fixed, critique rounds 0 to 4 logged. Next: 06.1-HUMAN-UAT on iPhone, then Phase 7
 Last activity: 2026-11-25 -- Phase 6 execution started
 
 Progress: [██████████] 100%
