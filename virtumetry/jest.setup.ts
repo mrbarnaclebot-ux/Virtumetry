@@ -17,9 +17,6 @@ jest.mock('expo-secure-store', () => {
   };
 });
 
-// theme.ts imports the web-only global stylesheet; jest can't parse CSS.
-jest.mock('@/global.css', () => ({}));
-
 // useNetworkState's native mock resolves undefined and throws on unmount; tests override per case.
 jest.mock('expo-network', () => ({
   useNetworkState: jest.fn(() => ({ isConnected: true, isInternetReachable: true })),

@@ -1,66 +1,42 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://unistyl.es/), etc.
+ * App theme derived from design tokens (UI-SPEC 06.1 §2). Dark-only: one flat Colors object.
+ * New code should read `tokens.color.*` from '@/design/tokens' directly.
  */
-
-import '@/global.css';
 
 import { Platform } from 'react-native';
 
+import { color, font, layout } from '@/design/tokens';
+
 export const Colors = {
-  light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-    accent: '#0B7A70',
-    onAccent: '#FFFFFF',
-    destructive: '#D92D20',
-    warning: '#B54708',
-  },
-  dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    accent: '#3CC8B4',
-    onAccent: '#000000',
-    destructive: '#FF6B5E',
-    warning: '#F5A524',
-  },
+  // Legacy keys (existing call sites).
+  text: color.text,
+  background: color.bg,
+  backgroundElement: color.surface.raised,
+  backgroundSelected: color.surface.pressed,
+  textSecondary: color.textMuted,
+  // TRAP: legacy `accent` is PRIMARY (mint), not tokens.color.accent (violet). Never use in new code.
+  accent: color.primary,
+  onAccent: color.onPrimary,
+  destructive: color.danger,
+  warning: color.warning,
+  // Semantic keys.
+  success: color.success,
+  info: color.info,
+  hairline: color.hairline,
+  border: color.border,
+  secondary: color.secondary,
+  onSecondary: color.onSecondary,
+  overlay: color.surface.overlay,
+  primary: color.primary,
+  onPrimary: color.onPrimary,
+  textFaint: color.textFaint,
 } as const;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export type ThemeColor = keyof typeof Colors;
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
+export const Fonts = font.css;
 
 export const Spacing = {
-  half: 2,
   one: 4,
   two: 8,
   three: 16,
@@ -70,4 +46,4 @@ export const Spacing = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const MaxContentWidth = layout.maxContent;
