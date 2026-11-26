@@ -96,8 +96,7 @@ describe('retryable failure', () => {
     expect(screen.getByText(/This retry will use/)).toBeTruthy();
     // One money grammar: USD primary, credits secondary, then budget left.
     expect(screen.getByText('930 credits')).toBeTruthy();
-    expect(screen.getByText('~$40.70 left today')).toBeTruthy();
-    expect(screen.getByText('4,070 credits')).toBeTruthy();
+    expect(screen.getByText('~$40.70 left today · 4,070 credits')).toBeTruthy();
     expect(screen.getByText('This is a new paid run. Nothing is charged until you approve.')).toBeTruthy();
     expect(screen.queryByText('raw provider text')).toBeNull();
     expect(quoteCalls()).toHaveLength(1);

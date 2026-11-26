@@ -93,8 +93,7 @@ describe('quote step', () => {
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
     expect(screen.queryByText(/≈/)).toBeNull();
     // USD first, credits muted after.
-    expect(screen.getByText('~$40.70 left today')).toBeTruthy();
-    expect(screen.getByText('4,070 credits')).toBeTruthy();
+    expect(screen.getByText('~$40.70 left today · 4,070 credits')).toBeTruthy();
     expect(fetchMock.mock.calls[0][0]).toContain('/v1/quote?frames=30');
     expect(approve()).toBeEnabled();
     expect(scanPosts()).toHaveLength(0);
@@ -216,7 +215,11 @@ describe('upload step', () => {
     await renderStep('upload', scan({ uploadState: 'done' }));
     expect(screen.getByRole('header', { name: 'Uploaded' })).toBeTruthy();
     expect(screen.getByText('Uploaded · Processing started')).toBeTruthy();
-    expect(screen.getByText("You'll see progress in your library.")).toBeTruthy();
+    expect(screen.getByText('Usually ready in 30 min to 2 h. It shows up in your Library.')).toBeTruthy();
+    // One exit: the pinned Back to Library replaces the header Done.
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Back to Library' }));
+    expect(router.back).toHaveBeenCalled();
     expect(screen.getByRole('progressbar', { name: 'Upload progress' }).props.accessibilityValue).toMatchObject({ now: 100 });
   });
 

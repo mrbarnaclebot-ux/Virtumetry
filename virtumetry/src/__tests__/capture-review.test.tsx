@@ -104,8 +104,8 @@ it('a failing check drops Check cost for Scan again and explains why', async () 
   // No disabled-forever control: the cost step is gone, Scan again leads.
   expect(screen.queryByRole('button', { name: 'Check cost' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Discard' })).toBeEnabled();
-  // Sighted users see why too: once in the checks list, once under the button.
-  expect(screen.getAllByText(reason)).toHaveLength(2);
+  // The reason shows once, in the checks list (not repeated under the button).
+  expect(screen.getAllByText(reason)).toHaveLength(1);
   await fireEvent.press(screen.getByRole('button', { name: 'Scan again' }));
   expect(router.replace).toHaveBeenCalledWith('/capture/prep');
 });
@@ -141,4 +141,11 @@ it('a failed discard keeps the scan and says so in a toast, not a second Alert',
   expect(toastSuccess).not.toHaveBeenCalled();
   expect(alert).toHaveBeenCalledTimes(1);
   expect(getLocalScans()).toHaveLength(1);
+});
+
+it('idle readiness hides the pill instead of saying Ready to scan', async () => {
+  await renderReview(seedScan({ readiness: undefined, readinessReason: undefined }));
+  expect(screen.getByText('Saved on phone')).toBeTruthy();
+  expect(screen.queryByText('Ready to scan')).toBeNull();
+  expect(screen.getByText('Checks passed')).toBeTruthy();
 });

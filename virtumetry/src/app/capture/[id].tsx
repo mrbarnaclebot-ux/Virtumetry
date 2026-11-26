@@ -99,14 +99,9 @@ function Review({ scan, onCheckCost }: { scan: LocalScan; onCheckCost: () => voi
     setHero(i);
   };
   const issues = scan.precheckIssues ?? [];
-  const firstIssue = issues[0] && checkReason(issues[0]);
   const level = scan.readiness ?? 'idle';
-  const readiness = {
-    level,
-    signal: null,
-    label: level === 'idle' ? 'Ready to scan' : LABEL[level],
-    reason: scan.readinessReason ?? '',
-  };
+  // Idle means no live readiness was recorded; the Saved on phone pill already says where the scan is.
+  const readiness = level === 'idle' ? null : { level, signal: null, label: LABEL[level], reason: scan.readinessReason ?? '' };
 
   const discard = () =>
     Alert.alert('Discard this scan?', `This deletes its ${scan.frameCount} photos from your phone. You can't undo this.`, [
@@ -132,13 +127,10 @@ function Review({ scan, onCheckCost }: { scan: LocalScan; onCheckCost: () => voi
       actions={
         <>
           {/* Failed checks: no cost to check, so Scan again leads (critique R2 #4). */}
-          {firstIssue ? (
+          {issues.length > 0 ? (
             <>
               <Primary label="Scan again" disabled={false} onPress={scanAgain} />
-              <ThemedText type="caption" tone="muted" style={styles.center}>
-                {firstIssue}
-              </ThemedText>
-              <Button variant="secondary" label="Discard" onPress={discard} />
+              <Button variant="destructive" label="Discard" onPress={discard} />
             </>
           ) : (
             <>
@@ -192,9 +184,11 @@ function Review({ scan, onCheckCost }: { scan: LocalScan; onCheckCost: () => voi
 
       <View style={styles.section}>
         <Group>
-          <View style={styles.cell}>
-            <ReadinessPill result={readiness} scheme="system" />
-          </View>
+          {readiness && (
+            <View style={styles.cell}>
+              <ReadinessPill result={readiness} scheme="system" />
+            </View>
+          )}
           {issues.length === 0 ? (
             <View accessible accessibilityLabel="Checks passed" style={[styles.cell, shared.check]}>
               <Icon name="ready" color={color.success} />
@@ -318,7 +312,8 @@ function Upload({ scan }: { scan: LocalScan }) {
   const title = blocked ? "Didn't pass checks" : failed ? 'Upload failed' : done ? 'Uploaded' : paused ? 'Upload paused' : 'Uploading';
   useAnnounce(blocked || failed ? title : null);
 
-  const top = <SheetHeader trailing={{ label: 'Done', onPress: close }} />;
+  // Done gets a pinned Back to Library instead, so the header drops its Done (one exit per screen).
+  const top = done ? <SheetHeader /> : <SheetHeader trailing={{ label: 'Done', onPress: close }} />;
 
   // Failed is terminal: offer the way forward and a way to free the photos (critique R2 #2).
   const deletePhotos = () =>
@@ -386,7 +381,7 @@ function Upload({ scan }: { scan: LocalScan }) {
       : { icon: 'uploading', tint: color.textMuted };
 
   return (
-    <Layout top={top} title={title}>
+    <Layout top={top} title={title} actions={done ? <Primary label="Back to Library" disabled={false} onPress={close} /> : undefined}>
       <View style={styles.section}>
         <View style={shared.check}>
           <Icon name={lead.icon} color={lead.tint} hierarchical />
@@ -403,7 +398,7 @@ function Upload({ scan }: { scan: LocalScan }) {
       </View>
       <ThemedText type="body" tone="muted" style={styles.section}>
         {done
-          ? "You'll see progress in your library."
+          ? "Usually ready in 30 min to 2 h. It shows up in your Library."
           : 'You can close this screen. The upload picks up where it left off when you open the app again.'}
       </ThemedText>
     </Layout>
@@ -436,6 +431,5 @@ const styles = {
     bar: { marginTop: space.md },
     files: { marginTop: space.sm },
     blocked: { marginTop: space.xxxl },
-    center: { textAlign: 'center' },
   }),
 };

@@ -141,18 +141,15 @@ export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun:
         data && (
           <>
             {eyebrow}
-            {/* One money grammar (critique R1 #4): USD primary, credits secondary, then budget left. */}
+            {/* One money grammar (critique R1 #4): USD primary, credits secondary, then budget left in one muted line. */}
             <ThemedText type="readoutLarge" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.amount, styles.tabular]}>
               {`~${formatUsd(data.usd)}`}
             </ThemedText>
             <ThemedText type="readout" tone="muted" style={[styles.usd, styles.tabular]}>
               {formatCredits(data.credits)}
             </ThemedText>
-            <ThemedText type="label" style={[styles.left, styles.tabular]}>
-              {`~${formatUsd(data.budgetRemaining * usdPerCredit(data))} left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
-            </ThemedText>
-            <ThemedText type="caption" tone="muted" style={[styles.usd, styles.tabular]}>
-              {formatCredits(data.budgetRemaining)}
+            <ThemedText type="label" tone="muted" style={[styles.left, styles.tabular]}>
+              {`~${formatUsd(data.budgetRemaining * usdPerCredit(data))} left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'} · ${formatCredits(data.budgetRemaining)}`}
             </ThemedText>
             {over && (
               <View style={[styles.check, styles.gap]}>
