@@ -96,7 +96,8 @@ describe('retryable failure', () => {
     expect(screen.getByText(/This retry will use/)).toBeTruthy();
     // One money grammar: USD primary, credits secondary, then budget left.
     expect(screen.getByText('930 credits')).toBeTruthy();
-    expect(screen.getByText('4,070 credits left today')).toBeTruthy();
+    expect(screen.getByText('~$40.70 left today')).toBeTruthy();
+    expect(screen.getByText('4,070 credits')).toBeTruthy();
     expect(screen.getByText('This is a new paid run. Nothing is charged until you approve.')).toBeTruthy();
     expect(screen.queryByText('raw provider text')).toBeNull();
     expect(quoteCalls()).toHaveLength(1);
@@ -181,7 +182,18 @@ describe('non-retryable failure', () => {
     expect(router.replace).toHaveBeenCalledWith('/capture/prep');
     expect(quoteCalls()).toHaveLength(0);
   });
+
+  it('retryable with no frame count: no quote possible, so no forever skeleton or disabled Approve', async () => {
+    worlds = [world({ retryable: true, frame_count: null })];
+    await renderSheet();
+    await screen.findByText('Scan failed');
+    expect(screen.queryByRole('button', { name: 'Approve and retry' })).toBeNull();
+    expect(screen.queryByLabelText('Getting quote…')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Scan again' })).toBeEnabled();
+    expect(quoteCalls()).toHaveLength(0);
+  });
 });
+
 
 describe('world load', () => {
   it('shows a labelled skeleton while the scan loads', async () => {

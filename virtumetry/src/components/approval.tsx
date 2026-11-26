@@ -3,6 +3,7 @@ import { useNetworkState } from 'expo-network';
 import { useEffect, type ReactNode } from 'react';
 import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { DEFAULT_CAPTURE_CONFIG } from '@/capture/capture-config';
 import { formatCredits, formatUsd } from '@/capture/cost';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -92,6 +93,9 @@ export function overBudget(data: Quote | undefined, noun: 'scan' | 'retry'): str
     : `This ${noun} would go over today's limit. Try again tomorrow.`;
 }
 
+/** The quote's own rate (USD first, critique R2 #7); the config rate when the quote is free. */
+const usdPerCredit = (q: Quote) => (q.credits > 0 ? q.usd / q.credits : DEFAULT_CAPTURE_CONFIG.pricing.usdPerCredit);
+
 /** Quote card (§7.7): skeleton while pending, offline / error + Try again, or cost + budget left + over-budget line. */
 export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun: 'scan' | 'retry' }) {
   const network = useNetworkState();
@@ -99,7 +103,7 @@ export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun:
   const over = overBudget(data, noun);
   const offline = !data && network.isInternetReachable === false;
   const eyebrow = (
-    <ThemedText type="eyebrow" tone="muted">
+    <ThemedText type="caption" tone="muted" style={styles.strong}>
       {`This ${noun} will use`}
     </ThemedText>
   );
@@ -144,8 +148,11 @@ export function QuoteCard({ quote, noun }: { quote: UseQueryResult<Quote>; noun:
             <ThemedText type="readout" tone="muted" style={[styles.usd, styles.tabular]}>
               {formatCredits(data.credits)}
             </ThemedText>
-            <ThemedText type="label" tone="muted" style={[styles.left, styles.tabular]}>
-              {`${data.budgetRemaining.toLocaleString('en-US')} credits left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
+            <ThemedText type="label" style={[styles.left, styles.tabular]}>
+              {`~${formatUsd(data.budgetRemaining * usdPerCredit(data))} left ${data.budgetWindow === 'monthly' ? 'this month' : 'today'}`}
+            </ThemedText>
+            <ThemedText type="caption" tone="muted" style={[styles.usd, styles.tabular]}>
+              {formatCredits(data.budgetRemaining)}
             </ThemedText>
             {over && (
               <View style={[styles.check, styles.gap]}>
@@ -190,4 +197,6 @@ export const styles = StyleSheet.create({
   },
   retry: { marginTop: space.md },
   tabular: { fontVariant: ['tabular-nums'] },
+  strong: { fontWeight: '600' },
+
 });

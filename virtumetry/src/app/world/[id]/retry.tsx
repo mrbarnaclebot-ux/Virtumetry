@@ -52,10 +52,11 @@ export default function RetrySheet() {
     <ThemedView style={styles.flex}>
       <SafeAreaView edges={['bottom']} style={styles.flex}>
         {world ? (
-          world.retryable === true ? (
+          // No frame count means no quote, so the app can't offer a retry (critique R2 #5).
+          world.retryable === true && world.frame_count ? (
             <Retryable world={world} />
           ) : (
-            <NotRetryable world={world} />
+            <NotRetryable world={{ ...world, retryable: false }} />
           )
         ) : detail.isError ? (
           <View style={styles.content} accessibilityLiveRegion="polite">
@@ -121,7 +122,7 @@ function Retryable({ world }: { world: LibraryItem }) {
   const quote = useQuery({
     queryKey: ['quote', 'retry', world.id],
     queryFn: () => getQuote(world.frame_count!),
-    enabled: !!world.frame_count,
+
     gcTime: 0,
     staleTime: 0,
     retry: false,
