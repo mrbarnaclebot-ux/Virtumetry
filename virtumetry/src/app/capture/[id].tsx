@@ -318,7 +318,7 @@ function Upload({ scan }: { scan: LocalScan }) {
             {status}
           </ThemedText>
         </View>
-        <ProgressBar testID="upload-progress" value={value} height={6} tone={done ? 'success' : 'accent'} style={styles.bar} />
+        <ProgressBar testID="upload-progress" accessibilityLabel="Upload progress" value={value} height={6} tone={done ? 'success' : 'accent'} style={styles.bar} />
         {live && !done && (
           <ThemedText type="readout" tone="muted" style={styles.files}>
             {`${live.uploaded} of ${live.total} files`}

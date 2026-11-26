@@ -48,6 +48,7 @@ export function ProgressBar({ value, height = 4, tone = 'accent', accessibilityL
   return (
     <View
       testID={testID}
+      accessible
       accessibilityRole="progressbar"
       accessibilityLabel={accessibilityLabel}
       accessibilityValue={indeterminate ? { min: 0, max: 100 } : { min: 0, max: 100, now: pct }}

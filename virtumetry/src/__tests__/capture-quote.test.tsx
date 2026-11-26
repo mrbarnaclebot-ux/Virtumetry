@@ -182,7 +182,7 @@ describe('upload step', () => {
     await renderStep('upload', scan({ uploadState: 'uploading', serverWorldId: 'w1' }));
     expect(screen.getByText('Uploading · 38%')).toBeTruthy();
     expect(screen.getByText('12 of 32 files')).toBeTruthy();
-    expect(screen.getByTestId('upload-progress').props.accessibilityValue).toMatchObject({ now: 38 });
+    expect(screen.getByRole('progressbar', { name: 'Upload progress' }).props.accessibilityValue).toMatchObject({ now: 38 });
     expect(
       screen.getByText('You can close this screen. The upload picks up where it left off when you open the app again.'),
     ).toBeTruthy();
@@ -193,7 +193,7 @@ describe('upload step', () => {
     await renderStep('upload', scan({ uploadState: 'approved' }));
     expect(screen.getByText('Uploading…')).toBeTruthy();
     // Unknown percent: indeterminate bar, never an invented number.
-    expect(screen.getByTestId('upload-progress').props.accessibilityValue.now).toBeUndefined();
+    expect(screen.getByRole('progressbar', { name: 'Upload progress' }).props.accessibilityValue.now).toBeUndefined();
   });
 
   it('paused waits for a connection and keeps the stored progress', async () => {
@@ -206,7 +206,7 @@ describe('upload step', () => {
     await renderStep('upload', scan({ uploadState: 'done' }));
     expect(screen.getByText('Uploaded · Processing started')).toBeTruthy();
     expect(screen.getByText("You'll see progress in your library.")).toBeTruthy();
-    expect(screen.getByTestId('upload-progress').props.accessibilityValue).toMatchObject({ now: 100 });
+    expect(screen.getByRole('progressbar', { name: 'Upload progress' }).props.accessibilityValue).toMatchObject({ now: 100 });
   });
 
   it('blocked by checks shows the mapped reason and Not charged', async () => {

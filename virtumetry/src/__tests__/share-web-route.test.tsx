@@ -55,7 +55,7 @@ it('shows an indeterminate bar while the link is checked', async () => {
   fetchMock.mockReturnValue(new Promise(() => {}));
   await render(<SharePage />);
   expect(screen.getByTestId('share-checking').props.accessibilityLabel).toBe('Opening room');
-  expect(screen.getByTestId('share-checking-bar').props).toMatchObject({ accessibilityRole: 'progressbar', accessibilityState: { busy: true } });
+  expect(screen.getByRole('progressbar', { name: 'Opening room' }).props).toMatchObject({ accessibilityRole: 'progressbar', accessibilityState: { busy: true } });
 });
 
 it('never renders the Icon font component (Glyph only on the web page)', async () => {
