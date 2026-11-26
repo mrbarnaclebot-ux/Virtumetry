@@ -33,6 +33,13 @@ it('eyebrow is uppercase with cap 1.2', async () => {
   expect(cap).toBe(1.2);
 });
 
+it('hudStatus is system 22 / 28 / 600, cap 1.3', async () => {
+  const { style, cap } = await textOf(<ThemedText type="hudStatus">x</ThemedText>);
+  expect(style).toMatchObject({ fontSize: 22, lineHeight: 28, fontWeight: '600' });
+  expect(style.fontFamily).toBeUndefined();
+  expect(cap).toBe(1.3);
+});
+
 it('explicit maxFontSizeMultiplier overrides the role cap', async () => {
   const { cap } = await textOf(<ThemedText maxFontSizeMultiplier={1.3}>x</ThemedText>);
   expect(cap).toBe(1.3);

@@ -7,20 +7,21 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { color, radius, space } from '@/design/tokens';
 
 // D-07: level is never color alone: icon shape + label word + reason (UI-SPEC §4, §5).
-const LOOK: Record<Readiness['level'], { icon: IconName | null; tint: string }> = {
-  green: { icon: 'ready', tint: color.success },
-  amber: { icon: 'almost', tint: color.warning },
-  red: { icon: 'failedCheck', tint: color.danger },
-  idle: { icon: null, tint: color.text },
+const LOOK: Record<Readiness['level'], { icon: IconName | null; tint: string; hudTint: string }> = {
+  green: { icon: 'ready', tint: color.success, hudTint: color.success },
+  amber: { icon: 'almost', tint: color.warning, hudTint: color.warning },
+  // HUD headline stays text on red: "Keep scanning" is the normal mid-scan state, not an alarm.
+  red: { icon: 'failedCheck', tint: color.danger, hudTint: color.text },
+  idle: { icon: null, tint: color.text, hudTint: color.text },
 };
 
-/** `scheme="dark"` is the capture HUD: no pill fill (it sits on the scrim panel) and text capped at 1.3. */
+/** `scheme="dark"` is the capture HUD headline: no pill fill, `hudStatus` type, text capped at 1.3. */
 type Props = { result: Readiness; scheme?: 'dark' | 'system' };
 
 export function ReadinessPill({ result, scheme = 'system' }: Props) {
   const hud = scheme === 'dark';
   const font = hud ? 1.3 : 1.6;
-  const { icon, tint } = LOOK[result.level];
+  const { icon, tint, hudTint } = LOOK[result.level];
   const label = `Readiness: ${result.label}. ${result.reason}`;
 
   // Announce only when the level changes, not on every reason/count update.
@@ -33,8 +34,11 @@ export function ReadinessPill({ result, scheme = 'system' }: Props) {
   return (
     <View accessible accessibilityLabel={label} accessibilityLiveRegion="polite">
       <View style={[styles.pill, !hud && styles.filled]}>
-        {icon && <Icon name={icon} size={20} color={tint} hierarchical />}
-        <ThemedText type="bodyStrong" maxFontSizeMultiplier={font} style={{ color: tint }}>
+        {icon && <Icon name={icon} size={hud ? 24 : 20} color={tint} hierarchical />}
+        <ThemedText
+          type={hud ? 'hudStatus' : 'bodyStrong'}
+          maxFontSizeMultiplier={font}
+          style={{ color: hud ? hudTint : tint }}>
           {result.label}
         </ThemedText>
       </View>

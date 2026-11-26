@@ -9,10 +9,10 @@ import { ease, useReduceMotion } from '@/design/motion';
 import { color, motion, radius } from '@/design/tokens';
 
 // D-10: top-down coverage mini-map. 0 deg = the first frame's look direction, pointing up.
-const SIZE = 128;
+const SIZE = 152;
 const C = SIZE / 2;
-const R = 52;
-const BOX = 72;
+const R = 62; // 52 * 152 / 128
+const BOX = 86; // 72 * 152 / 128
 const OFF = (SIZE - BOX) / 2;
 const HALF_ARC = 15 - 1; // 30 deg sectors with a 2 deg gap between arcs
 const APath = Animated.createAnimatedComponent(Path);

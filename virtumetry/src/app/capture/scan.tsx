@@ -9,7 +9,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCaptureConfig } from '@/capture/capture-config';
-import { costFor, formatCredits, formatUsd } from '@/capture/cost';
+import { costFor, formatUsd } from '@/capture/cost';
 import { coverage } from '@/capture/coverage';
 import type { FixtureScenario } from '@/capture/fixture-source';
 import { precheck } from '@/capture/precheck';
@@ -29,9 +29,9 @@ import { color, minTarget, motion, radius, space } from '@/design/tokens';
 
 // Always dark (camera UI convention), light status bar. HUD text caps at 1.3 (UI-SPEC §1.3, §7.5).
 const HUD = 1.3;
-const MAP = 128;
+const MAP = 152;
 const BUZZ_GAP_MS = 2000;
-const COACH_TEXT = 'Fill the ring. Walk the room until every segment lights up, then stop when it says Good to finish.';
+const COACH_TEXT = 'Walk until the ring fills. Stop at Good to finish.';
 
 const SCENARIOS: { label: string; id: FixtureScenario }[] = [
   { label: 'Good', id: 'good' },
@@ -311,23 +311,14 @@ export default function ScanScreen() {
 
       <View style={[styles.panel, { paddingBottom: space.lg + insets.bottom }]}>
         <ReadinessPill result={ready} scheme="dark" />
-        <View style={styles.meterRow}>
-          <T
-            type="readoutLarge"
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
-            accessibilityLabel={`Estimated cost ${cost.usd.toFixed(2)} dollars, ${cost.credits} credits`}
-            style={styles.cost}>
-            {formatUsd(cost.usd)}
-            <T type="label" tone="muted">
-              {` · ${formatCredits(cost.credits)}`}
-            </T>
-          </T>
-          <T type="readout" tone="muted">
-            {n === 1 ? '1 frame' : `${n} frames`}
-          </T>
-        </View>
+        <T
+          type="readout"
+          tone="muted"
+          numberOfLines={1}
+          accessibilityLabel={`${n === 1 ? '1 frame' : `${n} frames`}, estimated cost ${cost.usd.toFixed(2)} dollars`}
+          style={styles.meter}>
+          {`${n === 1 ? '1 frame' : `${n} frames`} · ~${formatUsd(cost.usd)}`}
+        </T>
         <Shutter phase={phase} onPress={onShutter} />
       </View>
 
@@ -365,14 +356,7 @@ const styles = StyleSheet.create({
   eyebrow: { marginBottom: space.sm },
   mapRow: { marginTop: space.lg, marginRight: space.lg, alignItems: 'flex-end' },
   panel: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, backgroundColor: color.scrim.hud },
-  meterRow: {
-    marginTop: space.md,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: space.md,
-  },
-  cost: { flexShrink: 1 },
+  meter: { marginTop: space.md },
   action: { marginTop: space.xl, alignItems: 'center' },
   shutter: {
     width: 72,

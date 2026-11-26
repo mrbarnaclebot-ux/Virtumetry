@@ -55,6 +55,7 @@ export const type = {
   body: { fontWeight: '400', fontSize: 17, lineHeight: 24, letterSpacing: 0.1, maxScale: 1.6 },
   bodyStrong: { fontWeight: '600', fontSize: 17, lineHeight: 24, letterSpacing: 0.1, maxScale: 1.6 },
   label: { fontWeight: '500', fontSize: 15, lineHeight: 20, letterSpacing: 0.1, maxScale: 1.6 },
+  hudStatus: { fontWeight: '600', fontSize: 22, lineHeight: 28, letterSpacing: 0, maxScale: 1.3 },
   caption: { fontWeight: '400', fontSize: 13, lineHeight: 18, letterSpacing: 0.2, maxScale: 1.6 },
   readout: { fontFamily: font.mono, fontSize: 15, lineHeight: 20, letterSpacing: 0, maxScale: 1.4 },
   readoutLarge: { fontFamily: font.mono, fontSize: 28, lineHeight: 32, letterSpacing: -0.5, maxScale: 1.4 },

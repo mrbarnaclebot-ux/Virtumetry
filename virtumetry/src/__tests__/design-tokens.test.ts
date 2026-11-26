@@ -101,9 +101,9 @@ describe('token shape', () => {
     );
   });
 
-  it('has the 10 type roles with family XOR weight', () => {
+  it('has the 11 type roles with family XOR weight', () => {
     const roles = Object.keys(type);
-    expect(roles).toHaveLength(10);
+    expect(roles).toHaveLength(11);
     for (const r of roles) {
       const t = type[r as keyof typeof type] as Record<string, unknown>;
       expect('fontFamily' in t !== 'fontWeight' in t).toBe(true);

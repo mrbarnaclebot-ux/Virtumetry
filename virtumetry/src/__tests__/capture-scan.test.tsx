@@ -44,7 +44,7 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const COACH = 'Fill the ring. Walk the room until every segment lights up, then stop when it says Good to finish.';
+const COACH = 'Walk until the ring fills. Stop at Good to finish.';
 const tick = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
 
 async function renderScan() {
@@ -66,8 +66,8 @@ async function runToEnd() {
 it('idle shows Ready to scan and the base cost', async () => {
   await renderScan();
   expect(screen.getByText('Ready to scan')).toBeTruthy();
-  expect(screen.getByText('$9.00 · 900 credits')).toBeTruthy();
-  expect(screen.getByText('0 frames')).toBeTruthy();
+  expect(screen.getByText('0 frames · ~$9.00')).toBeTruthy();
+  expect(screen.queryByText(/credits/)).toBeNull(); // USD only on the HUD
   expect(screen.getByLabelText('Coverage: 0 of 12 directions seen')).toBeTruthy();
 });
 
@@ -76,8 +76,7 @@ it('a good fixture run updates the HUD per keyframe and Stop saves on the phone'
   await fireEvent.press(screen.getByRole('button', { name: 'Good scenario' }));
   await runToEnd();
 
-  expect(screen.getByText('30 frames')).toBeTruthy();
-  expect(screen.getByText('$9.30 · 930 credits')).toBeTruthy();
+  expect(screen.getByText('30 frames · ~$9.30')).toBeTruthy();
   expect(screen.getByLabelText('Coverage: 1 of 12 directions seen')).toBeTruthy();
   expect(screen.getByText('Keep scanning')).toBeTruthy();
 
@@ -94,7 +93,7 @@ it('Too few replays 8 frames and stays red', async () => {
   await renderScan();
   await fireEvent.press(screen.getByRole('button', { name: 'Too few scenario' }));
   await runToEnd();
-  expect(screen.getByText('8 frames')).toBeTruthy();
+  expect(screen.getByText('8 frames · ~$9.08')).toBeTruthy();
   expect(screen.getByText('Keep scanning')).toBeTruthy();
 });
 
@@ -104,7 +103,19 @@ it('a fresh mount replays the scenario the UI shows, not the last one picked (CR
   await screen.unmount();
   await renderScan(); // shows Good selected
   await runToEnd();
-  expect(screen.getByText('30 frames')).toBeTruthy();
+  expect(screen.getByText(/^30 frames/)).toBeTruthy();
+});
+
+it('readiness is the HUD headline: hudStatus type, panel order readiness, reason, meter, shutter', async () => {
+  const { StyleSheet } = jest.requireActual('react-native');
+  await renderScan();
+  const head = StyleSheet.flatten(screen.getByText('Ready to scan').props.style);
+  expect(head).toMatchObject({ fontSize: 22, fontWeight: '600' });
+  expect(screen.getByText('Ready to scan').props.maxFontSizeMultiplier).toBe(1.3);
+  const order = ['Ready to scan', 'Tap Start, then walk slowly around the room', '0 frames · ~$9.00', 'Start scan'];
+  const all = JSON.stringify(screen.toJSON());
+  const idx = order.map((t) => all.indexOf(JSON.stringify(t)));
+  expect(idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1]))).toBe(true);
 });
 
 it('unmounting mid-recording discards the unsaved capture (WR-05)', async () => {
