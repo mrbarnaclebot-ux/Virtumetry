@@ -1,16 +1,19 @@
 import Constants from 'expo-constants';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { BrandMark } from '@/components/ui/brand-mark';
+import { Group, ListRow } from '@/components/ui/list-row';
+import { Screen } from '@/components/ui/screen';
 import { APP_ENV } from '@/config/api';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { resetCoachMarks } from '@/design/first-run';
+import { minTarget, space } from '@/design/tokens';
 import { authClient } from '@/lib/auth-client';
 import { endSession } from '@/lib/session';
 
+/** UI-SPEC §7.3: Account and Help groups, brand footer. */
 export default function SettingsScreen() {
-  const theme = useTheme();
   const { data } = authClient.useSession();
 
   // On success or failure endSession drops the session; Stack.Protected then shows sign-in.
@@ -20,59 +23,46 @@ export default function SettingsScreen() {
       { text: 'Log out', style: 'destructive', onPress: () => endSession({ notice: false }) },
     ]);
 
-  return (
-    <ThemedView style={styles.flex}>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-        <ThemedText type="title" accessibilityRole="header" style={styles.title}>
-          Settings
-        </ThemedText>
+  const replayIntro = () => {
+    resetCoachMarks();
+    router.push({ pathname: '/onboarding', params: { replay: '1' } });
+  };
 
-        <ThemedText type="subtitle" style={styles.section}>
-          Account
-        </ThemedText>
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <View style={styles.row}>
-            <ThemedText type="small" themeColor="textSecondary">
+  return (
+    <Screen scroll>
+      <ThemedText type="title" accessibilityRole="header" style={styles.title}>
+        Settings
+      </ThemedText>
+
+      <View style={styles.groups}>
+        <Group title="Account">
+          <View style={styles.account}>
+            <ThemedText type="caption" tone="muted">
               Signed in as
             </ThemedText>
             <ThemedText selectable>{data?.user.email}</ThemedText>
           </View>
-          <View style={[styles.hairline, { backgroundColor: theme.backgroundSelected }]} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Log out"
-            onPress={confirmLogOut}
-            style={({ pressed }) => [
-              styles.logOut,
-              pressed && { backgroundColor: theme.backgroundSelected },
-            ]}>
-            <ThemedText type="smallBold" themeColor="destructive" maxFontSizeMultiplier={1.6}>
-              Log out
-            </ThemedText>
-          </Pressable>
-        </ThemedView>
+          <ListRow leading="logout" tone="danger" title="Log out" onPress={confirmLogOut} />
+        </Group>
 
-        <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
+        <Group title="Help">
+          <ListRow leading="replay" title="Replay intro" subtitle="Shows the intro and tips again." trailing="chevron" onPress={replayIntro} />
+        </Group>
+      </View>
+
+      <View style={styles.footer}>
+        <BrandMark size={20} mono />
+        <ThemedText type="caption" tone="muted">
           {`Virtumetry ${Constants.expoConfig?.version ?? ''} · ${APP_ENV}`}
         </ThemedText>
-      </ScrollView>
-    </ThemedView>
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: {
-    paddingHorizontal: Spacing.three,
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-  },
-  title: { marginTop: Spacing.three, marginBottom: Spacing.four },
-  section: { marginBottom: Spacing.two },
-  card: { borderRadius: 12, overflow: 'hidden' },
-  row: { minHeight: 44, padding: Spacing.three },
-  hairline: { height: StyleSheet.hairlineWidth },
-  logOut: { minHeight: 52, alignItems: 'center', justifyContent: 'center' },
-  footer: { marginTop: Spacing.four, textAlign: 'center' },
+  title: { marginTop: space.lg, marginBottom: space.xl },
+  groups: { gap: space.xl },
+  account: { minHeight: minTarget, paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.xs },
+  footer: { marginTop: space.xxl, marginBottom: space.xl, alignItems: 'center', gap: space.sm },
 });

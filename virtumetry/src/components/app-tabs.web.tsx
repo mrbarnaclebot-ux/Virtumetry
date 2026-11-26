@@ -1,18 +1,12 @@
-import {
-  Tabs,
-  TabList,
-  TabTrigger,
-  TabSlot,
-  TabTriggerSlotProps,
-  TabListProps,
-} from 'expo-router/ui';
+import { Tabs, TabList, TabTrigger, TabSlot, TabTriggerSlotProps, TabListProps } from 'expo-router/ui';
 import { Pressable, PressableProps, View, StyleSheet } from 'react-native';
 
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { ThemedText } from '@/components/themed-text';
+import { focusRing } from '@/components/ui/button';
+import { BrandMark } from '@/components/ui/brand-mark';
+import { color, layout, minTarget, radius, space } from '@/design/tokens';
 
-import { ThemedText } from './themed-text';
-import { ThemedView } from './themed-view';
-
+// UI-SPEC §7.15: floating raised bar, brand lockup, selected tab on secondary.
 export default function AppTabs() {
   return (
     <Tabs>
@@ -33,14 +27,13 @@ export default function AppTabs() {
 
 export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
   return (
-    <Pressable {...(props as PressableProps)} style={({ pressed }) => pressed && styles.pressed}>
-      <ThemedView
-        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'accent' : 'textSecondary'}>
-          {children}
-        </ThemedText>
-      </ThemedView>
+    <Pressable
+      {...(props as PressableProps)}
+      accessibilityState={{ selected: !!isFocused }}
+      style={(s) => [styles.tab, isFocused ? styles.selected : s.pressed && styles.pressed, focusRing(s)]}>
+      <ThemedText type="label" tone={isFocused ? 'text' : 'muted'}>
+        {children}
+      </ThemedText>
     </Pressable>
   );
 }
@@ -48,12 +41,12 @@ export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps
 export function CustomTabList(props: TabListProps) {
   return (
     <View {...props} style={styles.tabListContainer}>
-      <ThemedView type="backgroundElement" style={styles.innerContainer}>
-        <ThemedText type="smallBold" style={styles.brandText}>
-          Virtumetry
-        </ThemedText>
+      <View style={styles.innerContainer}>
+        <View style={styles.brand}>
+          <BrandMark size={20} variant="lockup" />
+        </View>
         {props.children}
-      </ThemedView>
+      </View>
     </View>
   );
 }
@@ -62,30 +55,30 @@ const styles = StyleSheet.create({
   tabListContainer: {
     position: 'absolute',
     width: '100%',
-    padding: Spacing.three,
+    padding: space.lg,
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
   },
   innerContainer: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.five,
+    paddingVertical: space.sm,
+    paddingLeft: space.xl,
+    paddingRight: space.sm,
+    borderRadius: radius.pill,
+    backgroundColor: color.surface.raised,
     flexDirection: 'row',
     alignItems: 'center',
     flexGrow: 1,
-    gap: Spacing.two,
-    maxWidth: MaxContentWidth,
+    gap: space.sm,
+    maxWidth: layout.maxContent,
   },
-  brandText: {
-    marginRight: 'auto',
+  brand: { marginRight: 'auto' },
+  tab: {
+    minHeight: minTarget,
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+    borderRadius: radius.pill,
   },
-  pressed: {
-    opacity: 0.8,
-  },
-  tabButtonView: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-  },
+  selected: { backgroundColor: color.secondary },
+  pressed: { backgroundColor: color.surface.pressed },
 });

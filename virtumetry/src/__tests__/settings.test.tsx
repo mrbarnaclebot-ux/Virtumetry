@@ -1,10 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import { Alert, type AlertButton } from 'react-native';
 
 import SettingsScreen from '@/app/(tabs)/settings';
 import { authClient } from '@/lib/auth-client';
 import { queryClient } from '@/lib/query-client';
 
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { version: '1.0.0' } } }));
 jest.mock('@/lib/auth-client', () => ({
@@ -79,6 +81,17 @@ describe('settings screen', () => {
     expect(secureStore.__store.has('virtumetry_session_data')).toBe(false);
     expect(authClient.$store.notify).toHaveBeenCalledWith('$sessionSignal');
     expect(clearSpy).toHaveBeenCalled();
+  });
+
+  it('Replay intro resets the coach marks and opens onboarding in replay mode', async () => {
+    for (const id of ['capture-prep', 'walk', 'measure']) secureStore.__store.set(`vm.coach.${id}`, '1');
+    secureStore.__store.set('vm.onboarding.v1', '1');
+    await render(<SettingsScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: /Replay intro/ }));
+    await act(async () => {});
+    for (const id of ['capture-prep', 'walk', 'measure']) expect(secureStore.__store.has(`vm.coach.${id}`)).toBe(false);
+    expect(secureStore.__store.get('vm.onboarding.v1')).toBe('1');
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/onboarding', params: { replay: '1' } });
   });
 
   it('shows the version and app env footer', async () => {
