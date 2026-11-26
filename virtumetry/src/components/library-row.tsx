@@ -34,6 +34,9 @@ export type RowAction = 'Retry' | 'Rename' | 'Delete' | 'Discard';
  * Local: Delete once a server id exists (CR-03), Discard while nothing is server side, else none.
  * Server: Retry only on the server's retryable flag (T-06-21), then Rename and Delete.
  */
+/** A ready server room with a thumbnail renders as the full-width hero (the image may still fail and fall back). */
+export const isHeroRow = (item: RowItem) => !('local' in item) && item.status === 'ready' && !!item.assets?.thumbnail_url;
+
 export function rowActions(item: RowItem): RowAction[] {
   if ('local' in item) {
     if (item.serverWorldId) return ['Delete'];
@@ -106,7 +109,7 @@ export function LibraryRow({ item, onMore, onOpen, onOpenWorld, onOpenFailed, ju
   const kind: StatusKind = 'local' in item && item.uploadState === 'paused' ? 'paused' : state.kind;
   const actions = rowActions(item);
   // Critique R3 #1: a finished room is the payoff, so it gets a full-width 16:10 frame; other states stay compact rows.
-  const hero = kind === 'ready' && !('local' in item) && !!thumbnailUrl && !imageFailed;
+  const hero = isHeroRow(item) && !imageFailed;
 
   return (
     <View style={[hero ? styles.heroRow : styles.row, { opacity: state.rowOpacity }]}>

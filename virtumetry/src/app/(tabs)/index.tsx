@@ -6,7 +6,7 @@ import { AccessibilityInfo, Alert, RefreshControl, StyleSheet, View } from 'reac
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { LibraryEmptyArt } from '@/components/library-empty-art';
-import { LibraryRow, rowActions, type RowItem } from '@/components/library-row';
+import { isHeroRow, LibraryRow, rowActions, type RowItem } from '@/components/library-row';
 import { RenameModal } from '@/components/rename-modal';
 import { ThemedText } from '@/components/themed-text';
 import { Banner } from '@/components/ui/banner';
@@ -313,8 +313,9 @@ export default function LibraryScreen() {
   );
 }
 
-function Separator() {
-  return <View style={styles.separator} />;
+// Critique R4: under a full-width hero the hairline runs full width too; compact rows keep the thumb inset.
+function Separator({ leadingItem }: { leadingItem?: RowItem }) {
+  return <View style={[styles.separator, leadingItem && isHeroRow(leadingItem) && styles.separatorFull]} />;
 }
 
 const styles = StyleSheet.create({
@@ -326,4 +327,5 @@ const styles = StyleSheet.create({
   empty: { paddingBottom: space.xxl },
   // Inset past the 88 thumb + 16 gap.
   separator: { height: StyleSheet.hairlineWidth, marginLeft: 104, backgroundColor: color.hairline },
+  separatorFull: { marginLeft: 0 },
 });
