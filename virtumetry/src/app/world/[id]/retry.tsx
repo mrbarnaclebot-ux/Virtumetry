@@ -1,15 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { uuid } from 'expo';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Layout, Neutral, Primary, QUOTE_ERROR, QuoteCard, overBudget, styles, useAnnounce } from '@/components/approval';
+import { Layout, Primary, QUOTE_ERROR, QuoteCard, overBudget, styles, useAnnounce } from '@/components/approval';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
+import { Icon } from '@/components/ui/icon';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Surface } from '@/components/ui/surface';
+import { toast } from '@/components/ui/toast';
+import { color, radius } from '@/design/tokens';
 import { chargeLine, failureGuidance, failureText, type LibraryItem } from '@/library/display-state';
 import { ApiError, getQuote, getWorld, retryWorld, useWorlds } from '@/lib/api';
 
@@ -33,7 +38,6 @@ function retryError(e: unknown): string {
 /** D-11 failure sheet (06-UI-SPEC §B/§C): fresh-quote retry when the server says retryable, else guidance. */
 export default function RetrySheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const theme = useTheme();
   const worlds = useWorlds();
   const cached = worlds.data?.worlds.find((w) => w.id === id);
   const detail = useQuery({
@@ -55,20 +59,26 @@ export default function RetrySheet() {
           )
         ) : detail.isError ? (
           <View style={styles.content} accessibilityLiveRegion="polite">
-            <ThemedText type="small" themeColor="destructive" maxFontSizeMultiplier={1.6} style={styles.section}>
-              {LOAD_ERROR}
-            </ThemedText>
-            <Neutral
-              label="Try again"
-              onPress={() => {
-                worlds.refetch();
-                detail.refetch();
+            <ErrorState
+              icon="warning"
+              title="Couldn't load"
+              body={LOAD_ERROR}
+              action={{
+                label: 'Try again',
+                onPress: () => {
+                  worlds.refetch();
+                  detail.refetch();
+                },
               }}
-              style={styles.retry}
+              style={styles.section}
             />
           </View>
         ) : (
-          <ActivityIndicator color={theme.accent} style={styles.section} />
+          <View style={styles.content}>
+            <View accessible accessibilityLabel="Loading scan" accessibilityState={{ busy: true }} style={styles.section}>
+              <Skeleton width="100%" height={120} radius={radius.lg} />
+            </View>
+          </View>
         )}
       </SafeAreaView>
     </ThemedView>
@@ -76,43 +86,29 @@ export default function RetrySheet() {
 }
 
 function ReasonCard({ world }: { world: LibraryItem }) {
-  const theme = useTheme();
   const reason = failureText(world.failure_code, world.failure_stage, world.retryable === true);
   const guidance = failureGuidance(world.failure_stage, world.failure_code, world.charged, world.retryable === true);
   const charge = chargeLine(world.charged);
   return (
-    <ThemedView
-      type="backgroundElement"
+    <Surface
+      tone="danger"
+      padded
       accessible
       accessibilityLabel={`Failed, ${reason}. ${guidance}. ${charge}`}
-      style={[styles.card, styles.section]}>
+      style={styles.section}>
       <View style={styles.check}>
-        <SymbolView name="exclamationmark.triangle.fill" size={20} tintColor={theme.destructive} />
-        <ThemedText type="smallBold" themeColor="destructive" maxFontSizeMultiplier={1.6} style={styles.flex}>
+        <Icon name="warning" color={color.danger} />
+        <ThemedText type="bodyStrong" tone="danger" style={styles.flex}>
           {`Failed · ${reason}`}
         </ThemedText>
       </View>
-      <ThemedText maxFontSizeMultiplier={1.6} style={styles.gap}>
+      <ThemedText type="body" style={styles.gap}>
         {guidance}
       </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.gap}>
+      <ThemedText type="caption" tone="muted" style={styles.gap}>
         {charge}
       </ThemedText>
-    </ThemedView>
-  );
-}
-
-function TextButton({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.textButton, disabled && styles.disabled, pressed && styles.pressed]}>
-      <ThemedText maxFontSizeMultiplier={1.6}>{label}</ThemedText>
-    </Pressable>
+    </Surface>
   );
 }
 
@@ -134,7 +130,7 @@ function Retryable({ world }: { world: LibraryItem }) {
     mutationFn: (credits: number) => retryWorld(world.id, credits, key),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['worlds'] });
-      AccessibilityInfo.announceForAccessibility('Retry started');
+      toast.success('Retry started'); // the toast announces and owns the haptic (§9.3, §10)
       close();
     },
     onError: (e) => {
@@ -154,6 +150,7 @@ function Retryable({ world }: { world: LibraryItem }) {
   return (
     <Layout
       title="Retry processing"
+      titleType="heading"
       actions={
         <>
           {!closed && (
@@ -165,22 +162,20 @@ function Retryable({ world }: { world: LibraryItem }) {
               onPress={() => data && retry.mutate(data.credits)}
             />
           )}
-          <TextButton label={closed ? 'Close' : 'Cancel'} disabled={retry.isPending} onPress={close} />
+          <Button variant="ghost" label={closed ? 'Close' : 'Cancel'} disabled={retry.isPending} onPress={close} />
         </>
       }>
       <ReasonCard world={world} />
       <QuoteCard quote={quote} noun="retry" />
       {error && (
-        <ThemedText
-          type="small"
-          themeColor="destructive"
-          accessibilityLiveRegion="polite"
-          maxFontSizeMultiplier={1.6}
-          style={styles.section}>
-          {error}
-        </ThemedText>
+        <View accessibilityLiveRegion="polite" style={[styles.check, styles.section]}>
+          <Icon name="warning" color={color.danger} />
+          <ThemedText type="label" tone="danger" style={styles.flex}>
+            {error}
+          </ThemedText>
+        </View>
       )}
-      <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.6} style={styles.section}>
+      <ThemedText type="caption" tone="muted" style={styles.section}>
         This is a new paid run. Nothing is charged until you approve.
       </ThemedText>
     </Layout>
@@ -191,10 +186,11 @@ function NotRetryable({ world }: { world: LibraryItem }) {
   return (
     <Layout
       title="Scan failed"
+      titleType="heading"
       actions={
         <>
           <Primary label="Scan again" disabled={false} onPress={() => router.replace('/capture/prep')} />
-          <TextButton label="Close" onPress={close} />
+          <Button variant="ghost" label="Close" onPress={close} />
         </>
       }>
       <ReasonCard world={world} />

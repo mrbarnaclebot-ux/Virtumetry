@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { router, useLocalSearchParams } from 'expo-router';
 
 import RetrySheet from '@/app/world/[id]/retry';
+import { ToastProvider, __resetToastsForTest } from '@/components/ui/toast';
 import type { LibraryItem } from '@/library/display-state';
 import type { Quote } from '@/lib/api';
 
@@ -53,6 +54,7 @@ const retryPosts = () => calls('/v1/worlds/w1/retry', 'POST');
 
 beforeEach(() => {
   jest.clearAllMocks();
+  __resetToastsForTest();
   (useLocalSearchParams as jest.Mock).mockReturnValue({ id: 'w1' });
   worlds = [world()];
   quoteResponse = async () => ok(QUOTE);
@@ -73,7 +75,9 @@ async function renderSheet() {
   const invalidate = jest.spyOn(client, 'invalidateQueries');
   await render(
     <QueryClientProvider client={client}>
-      <RetrySheet />
+      <ToastProvider>
+        <RetrySheet />
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return { invalidate };
@@ -156,6 +160,7 @@ describe('retryable failure', () => {
     await fireEvent.press(approve());
     await waitFor(() => expect(router.back).toHaveBeenCalledTimes(1));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['worlds'] });
+    expect(await screen.findByText('Retry started')).toBeTruthy();
   });
 });
 
@@ -176,6 +181,13 @@ describe('non-retryable failure', () => {
 });
 
 describe('world load', () => {
+  it('shows a labelled skeleton while the scan loads', async () => {
+    worlds = [];
+    detailResponse = () => new Promise(() => {});
+    await renderSheet();
+    expect(await screen.findByLabelText('Loading scan')).toBeTruthy();
+  });
+
   it('missing from the list and detail fails: error with Try again', async () => {
     worlds = [];
     await renderSheet();
