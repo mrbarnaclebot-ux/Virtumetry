@@ -9,6 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
+import { glyphs, type GlyphId } from '../design/glyphs';
+import { coachText, isSeen, markSeen, type ViewerCoachId } from './coach';
 import { createEngine, resolveStartPose, type Engine, type Mode } from './engine';
 import { hasFloorplan, headingAngle, pixelFromWorld, tapToPixel, worldFromPixel } from './floorplan';
 import { announceDistance, distance, formatDistance, isTap, type Vec3 } from './measure';
@@ -18,7 +20,6 @@ import type { ViewerProps } from './types';
 
 type Load = { stage: 'download'; percent: number | null } | { stage: 'prepare' } | { stage: 'ready' } | { stage: 'error' };
 
-const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const HINT_MS = 6000;
 const DISABLED_HINT_MS = 4000;
 const JOY_TRAVEL = 32; // px
@@ -51,6 +52,15 @@ const POSE_MS = 500; // T-05-23: onPose at most 2 Hz, only on change
 const LOST_MS = 5000; // D-13a: context not restored in 5 s -> native/web layer takes over
 
 const media = (q: string) => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches;
+const call = <A,>(fn: ((a: A) => Promise<void>) | undefined, a: A) => void fn?.(a)?.catch(() => {});
+/** Merely touching window.localStorage throws in some private modes (T-06.1-08). */
+const store = (): Storage | undefined => {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+};
 
 /** D-04 viewer: one DOM component, same code in the app WebView and on the web share page. */
 export default function WorldViewer(props: ViewerProps) {
@@ -94,6 +104,24 @@ export default function WorldViewer(props: ViewerProps) {
   const youRef = useRef<HTMLDivElement>(null);
   const planTap = useRef<{ id: number; x: number; y: number; t: number } | null>(null);
   const [lost, setLost] = useState(false);
+  // Coach marks (UI-SPEC §8.2): coachSeen is read once; dismissals live in a local set, never re-read from props.
+  const [coachSeenProp] = useState(() => props.coachSeen);
+  const coachDone = useRef(new Set<ViewerCoachId>());
+  const coachRef = useRef<ViewerCoachId | null>(null);
+  const [coach, setCoachState] = useState<ViewerCoachId | null>(null);
+  const setCoach = (id: ViewerCoachId | null) => {
+    coachRef.current = id;
+    setCoachState(id);
+  };
+  // Stable and refs-only: safe from the stale closures of window key listeners.
+  const [dismissCoach] = useState(() => () => {
+    const id = coachRef.current;
+    if (!id) return;
+    coachDone.current.add(id);
+    markSeen(id, propsRef.current.onCoachSeen, store());
+    coachRef.current = null;
+    setCoachState(null);
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -101,7 +129,6 @@ export default function WorldViewer(props: ViewerProps) {
     const ac = new AbortController();
     const engine = createEngine(canvas, { reducedMotion });
     engineRef.current = engine;
-    const call = <A,>(fn: ((a: A) => Promise<void>) | undefined, a: A) => void fn?.(a)?.catch(() => {});
 
     let lastAt = 0;
     const onPct = (percent: number | null) => {
@@ -287,6 +314,7 @@ export default function WorldViewer(props: ViewerProps) {
         return;
       }
       e.preventDefault();
+      if (coachRef.current === 'walk') dismissCoach();
       if (e.type === 'keydown') held.add(k);
       else held.delete(k);
       setHint((h) => (h?.ms === HINT_MS ? null : h));
@@ -308,7 +336,12 @@ export default function WorldViewer(props: ViewerProps) {
       document.removeEventListener('visibilitychange', stop);
       stop();
     };
-  }, [mode]);
+  }, [mode, dismissCoach]);
+
+  function maybeCoach(id: ViewerCoachId) {
+    if (coachRef.current || coachDone.current.has(id) || isSeen(id, coachSeenProp, store())) return;
+    setCoach(id);
+  }
 
   function clearMeasure() {
     pointsRef.current = [];
@@ -331,8 +364,11 @@ export default function WorldViewer(props: ViewerProps) {
     }
     engine.setMode(next);
     setMode(next);
+    call(propsRef.current.onHaptic, 'selection' as const);
     clearMeasure();
     leaveWalkInput();
+    setCoach(null); // never two at once; an unacknowledged mark comes back next time
+    if (next !== 'orbit') maybeCoach(next);
     if (next === 'measure') setHint({ text: t('Tap a point to start', 'Click a point to start'), ms: null });
     else if (next === 'walk' && !seenWalk.current) {
       seenWalk.current = true;
@@ -353,6 +389,8 @@ export default function WorldViewer(props: ViewerProps) {
     const pts = pointsRef.current.length >= 2 ? [hit] : [...pointsRef.current, hit]; // 3rd tap starts over
     pointsRef.current = pts;
     setPointCount(pts.length);
+    call(propsRef.current.onHaptic, 'light' as const);
+    if (coachRef.current === 'measure') dismissCoach();
     if (pts.length === 1) {
       setDist(null);
       setAnnounce('');
@@ -384,7 +422,9 @@ export default function WorldViewer(props: ViewerProps) {
     setMode(next);
     clearMeasure();
     leaveWalkInput();
+    setCoach(null);
     setHint({ text: "You're here now", ms: HINT_MS });
+    call(propsRef.current.onHaptic, 'light' as const);
   }
 
   function onCanvasDown(e: ReactPointerEvent) {
@@ -407,6 +447,7 @@ export default function WorldViewer(props: ViewerProps) {
   function onWalkDown(e: ReactPointerEvent<HTMLDivElement>) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setHint((h) => (h?.ms === HINT_MS ? null : h));
+    if (coachRef.current === 'walk') dismissCoach();
     const r = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
@@ -445,10 +486,14 @@ export default function WorldViewer(props: ViewerProps) {
     engineRef.current?.setWalkInput(STILL);
   }
 
+
   const ready = load.stage === 'ready';
   const showPlan = !!props.floorplanUrl && hasFloorplan(props.floorplanMeta) && !planFailed;
-  const barBottom = insets.bottom + VT.space.md;
+  const barBottom = insets.bottom + VT.space.lg;
   const aboveBar = barBottom + 44 + VT.space.sm;
+  const measureBar = mode === 'measure' && pointCount > 0;
+  const distText = dist != null ? formatDistance(dist) : '';
+  const split = distText.indexOf(' (');
 
   return (
     <div style={S.root}>
@@ -468,7 +513,7 @@ export default function WorldViewer(props: ViewerProps) {
       {ready && mode === 'measure' && pointCount > 0 && (
         <>
           <svg style={S.svg} aria-hidden>
-            <line ref={lineRef} stroke={VT.accent} strokeWidth={2} style={{ display: 'none' }} />
+            <line ref={lineRef} stroke={VT.color.primary} strokeWidth={2} style={{ display: 'none' }} />
           </svg>
           {Array.from({ length: pointCount }, (_, i) => (
             <div
@@ -482,7 +527,7 @@ export default function WorldViewer(props: ViewerProps) {
           ))}
           {dist != null && (
             <div ref={labelRef} style={S.label}>
-              {formatDistance(dist)}
+              {distText}
             </div>
           )}
         </>
@@ -503,11 +548,19 @@ export default function WorldViewer(props: ViewerProps) {
         </div>
       )}
 
-      {ready && showPlan && planOpen && (
+      {ready && showPlan && (
         <div
           role="dialog"
           aria-label="Floor plan"
-          style={{ ...S.panel, top: insets.top + VT.space.sm, width: `min(${coarse ? 280 : 320}px, calc(100vw - 32px))` }}>
+          aria-hidden={!planOpen}
+          className="vm-panel"
+          style={{
+            ...S.panel,
+            ...(planOpen ? S.panelOpen : S.panelClosed),
+            top: insets.top + VT.space.sm,
+            width: `min(${coarse ? 280 : 320}px, calc(100vw - 32px))`,
+          }}>
+          <div aria-hidden style={S.panelBack} />
           <div style={S.panelHeader}>
             <span style={S.panelTitle}>Floor plan</span>
             <button
@@ -516,9 +569,7 @@ export default function WorldViewer(props: ViewerProps) {
               aria-label="Close floor plan"
               style={S.close}
               onClick={() => setPlanOpen(false)}>
-              <svg width={16} height={16} viewBox="0 0 16 16" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <path d="M3 3l10 10M13 3L3 13" />
-              </svg>
+              <Glyph id="close" />
             </button>
           </div>
           <div
@@ -543,7 +594,7 @@ export default function WorldViewer(props: ViewerProps) {
             />
             <div ref={youRef} aria-hidden style={S.you}>
               <svg width={48} height={48} viewBox="0 0 48 48" style={S.wedge}>
-                <path d="M24 24 L44.78 12 A24 24 0 0 1 44.78 36 Z" fill={VT.accent} fillOpacity={0.4} />
+                <path d="M24 24 L44.78 12 A24 24 0 0 1 44.78 36 Z" fill={VT.color.primary} fillOpacity={0.35} />
               </svg>
               <div style={S.youDot} />
             </div>
@@ -555,7 +606,7 @@ export default function WorldViewer(props: ViewerProps) {
       {lost && (
         <div style={S.overlay}>
           <div style={S.column} role="status" aria-live="polite">
-            <div className="vm-spinner" />
+            <Indeterminate />
             <span style={S.reconnecting}>Reconnecting viewer…</span>
           </div>
         </div>
@@ -571,22 +622,22 @@ export default function WorldViewer(props: ViewerProps) {
               aria-valuemax={100}
               {...(load.percent != null ? { 'aria-valuenow': load.percent } : {})}
               style={S.column}>
-              <span style={S.stage}>Downloading room</span>
+              <span style={S.eyebrow}>Downloading room</span>
               {load.percent != null ? (
                 <>
                   <span style={S.percent}>{load.percent}%</span>
                   <div style={S.track}>
-                    <div style={{ ...S.fill, width: `${load.percent}%` }} />
+                    <div className="vm-fill" style={{ ...S.fill, width: `${load.percent}%` }} />
                   </div>
                 </>
               ) : (
-                <div className="vm-spinner" />
+                <Indeterminate />
               )}
             </div>
           ) : (
             <div role="progressbar" aria-label="Preparing room…" style={S.column}>
               <span style={S.stage}>Preparing room…</span>
-              <div className="vm-spinner" />
+              <Indeterminate />
             </div>
           )}
         </div>
@@ -598,6 +649,7 @@ export default function WorldViewer(props: ViewerProps) {
             <span style={S.heading}>Couldn&apos;t load this room</span>
             <span style={S.body}>Check your connection, then try again.</span>
             <button type="button" className="vm-btn" style={S.retry} onClick={() => setAttempt((a) => a + 1)}>
+              <Glyph id="refresh" />
               Try again
             </button>
           </div>
@@ -606,8 +658,11 @@ export default function WorldViewer(props: ViewerProps) {
 
       {ready && (
         <>
-          {hint && (
-            <div role="status" aria-live="polite" style={{ ...S.chip, bottom: aboveBar }}>
+          {hint && !coach && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{ ...S.chip, bottom: measureBar ? aboveBar + MEASURE_BAR_H + VT.space.sm : aboveBar }}>
               {hint.text}
             </div>
           )}
@@ -615,17 +670,39 @@ export default function WorldViewer(props: ViewerProps) {
             {announce}
           </div>
 
-          {mode === 'measure' && pointCount > 0 && (
-            <button
-              type="button"
-              className="vm-btn"
-              style={{ ...S.clear, bottom: aboveBar - 6 }}
-              onClick={() => {
-                clearMeasure();
-                setHint({ text: t('Tap a point to start', 'Click a point to start'), ms: null });
-              }}>
-              Clear
-            </button>
+          {coach && (
+            <div style={{ ...S.coachWrap, bottom: aboveBar + VT.space.sm }}>
+              <div role="alert" className="vm-coach" style={S.coach}>
+                <span style={S.coachText}>{coachText(coach, coarse)}</span>
+                <button type="button" className="vm-btn" style={S.ghost} onClick={dismissCoach}>
+                  Got it
+                </button>
+                <div aria-hidden style={S.caret} />
+              </div>
+            </div>
+          )}
+
+          {measureBar && (
+            <div style={{ ...S.measureBar, bottom: aboveBar }}>
+              {dist != null ? (
+                <span style={S.distance}>
+                  {split > 0 ? distText.slice(0, split) : distText}
+                  {split > 0 && <span style={S.distanceNote}>{distText.slice(split + 1)}</span>}
+                </span>
+              ) : (
+                <span style={S.stage}>Tap two points</span>
+              )}
+              <button
+                type="button"
+                className="vm-btn"
+                style={S.ghost}
+                onClick={() => {
+                  clearMeasure();
+                  setHint({ text: t('Tap a point to start', 'Click a point to start'), ms: null });
+                }}>
+                Clear
+              </button>
+            </div>
           )}
 
           <div style={{ ...S.rail, bottom: aboveBar }}>
@@ -639,12 +716,10 @@ export default function WorldViewer(props: ViewerProps) {
                 setMode('orbit');
                 clearMeasure();
                 leaveWalkInput();
+                setCoach(null);
                 setHint(null);
               }}>
-              <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path d="M4.5 7.5A6 6 0 1 1 4 12" strokeLinecap="round" />
-                <path d="M4 3.5v4h4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <Glyph id="reset" />
             </button>
             {showPlan && (
               <button
@@ -652,12 +727,9 @@ export default function WorldViewer(props: ViewerProps) {
                 className="vm-btn"
                 aria-label="Floor plan"
                 aria-pressed={planOpen}
-                style={{ ...S.round, ...(planOpen ? { background: VT.surfaceSelected } : null) }}
+                style={{ ...S.round, ...(planOpen ? S.roundPressed : null) }}
                 onClick={() => setPlanOpen((o) => !o)}>
-                <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <rect x={3} y={3} width={14} height={14} rx={2} />
-                  <path d="M10 3v14M3 10h14" />
-                </svg>
+                <Glyph id="plan" />
               </button>
             )}
           </div>
@@ -673,9 +745,10 @@ export default function WorldViewer(props: ViewerProps) {
                   role="radio"
                   aria-checked={selected}
                   aria-disabled={disabled || undefined}
-                  className="vm-btn"
+                  className="vm-btn vm-seg"
                   style={{ ...S.segment, ...(selected ? S.selected : null), ...(disabled ? S.disabled : null) }}
                   onClick={() => selectMode(id)}>
+                  <Glyph id={id} size={16} />
                   {label}
                 </button>
               );
@@ -687,62 +760,134 @@ export default function WorldViewer(props: ViewerProps) {
   );
 }
 
+type Dot = { cx: number; cy: number; r: number };
+
+/** glyphs.ts path data as inline SVG (UI-SPEC §4): 24 grid, stroke 1.75, round caps/joins, dots filled. */
+function Glyph({ id, size = 20 }: { id: GlyphId; size?: number }) {
+  const g: { d: string; dots?: readonly Dot[] } = glyphs[id];
+  return (
+    <svg
+      aria-hidden
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round">
+      <path d={g.d} />
+      {g.dots?.map((c, i) => (
+        <circle key={i} cx={c.cx} cy={c.cy} r={c.r} fill="currentColor" stroke="none" />
+      ))}
+    </svg>
+  );
+}
+
+function Indeterminate() {
+  return (
+    <div style={S.track}>
+      <div className="vm-indet" style={S.indet} />
+    </div>
+  );
+}
+
+const { color, type, space, radius, motion } = VT;
+const ease = motion.css.outQuart;
+const px = (n: number) => `${n}px`;
+const MEASURE_BAR_H = 60; // 44 Clear + 8/8 padding
+
 const CSS = `
-html, body { margin: 0; background: ${VT.bg}; overscroll-behavior: none; }
-@keyframes vm-spin { to { transform: rotate(360deg); } }
-.vm-spinner { width: 24px; height: 24px; border-radius: 50%; border: 3px solid ${VT.surface};
-  border-top-color: ${VT.accent}; animation: vm-spin 0.9s linear infinite; }
-.vm-fade { transition: opacity 200ms, visibility 0s linear 200ms; }
-.vm-btn { -webkit-tap-highlight-color: transparent; font-family: ${FONT}; }
-.vm-btn:focus-visible { outline: 2px solid ${VT.accent}; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .vm-fade { transition: none; } .vm-spinner { animation-duration: 2s; } }
+html, body { margin: 0; background: ${color.bg}; overscroll-behavior: none; }
+@keyframes vm-indet { from { transform: translateX(-100%); } to { transform: translateX(334%); } }
+@keyframes vm-coach-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes vm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.vm-indet { animation: vm-indet ${motion.duration.indeterminate}ms ${motion.css.linear} infinite; }
+.vm-fill { transition: width ${motion.duration.progress}ms ${motion.css.linear}; }
+.vm-fade { transition: opacity ${motion.duration.base}ms, visibility 0s linear ${motion.duration.base}ms; }
+.vm-seg { transition: background-color ${motion.duration.base}ms ${ease}, color ${motion.duration.base}ms ${ease}; }
+.vm-panel { transition: opacity ${motion.duration.base}ms ${ease}, transform ${motion.duration.base}ms ${ease},
+  visibility 0s linear ${motion.duration.base}ms; }
+.vm-panel[aria-hidden="false"] { transition-delay: 0s; }
+.vm-coach { animation: vm-coach-in ${motion.duration.slow}ms ${motion.css.outExpo}; }
+.vm-btn { -webkit-tap-highlight-color: transparent; font-family: ${VT.font.css.ui}; cursor: pointer; }
+.vm-btn:focus-visible { outline: 2px solid ${color.primary}; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .vm-fade, .vm-fill, .vm-seg, .vm-panel { transition: none; }
+  .vm-indet { animation: none; transform: translateX(117%); }
+  .vm-coach { animation: vm-fade-in ${motion.duration.fast}ms ${motion.css.linear}; }
+}
 `;
 
+const scrimPill: CSSProperties = { background: color.scrim.hud, color: color.text, border: 'none' };
+const labelText: CSSProperties = { fontSize: type.label.fontSize, lineHeight: px(type.label.lineHeight), fontWeight: 500 };
+const mono = (role: 'readout' | 'readoutLarge'): CSSProperties => ({
+  fontFamily: VT.font.css.mono,
+  fontSize: type[role].fontSize,
+  lineHeight: px(type[role].lineHeight),
+  letterSpacing: type[role].letterSpacing,
+  fontVariantNumeric: 'tabular-nums',
+});
+
 const S: Record<string, CSSProperties> = {
-  root: { position: 'fixed', inset: 0, overflow: 'hidden', background: VT.bg, fontFamily: FONT, color: VT.text },
+  root: { position: 'fixed', inset: 0, overflow: 'hidden', background: color.bg, fontFamily: VT.font.css.ui, color: color.text },
   canvas: { position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', touchAction: 'none' },
   overlay: {
     position: 'absolute',
     inset: 0,
-    background: VT.bg,
+    background: color.bg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 1,
   },
   overlayGone: { opacity: 0, visibility: 'hidden', pointerEvents: 'none' },
-  column: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: VT.space.sm, padding: VT.space.md },
-  stage: { fontSize: VT.font.label, lineHeight: '20px', color: VT.textSecondary },
-  percent: {
-    fontSize: VT.font.heading,
-    lineHeight: '28px',
-    fontWeight: VT.weight.semibold,
-    fontVariantNumeric: 'tabular-nums',
+  column: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: space.sm, padding: space.lg },
+  eyebrow: {
+    fontFamily: VT.font.css.mono,
+    fontSize: type.eyebrow.fontSize,
+    lineHeight: px(type.eyebrow.lineHeight),
+    letterSpacing: type.eyebrow.letterSpacing,
+    textTransform: 'uppercase',
+    color: color.textMuted,
   },
-  track: { width: 200, height: 4, borderRadius: 2, background: VT.surface, overflow: 'hidden' },
-  fill: { height: 4, borderRadius: 2, background: VT.accent, transition: 'width 150ms linear' },
-  heading: { fontSize: VT.font.heading, lineHeight: '28px', fontWeight: VT.weight.semibold, textAlign: 'center' },
-  body: { fontSize: VT.font.body, lineHeight: '24px', color: VT.textSecondary, textAlign: 'center' },
+  stage: { ...labelText, color: color.textMuted },
+  percent: mono('readoutLarge'),
+  track: { position: 'relative', width: 200, height: 4, borderRadius: 2, background: color.surface.raised, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2, background: color.accent },
+  indet: { width: '30%', height: 4, borderRadius: 2, background: color.accent },
+  heading: {
+    fontFamily: VT.font.css.heading,
+    fontSize: type.heading.fontSize,
+    lineHeight: px(type.heading.lineHeight),
+    letterSpacing: type.heading.letterSpacing,
+    textAlign: 'center',
+  },
+  body: { fontSize: type.body.fontSize, lineHeight: px(type.body.lineHeight), color: color.textMuted, textAlign: 'center' },
   retry: {
-    marginTop: VT.space.lg - VT.space.sm,
+    ...labelText,
+    marginTop: space.sm,
     height: 44,
-    padding: `0 ${VT.space.lg}px`,
-    borderRadius: VT.radius.md,
+    padding: `0 ${space.lg}px`,
+    borderRadius: radius.md,
     border: 'none',
-    background: VT.surface,
-    color: VT.text,
-    fontSize: VT.font.body,
-    fontWeight: VT.weight.semibold,
+    background: color.secondary,
+    color: color.onSecondary,
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.sm,
+    fontWeight: 600,
   },
   chip: {
+    ...scrimPill,
+    ...labelText,
     position: 'absolute',
     left: '50%',
     transform: 'translateX(-50%)',
     height: 32,
-    padding: `0 ${VT.space.md}px`,
-    borderRadius: 16,
-    background: VT.scrim,
-    fontSize: VT.font.label,
+    boxSizing: 'border-box',
+    padding: `0 ${space.md}px`,
+    borderRadius: radius.pill,
     lineHeight: '32px',
     whiteSpace: 'nowrap',
     maxWidth: 'calc(100% - 32px)',
@@ -759,38 +904,90 @@ const S: Record<string, CSSProperties> = {
     width: 12,
     height: 12,
     borderRadius: 8,
-    border: '2px solid #FFFFFF',
-    background: VT.accent,
+    border: `2px solid ${color.text}`,
+    background: color.primary,
     pointerEvents: 'none',
     display: 'none',
   },
   label: {
+    ...scrimPill,
+    ...mono('readout'),
     position: 'absolute',
     left: 0,
     top: 0,
     height: 32,
-    padding: `0 ${VT.space.md}px`,
-    borderRadius: 16,
-    background: VT.scrim,
-    fontSize: VT.font.body,
+    padding: `0 ${space.md}px`,
+    borderRadius: radius.pill,
     lineHeight: '32px',
-    fontWeight: VT.weight.semibold,
-    fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
     pointerEvents: 'none',
     display: 'none',
   },
-  clear: {
+  measureBar: {
+    ...scrimPill,
     position: 'absolute',
-    left: VT.space.md,
+    left: space.lg,
+    height: MEASURE_BAR_H,
+    boxSizing: 'border-box',
+    maxWidth: `calc(100% - ${space.lg * 2 + 44 + space.sm}px)`,
+    padding: `${space.sm}px ${space.md}px`,
+    borderRadius: radius.md,
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.md,
+  },
+  distance: { ...mono('readoutLarge'), whiteSpace: 'nowrap' },
+  distanceNote: {
+    fontFamily: VT.font.css.ui,
+    fontSize: type.caption.fontSize,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.textMuted,
+    marginLeft: space.xs,
+  },
+  ghost: {
+    ...labelText,
+    flexShrink: 0,
     height: 44,
-    padding: `0 ${VT.space.md}px`,
-    borderRadius: VT.radius.pill,
+    minWidth: 44,
+    padding: `0 ${space.md}px`,
+    borderRadius: radius.md,
     border: 'none',
-    background: VT.scrim,
-    color: VT.text,
-    fontSize: VT.font.label,
-    fontWeight: VT.weight.semibold,
+    background: 'transparent',
+    color: color.primary,
+    fontWeight: 600,
+  },
+  coachWrap: {
+    position: 'absolute',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: 'max-content',
+    // clear of the 44 rail on both sides
+    maxWidth: `min(300px, calc(100% - ${2 * (space.lg + 44 + space.sm)}px))`,
+  },
+  coach: {
+    position: 'relative',
+    boxSizing: 'border-box',
+    padding: `${space.md}px ${space.lg}px ${space.xs}px`,
+    borderRadius: radius.md,
+    background: color.surface.overlay,
+    border: `1.5px solid ${color.accent}`,
+    boxShadow: `0 8px 24px color-mix(in srgb, ${color.shadow} 45%, transparent)`,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+  },
+  coachText: { ...labelText, alignSelf: 'stretch', color: color.text },
+  caret: {
+    position: 'absolute',
+    left: '50%',
+    bottom: -7,
+    width: 12,
+    height: 12,
+    marginLeft: -6,
+    transform: 'rotate(45deg)',
+    background: color.surface.overlay,
+    borderRight: `1.5px solid ${color.accent}`,
+    borderBottom: `1.5px solid ${color.accent}`,
   },
   walkLayer: { position: 'absolute', left: 0, right: 0, touchAction: 'none' },
   joyBase: {
@@ -799,68 +996,75 @@ const S: Record<string, CSSProperties> = {
     height: 112,
     boxSizing: 'border-box',
     borderRadius: 56,
-    background: VT.ghost,
-    border: `1px solid ${VT.ghostStroke}`,
+    background: color.ghost.fill,
+    border: `1px solid ${color.ghost.stroke}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'none',
   },
-  joyKnob: { width: 48, height: 48, borderRadius: 24, background: VT.knob },
+  joyKnob: { width: 48, height: 48, borderRadius: 24, background: color.ghost.knob },
   disabled: { opacity: 0.4 },
-  rail: { position: 'absolute', right: VT.space.md, display: 'flex', flexDirection: 'column', gap: VT.space.sm },
+  rail: { position: 'absolute', right: space.lg, display: 'flex', flexDirection: 'column', gap: space.sm },
   round: {
+    ...scrimPill,
     width: 44,
     height: 44,
-    borderRadius: 22,
-    border: 'none',
-    background: VT.scrim,
-    color: VT.text,
+    borderRadius: radius.pill,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
   },
+  roundPressed: { background: color.secondary, color: color.onSecondary },
   modeBar: {
     position: 'absolute',
     left: '50%',
     transform: 'translateX(-50%)',
     height: 44,
     boxSizing: 'border-box',
-    padding: VT.space.xs,
-    borderRadius: VT.radius.pill,
-    background: VT.scrim,
+    padding: space.xs,
+    borderRadius: radius.pill,
+    background: color.scrim.hud,
     display: 'flex',
     gap: 0,
   },
   segment: {
-    minWidth: 80,
+    ...labelText,
+    minWidth: 88,
     height: 36,
-    borderRadius: 18,
+    padding: `0 ${space.md}px`,
+    borderRadius: radius.pill,
     border: 'none',
     background: 'transparent',
-    color: VT.textSecondary,
-    fontSize: VT.font.label,
-    fontWeight: VT.weight.regular,
+    color: color.textMuted,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
   },
+  selected: { background: color.primary, color: color.onPrimary, fontWeight: 600 },
   panel: {
     position: 'absolute',
-    left: VT.space.md,
+    left: space.lg,
     boxSizing: 'border-box',
-    padding: VT.space.sm,
-    borderRadius: VT.radius.lg,
-    background: VT.scrim,
+    padding: space.sm,
+    borderRadius: radius.lg,
     display: 'flex',
     flexDirection: 'column',
   },
-  panelHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  panelTitle: { fontSize: VT.font.label, fontWeight: VT.weight.semibold, paddingLeft: VT.space.xs },
+  panelOpen: { opacity: 1, transform: 'none', visibility: 'visible' },
+  panelClosed: { opacity: 0, transform: 'translateY(8px)', visibility: 'hidden', pointerEvents: 'none' },
+  // 0.94 panel alpha without a colour literal: token fill on a backing layer + opacity.
+  panelBack: { position: 'absolute', inset: 0, borderRadius: radius.lg, background: color.surface.overlay, opacity: 0.94 },
+  panelHeader: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  panelTitle: { ...labelText, fontWeight: 600, paddingLeft: space.xs },
   close: {
     width: 44,
     height: 44,
     border: 'none',
     background: 'transparent',
-    color: VT.text,
+    color: color.text,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -868,8 +1072,8 @@ const S: Record<string, CSSProperties> = {
   },
   planImage: {
     position: 'relative',
-    borderRadius: VT.radius.sm,
-    background: VT.surface,
+    borderRadius: radius.sm,
+    background: color.surface.raised,
     overflow: 'hidden',
     touchAction: 'none',
     cursor: 'crosshair',
@@ -884,10 +1088,9 @@ const S: Record<string, CSSProperties> = {
     width: 12,
     height: 12,
     borderRadius: 8,
-    border: '2px solid #FFFFFF',
-    background: VT.accent,
+    border: `2px solid ${color.text}`,
+    background: color.primary,
   },
-  planHint: { marginTop: VT.space.sm, fontSize: VT.font.label, lineHeight: '20px', color: VT.textSecondary },
-  reconnecting: { fontSize: VT.font.label, lineHeight: '20px', color: VT.text },
-  selected: { background: VT.surfaceSelected, color: VT.text, fontWeight: VT.weight.semibold },
+  planHint: { ...labelText, position: 'relative', marginTop: space.sm, color: color.textMuted },
+  reconnecting: { ...labelText, color: color.text },
 };
