@@ -24,7 +24,7 @@ export function LibraryEmptyArt() {
           <G transform={ORIGIN}>
             <Path d={arms} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
             <Path d={outline} stroke={color.text} strokeOpacity={0.9} strokeWidth={0.6} strokeLinecap="round" fill="none" />
-            <Circle {...dot} fill={color.accent} />
+            <Circle {...dot} fill={color.accent} stroke={color.text} strokeWidth={0.4} />
           </G>
         </Svg>
       </DraftingField>
