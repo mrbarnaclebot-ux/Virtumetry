@@ -75,7 +75,7 @@ describe('toDisplayState: processing states', () => {
   });
 
   it('uses the generic estimate when eta is unknown', () => {
-    expect(ds({ eta_seconds: null }).secondaryLine).toBe('Usually 30 min – 2 h');
+    expect(ds({ eta_seconds: null }).secondaryLine).toBe('Usually 30 min to 2 h');
   });
 
   it('rounds the eta up to whole minutes', () => {
@@ -104,7 +104,7 @@ describe('toDisplayState: processing states', () => {
 
   it('is not stalled at 14 min', () => {
     const s = ds({ heartbeat_at: minsAgo(14) });
-    expect(s.secondaryLine).toBe('Usually 30 min – 2 h');
+    expect(s.secondaryLine).toBe('Usually 30 min to 2 h');
     expect(s.secondaryTone).toBe('muted');
   });
 

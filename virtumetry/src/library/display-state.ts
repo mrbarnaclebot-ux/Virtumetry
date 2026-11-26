@@ -151,7 +151,7 @@ const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 function estimate(eta: number | null): string {
-  if (eta == null) return 'Usually 30 min – 2 h';
+  if (eta == null) return 'Usually 30 min to 2 h';
   const min = Math.ceil(eta / 60);
   return eta < 60 ? 'Almost done' : `About ${min} min left`;
 }

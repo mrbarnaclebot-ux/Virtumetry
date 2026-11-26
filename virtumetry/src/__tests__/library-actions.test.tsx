@@ -5,6 +5,7 @@ import { Alert, type AlertButton } from 'react-native';
 
 import LibraryScreen from '@/app/(tabs)/index';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
+import { __resetToastsForTest, toast } from '@/components/ui/toast';
 import type { LibraryItem, LocalScan } from '@/library/display-state';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
@@ -60,6 +61,8 @@ let server: LibraryItem[];
 let mutate: jest.Mock;
 let fetchMock: jest.Mock;
 let alertSpy: jest.SpyInstance;
+let toastSuccess: jest.SpyInstance;
+let toastError: jest.SpyInstance;
 
 beforeEach(() => {
   server = [w('w1', 'Kitchen'), w('w2', 'Bedroom'), w('w3', 'Garage')];
@@ -70,6 +73,9 @@ beforeEach(() => {
   });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  __resetToastsForTest();
+  toastSuccess = jest.spyOn(toast, 'success').mockImplementation(() => {});
+  toastError = jest.spyOn(toast, 'error').mockImplementation(() => {});
   __setLocalScansForTest([]);
 });
 afterEach(() => jest.restoreAllMocks());
@@ -209,6 +215,7 @@ describe('rename', () => {
     expect(JSON.parse(init.body as string)).toEqual({ title: 'Den' });
     expect(await screen.findByText('Den')).toBeTruthy();
     expect(screen.queryByText('Kitchen')).toBeNull();
+    expect(toastSuccess).toHaveBeenCalledWith('Name saved');
   });
 
   it.each([
@@ -221,6 +228,7 @@ describe('rename', () => {
     await fireEvent.press(saveButton());
     expect(await screen.findByText("Couldn't rename. Check your connection and try again.")).toBeTruthy();
     expect(screen.getByText('Rename scan')).toBeTruthy();
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   it('Cancel closes the modal without a request', async () => {
@@ -285,6 +293,7 @@ describe('delete', () => {
     await waitFor(() => expect(fetchMock.mock.calls.filter(([, i]) => !i?.method).length).toBeGreaterThan(1));
     expect(screen.queryByText('Bedroom')).toBeNull();
     expect(titles()).toEqual(['Kitchen', 'Garage']);
+    expect(toastSuccess).toHaveBeenCalledWith('Scan deleted');
   });
 
   it.each([
@@ -296,13 +305,10 @@ describe('delete', () => {
     await confirmDeleteOf('Bedroom');
     await press('Delete');
 
-    await waitFor(() =>
-      expect(alertSpy).toHaveBeenLastCalledWith(
-        "Couldn't delete",
-        'The scan is back in your library. Check your connection and try again.',
-        [{ text: 'Back to Library' }],
-      ),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Couldn't delete. Check your connection and try again."));
+    // Only the confirmation Alerts; the failure is a toast, not a third Alert (06.1 §9.3 row 5).
+    expect(alertSpy).not.toHaveBeenCalledWith("Couldn't delete", expect.anything(), expect.anything());
+    expect(toastSuccess).not.toHaveBeenCalled();
     expect(titles()).toEqual(['Kitchen', 'Bedroom', 'Garage']);
   });
 

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert } from 'react-native';
 
 import { discardLocalScan, getLocalScans } from '@/capture/store';
+import { toast } from '@/components/ui/toast';
 import { API_URL } from '@/config/api';
 import { pollInterval, type LibraryItem, type LocalScan } from '@/library/display-state';
 import { authClient } from '@/lib/auth-client';
@@ -115,6 +115,7 @@ export function useRenameWorld() {
         old && { ...old, worlds: old.worlds.map((x) => (x.id === world.id ? { ...x, ...world } : x)) },
       );
       qc.invalidateQueries({ queryKey: ['worlds'] });
+      toast.success('Name saved');
     },
   });
 }
@@ -139,12 +140,11 @@ export function useDeleteWorld() {
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(['worlds'], ctx.snapshot);
-      Alert.alert("Couldn't delete", 'The scan is back in your library. Check your connection and try again.', [
-        { text: 'Back to Library' },
-      ]);
+      toast.error("Couldn't delete. Check your connection and try again.");
     },
     // "This removes it from your phone": drop the local copy of that world too (CR-03, WR-07).
     onSuccess: (_res, id) => {
+      toast.success('Scan deleted');
       for (const s of getLocalScans().filter((x) => x.serverWorldId === id)) {
         try {
           discardLocalScan(s.id);
