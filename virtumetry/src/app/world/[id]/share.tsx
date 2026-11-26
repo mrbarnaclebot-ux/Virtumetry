@@ -49,7 +49,7 @@ export default function ShareSheet() {
         setProtect(false);
         create.reset();
         toast.success('Link created');
-        shareUrl(share.url).catch(() => {});
+        shareUrl(share.url).catch(() => toast.error("Couldn't open sharing. Copy the link instead."));
       },
     });
   };
@@ -145,7 +145,7 @@ export default function ShareSheet() {
             </View>
             <ThemedText type="caption" tone="muted">{`${count} · Created ${date}`}</ThemedText>
           </View>
-          <IconButton icon="share" accessibilityLabel="Share link" onPress={() => shareUrl(s.url).catch(() => {})} />
+          <IconButton icon="share" accessibilityLabel="Share link" onPress={() => shareUrl(s.url).catch(() => toast.error("Couldn't open sharing. Copy the link instead."))} />
           {/* Ghost destructive md; Button can't carry a distinct a11y name ("Turn off link" vs visible "Turn off"). */}
           <Pressable
             accessibilityRole="button"

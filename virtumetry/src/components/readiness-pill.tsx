@@ -10,7 +10,7 @@ import { color, radius, space } from '@/design/tokens';
 const LOOK: Record<Readiness['level'], { icon: IconName | null; tint: string; hudTint: string }> = {
   green: { icon: 'ready', tint: color.success, hudTint: color.success },
   amber: { icon: 'almost', tint: color.warning, hudTint: color.warning },
-  // HUD headline stays text on red: "Keep scanning" is the normal mid-scan state, not an alarm.
+  // HUD headline and icon stay text on red: "Keep scanning" is the normal mid-scan state, not an alarm.
   red: { icon: 'failedCheck', tint: color.danger, hudTint: color.text },
   idle: { icon: null, tint: color.text, hudTint: color.text },
 };
@@ -34,7 +34,7 @@ export function ReadinessPill({ result, scheme = 'system' }: Props) {
   return (
     <View accessible accessibilityLabel={label} accessibilityLiveRegion="polite">
       <View style={[styles.pill, !hud && styles.filled]}>
-        {icon && <Icon name={icon} size={hud ? 24 : 20} color={tint} hierarchical />}
+        {icon && <Icon name={icon} size={hud ? 24 : 20} color={hud ? hudTint : tint} hierarchical />}
         <ThemedText
           type={hud ? 'hudStatus' : 'bodyStrong'}
           maxFontSizeMultiplier={font}

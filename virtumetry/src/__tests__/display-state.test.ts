@@ -244,6 +244,10 @@ describe('toDisplayState: local and titles', () => {
     expect(s.tone).toBe('destructive');
   });
 
+  it('a failed local upload makes no charge claim (UI review M1)', () => {
+    expect(loc({ uploadState: 'failed', failureCode: 'WORLD_DELETED' }).secondaryLine).not.toMatch(/charged/i);
+  });
+
   it('server failure at validate wins over the IMAGE_ upload family', () => {
     const s = ds({ status: 'failed', failure_stage: 'validate', failure_code: 'IMAGE_LONG_EDGE', charged: false });
     expect(s.statusLine).toBe("Failed · Didn't pass checks");

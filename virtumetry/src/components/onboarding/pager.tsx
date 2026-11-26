@@ -34,7 +34,8 @@ export function OnboardingPager({ pages, ctaLabel, onFinish, onSkip, replay }: P
   const [index, setIndex] = useState(0);
   const last = index === pages.length - 1;
 
-  const artH = Math.round(window.height * 0.52);
+  // UI review M4: large Dynamic Type shrinks the art, and each page scrolls vertically, so the copy never clips.
+  const artH = Math.round(window.height * (window.fontScale > 1.3 ? 0.34 : 0.52));
 
   const settle = (i: number) => {
     if (i === index) return;
@@ -72,15 +73,17 @@ export function OnboardingPager({ pages, ctaLabel, onFinish, onSkip, replay }: P
         onMomentumScrollEnd={onMomentumScrollEnd}
         style={styles.flex}>
         {pages.map((p, i) => (
-          <View key={p.headline} accessible accessibilityLabel={`${p.headline}. ${p.body}`} style={{ width: pageW }}>
-            <OnboardingArt page={i as 0 | 1 | 2 | 3} width={pageW} height={artH} active={i === index} reduce={reduce} />
-            <View style={styles.copy}>
-              <ThemedText type="display">{p.headline}</ThemedText>
-              <ThemedText type="body" tone="muted" style={styles.body}>
-                {p.body}
-              </ThemedText>
+          <ScrollView key={p.headline} style={{ width: pageW }} showsVerticalScrollIndicator={false} bounces={false}>
+            <View accessible accessibilityLabel={`${p.headline}. ${p.body}`}>
+              <OnboardingArt page={i as 0 | 1 | 2 | 3} width={pageW} height={artH} active={i === index} reduce={reduce} />
+              <View style={styles.copy}>
+                <ThemedText type="display">{p.headline}</ThemedText>
+                <ThemedText type="body" tone="muted" style={styles.body}>
+                  {p.body}
+                </ThemedText>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         ))}
       </ScrollView>
       <View style={[styles.top, { top: insets.top }]}>

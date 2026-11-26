@@ -205,7 +205,8 @@ export function toDisplayState(item: LibraryItem | (LocalScan & { local: true })
           kind: 'failed',
           displayTitle,
           statusLine: `Failed · ${item.uploadState === 'blocked' ? CHECKS : failureText(item.failureCode ?? null, null)}`,
-          secondaryLine: withDate('Not charged', date),
+          // UI review M1: a failed upload can't know the charge state (capture/[id] makes no claim); blocked never reached processing.
+          secondaryLine: withDate(item.uploadState === 'blocked' ? 'Not charged' : null, date),
           tone: 'destructive',
           icon: 'exclamationmark.triangle.fill',
         };
