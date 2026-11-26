@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Linking } from 'react-native';
 
 import PrepScreen from '@/app/capture/prep';
+import { haptic } from '@/design/haptics';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() } }));
 
@@ -32,11 +33,14 @@ it('first run shows the checklist and the camera priming card', async () => {
 
 it('compact variant shows the short line and persists "Don\'t show again"', async () => {
   store.set('vm.prep.seen', '1');
+  const selection = jest.spyOn(haptic, 'selection');
   await render(<PrepScreen />);
   expect(screen.getByText('Lights on · Doors open · No mirrors · Walk slowly')).toBeTruthy();
   expect(screen.queryByText('Camera access')).toBeNull();
   await fireEvent(screen.getByRole('switch'), 'valueChange', true);
   expect(store.get('vm.prep.skip')).toBe('1');
+  expect(selection).toHaveBeenCalledTimes(1);
+  selection.mockRestore();
 });
 
 it('Continue with permission granted goes straight to the scan', async () => {
@@ -56,7 +60,7 @@ it('undetermined asks once; denial shows the Settings path and the test capture'
   expect(store.get('vm.camera.asked')).toBe('1');
   expect(router.replace).not.toHaveBeenCalled();
 
-  expect(screen.getByText('Camera access is off')).toBeTruthy();
+  expect(screen.getByRole('header', { name: 'Camera access is off' })).toBeTruthy();
   const open = jest.spyOn(Linking, 'openSettings').mockResolvedValue();
   await fireEvent.press(screen.getByRole('button', { name: 'Open Settings' }));
   expect(open).toHaveBeenCalled();

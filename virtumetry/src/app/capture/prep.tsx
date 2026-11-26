@@ -1,37 +1,29 @@
 import { useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import {
-  AccessibilityInfo,
-  ActivityIndicator,
-  AppState,
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { AccessibilityInfo, AppState, Linking, Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { getPrepFlags, markPermissionAsked, markPrepSeen, setSkipPrep } from '@/capture/prep-flags';
 import { getCaptureSource, isFixtureSource } from '@/capture/source';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/empty-state';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { Group } from '@/components/ui/list-row';
+import { Screen } from '@/components/ui/screen';
+import { Surface } from '@/components/ui/surface';
+import { haptic } from '@/design/haptics';
+import { color, minTarget, space } from '@/design/tokens';
 
-const CHECKLIST: { icon: SymbolViewProps['name']; title: string; body: string }[] = [
-  { icon: 'lightbulb', title: 'Turn the lights on', body: 'Bright, even light gives the sharpest room.' },
-  { icon: 'door.left.hand.open', title: 'Open the doors', body: 'Open doors to any area you want in the scan.' },
+const CHECKLIST: { icon: IconName; title: string; body: string }[] = [
+  { icon: 'lights', title: 'Turn the lights on', body: 'Bright, even light gives the sharpest room.' },
+  { icon: 'doors', title: 'Open the doors', body: 'Open doors to any area you want in the scan.' },
   {
-    icon: 'sun.max',
+    icon: 'glare',
     title: 'Watch for mirrors and glare',
     body: "Mirrors, glass and bright windows confuse the scan. Don't point straight at them.",
   },
-  { icon: 'figure.walk', title: 'Walk slowly', body: 'Move at half your normal pace and look around as you go.' },
+  { icon: 'walk', title: 'Walk slowly', body: 'Move at half your normal pace and look around as you go.' },
 ];
 
 const DENIED_HEADING = 'Camera access is off';
@@ -40,7 +32,6 @@ const close = () => router.back();
 const goScan = () => router.replace('/capture/scan');
 
 export default function PrepScreen() {
-  const theme = useTheme();
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [flags] = useState(getPrepFlags);
   const [skip, setSkip] = useState(flags.skip);
@@ -78,159 +69,119 @@ export default function PrepScreen() {
   }
 
   const toggleSkip = (v: boolean) => {
+    haptic.selection();
     setSkip(v);
     setSkipPrep(v);
   };
 
-  const primary = (label: string, onPress: () => void, busy = false) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ busy, disabled: busy }}
-      disabled={busy}
-      onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
-      {busy ? (
-        <ActivityIndicator color={theme.onAccent} />
-      ) : (
-        <ThemedText type="smallBold" themeColor="onAccent" maxFontSizeMultiplier={1.6}>
-          {label}
-        </ThemedText>
-      )}
-    </Pressable>
-  );
-
-  const textButton = (label: string, onPress: () => void, bold = false) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
-      <ThemedText type={bold ? 'smallBold' : 'default'} maxFontSizeMultiplier={1.6}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-
   return (
-    <ThemedView style={styles.flex}>
-      <SafeAreaView style={styles.flex}>
-        <View style={styles.topBar}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-            onPress={close}
-            style={({ pressed }) => [styles.topButton, pressed && styles.pressed]}>
-            <ThemedText maxFontSizeMultiplier={1.6}>Cancel</ThemedText>
-          </Pressable>
-        </View>
-        <ScrollView contentContainerStyle={styles.content}>
-          {denied ? (
-            <View style={styles.denied}>
-              <View accessible={false}>
-                <SymbolView name="video.slash" size={48} tintColor={theme.textSecondary} />
-              </View>
-              <ThemedText
-                type="subtitle"
-                accessibilityRole="header"
-                accessibilityLiveRegion="polite"
-                style={styles.deniedHeading}>
-                {DENIED_HEADING}
-              </ThemedText>
-              <ThemedText style={styles.textCenter}>
-                To scan a room, turn on camera access for Virtumetry in Settings.
-              </ThemedText>
-              <View style={styles.deniedActions}>
-                {primary('Open Settings', () => Linking.openSettings())}
-                {fixture && textButton('Use test capture', goScan, true)}
-                {textButton('Not now', close)}
-              </View>
+    <Screen>
+      <View style={styles.topBar}>
+        <Button variant="ghost" size="md" label="Cancel" onPress={close} style={styles.inline} />
+      </View>
+      {denied ? (
+        <View style={styles.denied} accessibilityLiveRegion="polite">
+          <ErrorState
+            icon="cameraOff"
+            title={DENIED_HEADING}
+            body="To scan a room, turn on camera access for Virtumetry in Settings.">
+            <View style={styles.deniedActions}>
+              <Button label="Open Settings" onPress={() => Linking.openSettings()} />
+              {fixture && <Button variant="ghost" label="Use test capture" onPress={goScan} />}
+              <Button variant="ghost" label="Not now" onPress={close} />
             </View>
-          ) : (
-            <>
-              <ThemedText type="title" accessibilityRole="header">
-                Before you scan
-              </ThemedText>
-              {flags.seen ? (
-                <>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.compactLine}>
-                    Lights on · Doors open · No mirrors · Walk slowly
-                  </ThemedText>
-                  <View style={styles.switchRow}>
-                    <ThemedText style={styles.flex}>{"Don't show again"}</ThemedText>
-                    <Switch
-                      accessibilityRole="switch"
-                      accessibilityLabel="Don't show again"
-                      accessibilityState={{ checked: skip }}
-                      value={skip}
-                      onValueChange={toggleSkip}
-                      trackColor={{ true: theme.accent, false: theme.backgroundSelected }}
-                    />
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.checklist}>
-                    {CHECKLIST.map((c) => (
-                      <View key={c.title} accessible accessibilityLabel={`${c.title}. ${c.body}`} style={styles.checkRow}>
-                        <SymbolView name={c.icon} size={24} tintColor={theme.text} />
-                        <View style={styles.flex}>
-                          <ThemedText type="smallBold">{c.title}</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary" style={styles.checkBody}>
-                            {c.body}
-                          </ThemedText>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                  <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-                    <View style={styles.cardHead}>
-                      <SymbolView name="camera" size={24} tintColor={theme.text} />
-                      <ThemedText type="subtitle">Camera access</ThemedText>
+          </ErrorState>
+        </View>
+      ) : (
+        <>
+          <ScrollView style={styles.flex} contentContainerStyle={styles.scroll}>
+            <ThemedText type="title" accessibilityRole="header">
+              Before you scan
+            </ThemedText>
+            {flags.seen ? (
+              <>
+                <ThemedText type="label" tone="muted" style={styles.compactLine}>
+                  Lights on · Doors open · No mirrors · Walk slowly
+                </ThemedText>
+                <View style={styles.block}>
+                  <Group>
+                    <View style={styles.switchRow}>
+                      <ThemedText type="bodyStrong" style={styles.flex}>
+                        {"Don't show again"}
+                      </ThemedText>
+                      <Switch
+                        accessibilityRole="switch"
+                        accessibilityLabel="Don't show again"
+                        accessibilityState={{ checked: skip }}
+                        value={skip}
+                        onValueChange={toggleSkip}
+                        trackColor={{ true: color.primary, false: color.surface.pressed }}
+                        ios_backgroundColor={color.surface.pressed}
+                      />
                     </View>
-                    <ThemedText style={styles.cardBody}>
-                      Virtumetry uses the camera only while you scan. Photos stay on your phone until you choose to
-                      upload them.
-                    </ThemedText>
+                  </Group>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.checklist}>
+                  {CHECKLIST.map((c) => (
+                    <View key={c.title} accessible accessibilityLabel={`${c.title}. ${c.body}`} style={styles.checkRow}>
+                      <View style={styles.badge}>
+                        <Icon name={c.icon} size={20} />
+                      </View>
+                      <View style={styles.flex}>
+                        <ThemedText type="bodyStrong">{c.title}</ThemedText>
+                        <ThemedText type="label" tone="muted">
+                          {c.body}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <Surface padded style={styles.block}>
+                  <View style={styles.cardHead}>
+                    <Icon name="camera" size={20} />
+                    <ThemedText type="heading">Camera access</ThemedText>
                   </View>
-                </>
-              )}
-              <View style={styles.action}>{primary('Continue', onContinue, asking)}</View>
-            </>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+                  <ThemedText type="body" style={styles.cardBody}>
+                    Virtumetry uses the camera only while you scan. Photos stay on your phone until you choose to
+                    upload them.
+                  </ThemedText>
+                </Surface>
+              </>
+            )}
+          </ScrollView>
+          <View style={styles.pinned}>
+            <Button label="Continue" busy={asking} onPress={onContinue} />
+          </View>
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  topBar: { height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.three },
-  topButton: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
+  scroll: { paddingTop: space.lg, paddingBottom: space.xl },
+  inline: { alignSelf: 'flex-start' },
+  topBar: { height: minTarget, flexDirection: 'row', alignItems: 'center' },
+  checklist: { marginTop: space.xl, gap: space.lg },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  badge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: color.surface.raised,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  checklist: { marginTop: Spacing.four, gap: Spacing.three },
-  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },
-  checkBody: { marginTop: Spacing.two },
-  card: { marginTop: Spacing.four, borderRadius: 12, padding: Spacing.three },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  cardBody: { marginTop: Spacing.two },
-  compactLine: { marginTop: Spacing.two },
-  switchRow: { marginTop: Spacing.four, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
-  action: { marginTop: Spacing.five },
-  button: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
-  pressed: { opacity: 0.8 },
-  textButton: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  denied: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  deniedHeading: { marginTop: Spacing.three, marginBottom: Spacing.two, textAlign: 'center' },
-  textCenter: { textAlign: 'center' },
-  deniedActions: { marginTop: Spacing.four, alignSelf: 'stretch', gap: Spacing.three },
+  block: { marginTop: space.xl },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  cardBody: { marginTop: space.sm },
+  compactLine: { marginTop: space.sm },
+  switchRow: { minHeight: minTarget, flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.sm },
+  pinned: { paddingTop: space.md, paddingBottom: space.lg },
+  denied: { flex: 1, justifyContent: 'center' },
+  deniedActions: { marginTop: space.md, alignSelf: 'stretch', gap: space.md },
 });

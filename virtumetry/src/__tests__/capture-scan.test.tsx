@@ -4,6 +4,9 @@ import { router } from 'expo-router';
 
 import ScanScreen from '@/app/capture/scan';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
+import { __resetCoachLockForTest } from '@/components/ui/coach-mark';
+import { haptic } from '@/design/haptics';
+import { __resetFirstRunForTest, isCoachSeen, markCoachSeen } from '@/design/first-run';
 
 jest.mock('@/config/api', () => ({ API_URL: 'https://api.test.invalid', APP_ENV: 'test' }));
 jest.mock('@/lib/auth-client', () => ({ authClient: { getCookie: jest.fn(async () => null) } }));
@@ -28,12 +31,21 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   __setLocalScansForTest([]);
+  (jest.requireMock('expo-secure-store') as { __reset: () => void }).__reset();
+  __resetFirstRunForTest();
+  __resetCoachLockForTest();
   // Capture config fetch fails -> bundled defaults.
   globalThis.fetch = jest.fn(async () => {
     throw new TypeError('offline');
   }) as unknown as typeof fetch;
 });
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
+
+const COACH = 'Fill the ring. Walk the room until every segment lights up, then stop when it says Good to finish.';
+const tick = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
 
 async function renderScan() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
@@ -118,4 +130,46 @@ it('Cancel with frames confirms before deleting the scan', async () => {
   expect(alert).toHaveBeenCalledWith('Cancel scan?', 'The 30 photos captured so far will be deleted.', expect.any(Array));
   expect(router.back).not.toHaveBeenCalled();
   expect(getLocalScans()).toHaveLength(0);
+});
+
+it('shows the honest test capture placeholder before the first frame', async () => {
+  await renderScan();
+  expect(screen.getByText('Test capture. Photos appear here when you start.')).toBeTruthy();
+  expect(screen.queryByText('Test capture ready')).toBeNull();
+});
+
+it('capture-prep coach shows once on idle; Got it hides it and marks it seen', async () => {
+  await renderScan();
+  expect(screen.getByText(COACH)).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Got it' }));
+  await tick(150);
+  expect(screen.queryByText(COACH)).toBeNull();
+  expect(isCoachSeen('capture-prep')).toBe(true);
+});
+
+it('capture-prep coach never renders once seen', async () => {
+  markCoachSeen('capture-prep');
+  await renderScan();
+  expect(screen.queryByText(COACH)).toBeNull();
+});
+
+it('Start dismisses the coach, marks it seen and starts; medium haptic on start and stop', async () => {
+  const medium = jest.spyOn(haptic, 'medium');
+  await renderScan();
+  expect(screen.getByText(COACH)).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Start scan' }));
+  expect(isCoachSeen('capture-prep')).toBe(true);
+  expect(medium).toHaveBeenCalledTimes(1);
+  await tick(1_000);
+  expect(screen.queryByText(COACH)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Stop scan' })).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Stop scan' }));
+  expect(medium).toHaveBeenCalledTimes(2);
+});
+
+it('switching scenario gives a selection haptic', async () => {
+  const selection = jest.spyOn(haptic, 'selection');
+  await renderScan();
+  await fireEvent.press(screen.getByRole('button', { name: 'Gap scenario' }));
+  expect(selection).toHaveBeenCalledTimes(1);
 });

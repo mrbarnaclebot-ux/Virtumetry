@@ -3,9 +3,10 @@ import { Image } from 'expo-image';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View, type TextStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCaptureConfig } from '@/capture/capture-config';
 import { costFor, formatCredits, formatUsd } from '@/capture/cost';
@@ -19,28 +20,72 @@ import type { KeyframeEvent, Session } from '@/capture/types';
 import { CoverageMap } from '@/components/coverage-map';
 import { ReadinessPill } from '@/components/readiness-pill';
 import { ThemedText, type ThemedTextProps } from '@/components/themed-text';
-import { Colors, Spacing } from '@/constants/theme';
+import { focusRing } from '@/components/ui/button';
+import { CoachMark, dismissCoach } from '@/components/ui/coach-mark';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { haptic } from '@/design/haptics';
+import { ease, useReduceMotion } from '@/design/motion';
+import { color, minTarget, motion, radius, space } from '@/design/tokens';
 
-// Always dark (camera UI convention): the app theme is always dark, light status bar (UI-SPEC §4).
-const D = Colors;
-const SCRIM = 'rgba(0,0,0,0.6)';
+// Always dark (camera UI convention), light status bar. HUD text caps at 1.3 (UI-SPEC §1.3, §7.5).
 const HUD = 1.3;
+const MAP = 128;
+const BUZZ_GAP_MS = 2000;
+const COACH_TEXT = 'Fill the ring. Walk the room until every segment lights up, then stop when it says Good to finish.';
 
-const SCENARIOS: { label: string; value: FixtureScenario }[] = [
-  { label: 'Good', value: 'good' },
-  { label: 'Too few', value: 'too-few' },
-  { label: 'Gap', value: 'tracking-gap' },
-  { label: 'Jump', value: 'pose-jump' },
+const SCENARIOS: { label: string; id: FixtureScenario }[] = [
+  { label: 'Good', id: 'good' },
+  { label: 'Too few', id: 'too-few' },
+  { label: 'Gap', id: 'tracking-gap' },
+  { label: 'Jump', id: 'pose-jump' },
 ];
+const ALL_SCENARIOS = SCENARIOS.map((s) => s.id);
 
 type Phase = 'idle' | 'starting' | 'recording' | 'stopping';
+type Rect = { x: number; y: number; width: number; height: number };
 
 const close = () => router.back();
 const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-/** HUD text: ThemedText typography with dark-palette colors. */
-function T({ color = D.text, style, ...rest }: ThemedTextProps & { color?: string }) {
-  return <ThemedText maxFontSizeMultiplier={HUD} style={[{ color } as TextStyle, style]} {...rest} />;
+/** HUD text: token typography capped at 1.3. */
+function T(props: ThemedTextProps) {
+  return <ThemedText maxFontSizeMultiplier={HUD} {...props} />;
+}
+
+/** UI-SPEC §7.5 shutter: 72 pt ring; press scales 0.94 over 120 ms (none with Reduce Motion). */
+function Shutter({ phase, onPress }: { phase: Phase; onPress: () => void }) {
+  const reduce = useReduceMotion();
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  const to = (v: number) => {
+    if (!reduce) scale.set(withTiming(v, { duration: motion.duration.press, easing: ease.outQuart }));
+  };
+  const stopping = phase === 'recording' || phase === 'stopping';
+  const busy = phase === 'starting' || phase === 'stopping';
+  return (
+    <View style={styles.action}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={stopping ? 'Stop scan' : 'Start scan'}
+        accessibilityState={{ busy, disabled: busy }}
+        disabled={busy}
+        onPressIn={() => to(0.94)}
+        onPressOut={() => to(1)}
+        onPress={onPress}
+        style={focusRing}>
+        <Animated.View style={[styles.shutter, anim]}>
+          {busy ? (
+            <ActivityIndicator size="small" color={color.text} />
+          ) : (
+            <View style={stopping ? styles.stopSquare : styles.disk} />
+          )}
+        </Animated.View>
+      </Pressable>
+      <T type="label" style={styles.shutterLabel}>
+        {stopping ? 'Stop' : 'Start scan'}
+      </T>
+    </View>
+  );
 }
 
 function imageSize(dir: Directory) {
@@ -57,11 +102,15 @@ export default function ScanScreen() {
   const src = getCaptureSource();
   const fixture = isFixtureSource(src);
   const cfg = useCaptureConfig();
+  const insets = useSafeAreaInsets();
+  const win = useWindowDimensions();
   const [phase, setPhase] = useState<Phase>('idle');
   const [frames, setFrames] = useState<KeyframeEvent[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [scenario, setScenario] = useState<FixtureScenario>('good');
   const [elapsed, setElapsed] = useState(0);
+  const [mapRect, setMapRect] = useState<Rect | null>(null);
+  const mapRef = useRef<ComponentRef<typeof View>>(null);
   const dir = useRef<Directory | null>(null);
   /** A capture is running and not yet saved or discarded. */
   const live = useRef(false);
@@ -100,9 +149,19 @@ export default function ScanScreen() {
   const ready = readiness(frames, cov.seenCount, cfg.readiness);
   const cost = costFor(frames.length, cfg.pricing);
   const recording = phase === 'recording';
-  const busy = phase === 'starting' || phase === 'stopping';
 
-  const pickScenario = setScenario;
+  // §10: success on reaching Good to finish; warning on a drop to Keep scanning. At most once per 2 s.
+  const lastLevel = useRef(ready.level);
+  const lastBuzz = useRef(0);
+  useEffect(() => {
+    const prev = lastLevel.current;
+    lastLevel.current = ready.level;
+    if (prev === ready.level || Date.now() - lastBuzz.current < BUZZ_GAP_MS) return;
+    if (ready.level === 'green') haptic.success();
+    else if (ready.level === 'red' && (prev === 'green' || prev === 'amber')) haptic.warning();
+    else return;
+    lastBuzz.current = Date.now();
+  }, [ready.level]);
 
   async function start() {
     setPhase('starting');
@@ -149,6 +208,13 @@ export default function ScanScreen() {
     router.replace({ pathname: '/capture/[id]', params: { id: r.sessionId, step: 'review' } });
   }
 
+  function onShutter() {
+    haptic.medium();
+    if (recording) return void stop();
+    dismissCoach('capture-prep'); // §8.2: pressing Start also marks the coach seen
+    void start();
+  }
+
   function cancel() {
     if (phase === 'idle') return close();
     if (frames.length === 0) return void discardAndClose();
@@ -159,6 +225,13 @@ export default function ScanScreen() {
   }
 
   const n = frames.length;
+  // Until measureInWindow reports, estimate the map from the layout constants below.
+  const anchor = mapRect ?? {
+    x: win.width - space.lg - MAP,
+    y: insets.top + minTarget + space.lg + (fixture ? 76 : 0),
+    width: MAP,
+    height: MAP,
+  };
 
   return (
     <View style={styles.root}>
@@ -167,138 +240,150 @@ export default function ScanScreen() {
         {preview ? (
           <Image source={{ uri: preview }} style={StyleSheet.absoluteFill} contentFit="cover" transition={0} />
         ) : (
-          <T type="small" color={D.textSecondary}>
-            Test capture ready
-          </T>
+          fixture && (
+            <T type="label" tone="muted" style={styles.placeholder}>
+              Test capture. Photos appear here when you start.
+            </T>
+          )
         )}
       </View>
 
-      <SafeAreaView style={styles.flex}>
-        <View style={[styles.topBar, { backgroundColor: SCRIM }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top }]}>
+        <View style={styles.side}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Cancel scan"
             onPress={cancel}
-            style={({ pressed }) => [styles.topButton, pressed && styles.pressed]}>
-            <T>Cancel</T>
+            style={(s) => [styles.topButton, s.pressed && styles.pressed, focusRing(s)]}>
+            <T type="bodyStrong">Cancel</T>
           </Pressable>
-          {recording && (
-            <T
-              type="smallBold"
-              accessibilityRole="timer"
-              accessibilityLabel={`Elapsed ${Math.floor(elapsed / 60)} minutes ${elapsed % 60} seconds`}
-              style={styles.tabular}>
-              {mss(elapsed)}
-            </T>
-          )}
-          <View style={styles.topRight}>
-            {fixture && (
-              <View style={[styles.chip, { backgroundColor: D.backgroundElement }]}>
-                <T type="small" color={D.textSecondary}>
-                  Test capture
-                </T>
-              </View>
-            )}
-          </View>
         </View>
-
-        {fixture && (
-          <View accessibilityRole="radiogroup" style={[styles.segments, { backgroundColor: D.backgroundElement }]}>
-            {SCENARIOS.map((s) => {
-              const selected = s.value === scenario;
-              return (
-                <Pressable
-                  key={s.value}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${s.label} scenario`}
-                  accessibilityState={{ selected, disabled: phase !== 'idle' }}
-                  disabled={phase !== 'idle'}
-                  hitSlop={4}
-                  onPress={() => pickScenario(s.value)}
-                  style={[
-                    styles.segment,
-                    selected && { backgroundColor: D.backgroundSelected },
-                    phase !== 'idle' && styles.disabled,
-                  ]}>
-                  <T type="small" color={selected ? D.text : D.textSecondary}>
-                    {s.label}
-                  </T>
-                </Pressable>
-              );
-            })}
-          </View>
+        {recording && (
+          <T
+            type="readout"
+            accessibilityRole="timer"
+            accessibilityLabel={`Elapsed ${Math.floor(elapsed / 60)} minutes ${elapsed % 60} seconds`}>
+            {mss(elapsed)}
+          </T>
         )}
+        <View style={[styles.side, styles.right]}>
+          {fixture && (
+            <View style={styles.chip}>
+              <T type="caption" tone="onSecondary">
+                Test capture
+              </T>
+            </View>
+          )}
+        </View>
+      </View>
 
-        <View style={styles.mapRow}>
+      {fixture && (
+        <View style={styles.scenarios}>
+          <T type="eyebrow" tone="muted" style={styles.eyebrow}>
+            Test scenario
+          </T>
+          <SegmentedControl
+            variant="scrim"
+            options={SCENARIOS}
+            value={scenario}
+            onChange={setScenario}
+            disabled={phase === 'idle' ? [] : ALL_SCENARIOS}
+            optionRole="button"
+            accessibilityLabel="Test scenario"
+            accessibilityLabelFor={(o) => `${o.label} scenario`}
+          />
+        </View>
+      )}
+
+      <View style={styles.mapRow}>
+        <View
+          ref={mapRef}
+          onLayout={() =>
+            mapRef.current?.measureInWindow((x, y, width, height) => {
+              if (width > 0) setMapRect({ x, y, width, height });
+            })
+          }>
           <CoverageMap frames={frames} />
         </View>
+      </View>
 
-        <View style={styles.flex} />
+      <View style={styles.flex} />
 
-        <View style={[styles.panel, { backgroundColor: SCRIM }]}>
-          <ReadinessPill result={ready} scheme="dark" />
-          <View style={styles.meterRow}>
-            <T
-              type="subtitle"
-              accessibilityLabel={`Estimated cost ${cost.usd.toFixed(2)} dollars, ${cost.credits} credits`}
-              style={styles.tabular}>
-              {formatUsd(cost.usd)}
-              <T type="small" color={D.textSecondary}>
-                {` · ${formatCredits(cost.credits)}`}
-              </T>
+      <View style={[styles.panel, { paddingBottom: space.lg + insets.bottom }]}>
+        <ReadinessPill result={ready} scheme="dark" />
+        <View style={styles.meterRow}>
+          <T
+            type="readoutLarge"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            accessibilityLabel={`Estimated cost ${cost.usd.toFixed(2)} dollars, ${cost.credits} credits`}
+            style={styles.cost}>
+            {formatUsd(cost.usd)}
+            <T type="label" tone="muted">
+              {` · ${formatCredits(cost.credits)}`}
             </T>
-            <T type="small" color={D.textSecondary} style={styles.tabular}>
-              {n === 1 ? '1 frame' : `${n} frames`}
-            </T>
-          </View>
-          <View style={styles.action}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={recording || phase === 'stopping' ? 'Stop scan' : 'Start scan'}
-              accessibilityState={{ busy, disabled: busy }}
-              disabled={busy}
-              onPress={recording ? stop : start}
-              style={({ pressed }) => [
-                styles.shutter,
-                recording || phase === 'stopping'
-                  ? { borderWidth: 4, borderColor: D.text }
-                  : { backgroundColor: D.accent },
-                pressed && styles.pressed,
-              ]}>
-              {busy ? (
-                <ActivityIndicator color={D.text} />
-              ) : (
-                recording && <View style={[styles.stopSquare, { backgroundColor: D.text }]} />
-              )}
-            </Pressable>
-            <T type="small" style={styles.shutterLabel}>
-              {recording || phase === 'stopping' ? 'Stop' : 'Start scan'}
-            </T>
-          </View>
+          </T>
+          <T type="readout" tone="muted">
+            {n === 1 ? '1 frame' : `${n} frames`}
+          </T>
         </View>
-      </SafeAreaView>
+        <Shutter phase={phase} onPress={onShutter} />
+      </View>
+
+      <CoachMark
+        id="capture-prep"
+        text={COACH_TEXT}
+        anchor={anchor}
+        placement="below"
+        visible={phase === 'idle'}
+        onDismiss={() => {}}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: D.background },
+  root: { flex: 1, backgroundColor: color.bg },
   flex: { flex: 1 },
-  preview: { backgroundColor: D.backgroundElement, alignItems: 'center', justifyContent: 'center' },
-  topBar: { height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.three },
-  topButton: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
-  topRight: { minWidth: 44, alignItems: 'flex-end' },
-  chip: { borderRadius: 12, paddingVertical: Spacing.one, paddingHorizontal: Spacing.two },
-  segments: { marginTop: Spacing.three, marginHorizontal: Spacing.three, flexDirection: 'row', borderRadius: 12, padding: 2 },
-  segment: { flex: 1, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  mapRow: { marginTop: Spacing.three, marginRight: Spacing.three, alignItems: 'flex-end' },
-  panel: { borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: Spacing.three },
-  meterRow: { marginTop: Spacing.three, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  action: { marginTop: Spacing.four, alignItems: 'center' },
-  shutter: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
-  stopSquare: { width: 28, height: 28, borderRadius: 8 },
-  shutterLabel: { marginTop: Spacing.two },
-  tabular: { fontVariant: ['tabular-nums'] },
-  disabled: { opacity: 0.4 },
-  pressed: { opacity: 0.8 },
+  preview: { backgroundColor: color.surface.raised, alignItems: 'center', justifyContent: 'center' },
+  placeholder: { textAlign: 'center', paddingHorizontal: space.xl },
+  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, backgroundColor: color.scrim.hud },
+  side: { flex: 1, height: minTarget, justifyContent: 'center', alignItems: 'flex-start' },
+  right: { alignItems: 'flex-end' },
+  topButton: {
+    minHeight: minTarget,
+    minWidth: minTarget,
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+    marginLeft: -space.sm,
+    borderRadius: radius.md,
+  },
+  pressed: { backgroundColor: color.surface.pressed },
+  chip: { backgroundColor: color.secondary, borderRadius: radius.pill, paddingVertical: space.xs, paddingHorizontal: space.md },
+  scenarios: { marginTop: space.lg, marginHorizontal: space.lg },
+  eyebrow: { marginBottom: space.sm },
+  mapRow: { marginTop: space.lg, marginRight: space.lg, alignItems: 'flex-end' },
+  panel: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, backgroundColor: color.scrim.hud },
+  meterRow: {
+    marginTop: space.md,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: space.md,
+  },
+  cost: { flexShrink: 1 },
+  action: { marginTop: space.xl, alignItems: 'center' },
+  shutter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    borderColor: color.text,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disk: { width: 60, height: 60, borderRadius: 30, backgroundColor: color.primary },
+  stopSquare: { width: 28, height: 28, borderRadius: 8, backgroundColor: color.danger },
+  shutterLabel: { marginTop: space.sm },
 });
