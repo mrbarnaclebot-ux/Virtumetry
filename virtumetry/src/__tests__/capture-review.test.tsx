@@ -97,16 +97,19 @@ it('shows the middle frame as the hero; a thumbnail swaps it with a selection ha
   expect(selection).toHaveBeenCalledTimes(1);
 });
 
-it('a failing check disables Check cost and explains why', async () => {
+it('a failing check drops Check cost for Scan again and explains why', async () => {
   const reason = 'Too few photos (8 of 20 needed). Scan again and keep walking.';
   await renderReview(seedScan({ frameCount: 8, precheckIssues: [{ code: 'FRAME_COUNT_OUT_OF_RANGE', n: 8, min: 20, max: 5000 }] }));
   expect(screen.getByText("Didn't pass checks")).toBeTruthy();
-  const checkCost = screen.getByRole('button', { name: 'Check cost' });
-  expect(checkCost).toBeDisabled();
-  expect(checkCost.props.accessibilityHint).toBe(reason);
+  // No disabled-forever control: the cost step is gone, Scan again leads.
+  expect(screen.queryByRole('button', { name: 'Check cost' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Discard' })).toBeEnabled();
   // Sighted users see why too: once in the checks list, once under the button.
   expect(screen.getAllByText(reason)).toHaveLength(2);
+  await fireEvent.press(screen.getByRole('button', { name: 'Scan again' }));
+  expect(router.replace).toHaveBeenCalledWith('/capture/prep');
 });
+
 
 it('Discard confirms, then deletes the scan and closes', async () => {
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});

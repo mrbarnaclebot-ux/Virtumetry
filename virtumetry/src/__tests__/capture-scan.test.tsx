@@ -3,7 +3,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import ScanScreen from '@/app/capture/scan';
+import { getCaptureSource } from '@/capture/source';
 import { __setLocalScansForTest, getLocalScans } from '@/capture/store';
+import { toast } from '@/components/ui/toast';
 import { __resetCoachLockForTest } from '@/components/ui/coach-mark';
 import { haptic } from '@/design/haptics';
 import { __resetFirstRunForTest, isCoachSeen, markCoachSeen } from '@/design/first-run';
@@ -183,4 +185,13 @@ it('switching scenario gives a selection haptic', async () => {
   await renderScan();
   await fireEvent.press(screen.getByRole('button', { name: 'Gap scenario' }));
   expect(selection).toHaveBeenCalledTimes(1);
+});
+
+it('a start failure returns to idle and says so in an error toast', async () => {
+  jest.spyOn(getCaptureSource(), 'start').mockRejectedValueOnce(new Error('ar'));
+  const error = jest.spyOn(toast, 'error').mockImplementation(() => {});
+  await renderScan();
+  await fireEvent.press(screen.getByRole('button', { name: 'Start scan' }));
+  expect(error).toHaveBeenCalledWith("Couldn't start the scan. Try again.");
+  expect(screen.getByRole('button', { name: 'Start scan' })).toBeTruthy();
 });

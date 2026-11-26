@@ -288,7 +288,9 @@ describe('Review', () => {
     __setLocalScansForTest([local('s1', { frameCount: 8, precheckIssues: [{ code: 'FRAME_COUNT_OUT_OF_RANGE', n: 8, min: 20, max: 5000 }] })]);
     await show(<CaptureScreen />);
     await screen.findByText("Didn't pass checks");
-    expect(screen.getByRole('button', { name: 'Check cost' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Check cost' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Scan again' })).toBeEnabled();
+
     assertNoDeadControls();
   });
 });

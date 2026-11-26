@@ -42,6 +42,7 @@ import { kickUploadManager, useUploadProgress } from '@/upload/manager';
 type Step = 'review' | 'quote' | 'upload';
 
 const close = () => router.back();
+const scanAgain = () => router.replace('/capture/prep');
 const mss = (sec: number) => {
   const s = Math.round(sec);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -130,13 +131,21 @@ function Review({ scan, onCheckCost }: { scan: LocalScan; onCheckCost: () => voi
       title="Review scan"
       actions={
         <>
-          <Primary label="Check cost" disabled={issues.length > 0} hint={firstIssue} onPress={onCheckCost} />
-          {firstIssue && (
-            <ThemedText type="caption" tone="muted" style={styles.center}>
-              {firstIssue}
-            </ThemedText>
+          {/* Failed checks: no cost to check, so Scan again leads (critique R2 #4). */}
+          {firstIssue ? (
+            <>
+              <Primary label="Scan again" disabled={false} onPress={scanAgain} />
+              <ThemedText type="caption" tone="muted" style={styles.center}>
+                {firstIssue}
+              </ThemedText>
+              <Button variant="secondary" label="Discard" onPress={discard} />
+            </>
+          ) : (
+            <>
+              <Primary label="Check cost" disabled={false} onPress={onCheckCost} />
+              <Button variant="destructive" label="Discard" onPress={discard} />
+            </>
           )}
-          <Button variant="destructive" label="Discard" onPress={discard} />
         </>
       }>
       <View style={styles.saved}>
@@ -288,9 +297,10 @@ function Quote({ scan, onBack, onApproved }: { scan: LocalScan; onBack: () => vo
 
 // --- Upload (D-17/D-21, §7.8) ---
 
-const UPLOAD_STOPPED = 'The upload stopped before processing started. Your photos are still on your phone.';
+// A failed upload is terminal (upload/reconcile.ts) and its charge isn't known on the phone, so no charge claim here.
+const UPLOAD_STOPPED = "This scan can't be sent again. Scan the room again to get a new one.";
 
-/** Specific failure guidance when the code has one; the generic "can't be retried" line reads wrong here (files are kept). */
+/** Specific failure guidance when the code has one, else the plain terminal line. */
 function failedBody(code: string | null): string {
   const generic = failureGuidance(null, null, false);
   const guide = code ? failureGuidance(null, code, false) : generic;
@@ -303,31 +313,62 @@ function Upload({ scan }: { scan: LocalScan }) {
   const blocked = state === 'blocked';
   const failed = state === 'failed';
   const failedLine = failed ? toDisplayState({ ...scan, local: true }, new Date()).statusLine : null;
-  const title = blocked ? "Didn't pass checks" : failed ? 'Upload failed' : 'Uploading';
+  const done = state === 'done';
+  const paused = state === 'paused';
+  const title = blocked ? "Didn't pass checks" : failed ? 'Upload failed' : done ? 'Uploaded' : paused ? 'Upload paused' : 'Uploading';
   useAnnounce(blocked || failed ? title : null);
 
   const top = <SheetHeader trailing={{ label: 'Done', onPress: close }} />;
 
+  // Failed is terminal: offer the way forward and a way to free the photos (critique R2 #2).
+  const deletePhotos = () =>
+    Alert.alert('Delete these photos?', `This deletes this scan's ${scan.frameCount} photos from your phone. You can't undo this.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          try {
+            discardLocalScan(scan.id); // the missing-scan effect returns to the Library
+            toast.success('Photos deleted');
+          } catch {
+            toast.error("Couldn't delete. Try again.");
+          }
+        },
+      },
+    ]);
+
   if (blocked || failed) {
     return (
-      <Layout top={top} title={title} actions={<Primary label="Back to Library" disabled={false} onPress={close} />}>
+      <Layout
+        top={top}
+        title={title}
+        actions={
+          blocked ? (
+            <Primary label="Back to Library" disabled={false} onPress={close} />
+          ) : (
+            <>
+              <Primary label="Scan again" disabled={false} onPress={scanAgain} />
+              <Button variant="destructive" label="Delete photos" onPress={deletePhotos} />
+            </>
+          )
+        }>
         <View accessibilityLiveRegion="polite" style={styles.blocked}>
           <ErrorState
             tone="danger"
             icon="failedCheck"
             title={blocked ? 'Not sent for processing' : (failedLine ?? title)}
             body={blocked ? serverReason(scan.failureCode ?? null) : failedBody(scan.failureCode ?? null)}>
-            <ThemedText type="caption" tone="muted">
-              Not charged
-            </ThemedText>
+            {blocked && (
+              <ThemedText type="caption" tone="muted">
+                Not charged
+              </ThemedText>
+            )}
           </ErrorState>
         </View>
       </Layout>
     );
   }
-
-  const done = state === 'done';
-  const paused = state === 'paused';
   const pct = live && live.total > 0 ? Math.round((live.uploaded / live.total) * 100) : null;
   const status = done
     ? 'Uploaded · Processing started'
@@ -377,9 +418,11 @@ const styles = {
     hero: { width: '100%', aspectRatio: 4 / 3, borderRadius: radius.lg, backgroundColor: color.surface.raised },
     stripRow: { marginTop: space.sm },
     strip: { gap: space.sm },
+    // 4:3 like the frames; 48 tall plus the xs hitSlop clears 44pt.
     thumb: {
-      width: 48,
+      width: 64,
       height: 48,
+
       borderRadius: radius.sm,
       overflow: 'hidden',
       borderWidth: 2,

@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useNetworkState } from 'expo-network';
+import { Alert, type AlertButton } from 'react-native';
 
 import CaptureScreen from '@/app/capture/[id]';
 import { __setLocalScansForTest, getLocalScan, updateLocalScan } from '@/capture/store';
@@ -91,7 +92,9 @@ describe('quote step', () => {
     expect(screen.getByRole('button', { name: 'Review' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
     expect(screen.queryByText(/≈/)).toBeNull();
-    expect(screen.getByText('4,070 credits left today')).toBeTruthy();
+    // USD first, credits muted after.
+    expect(screen.getByText('~$40.70 left today')).toBeTruthy();
+    expect(screen.getByText('4,070 credits')).toBeTruthy();
     expect(fetchMock.mock.calls[0][0]).toContain('/v1/quote?frames=30');
     expect(approve()).toBeEnabled();
     expect(scanPosts()).toHaveLength(0);
@@ -204,12 +207,14 @@ describe('upload step', () => {
 
   it('paused waits for a connection and keeps the stored progress', async () => {
     await renderStep('upload', scan({ uploadState: 'paused', progress: { uploaded: 5, total: 32 } }));
+    expect(screen.getByRole('header', { name: 'Upload paused' })).toBeTruthy();
     expect(screen.getByText('Upload paused · Waiting for connection')).toBeTruthy();
     expect(screen.getByText('5 of 32 files')).toBeTruthy();
   });
 
   it('done hands off to processing', async () => {
     await renderStep('upload', scan({ uploadState: 'done' }));
+    expect(screen.getByRole('header', { name: 'Uploaded' })).toBeTruthy();
     expect(screen.getByText('Uploaded · Processing started')).toBeTruthy();
     expect(screen.getByText("You'll see progress in your library.")).toBeTruthy();
     expect(screen.getByRole('progressbar', { name: 'Upload progress' }).props.accessibilityValue).toMatchObject({ now: 100 });
@@ -224,18 +229,33 @@ describe('upload step', () => {
     expect(screen.getByRole('button', { name: 'Back to Library' })).toBeTruthy();
   });
 
-  it('a failed upload says so, explains it and offers a next step', async () => {
+  it('a failed upload is terminal: Scan again leads, no charge claim, no dead Back to Library', async () => {
     await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'UPLOAD_STALE' }));
     expect(screen.getByRole('header', { name: 'Upload failed' })).toBeTruthy();
     expect(screen.queryByText('Uploading')).toBeNull();
     expect(screen.getByText("Failed · Upload didn't finish")).toBeTruthy();
-    expect(
-      screen.getByText('The upload stopped before processing started. Your photos are still on your phone.'),
-    ).toBeTruthy();
-    expect(screen.getByText('Not charged')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Back to Library' }));
-    expect(router.back).toHaveBeenCalled();
+    expect(screen.getByText("This scan can't be sent again. Scan the room again to get a new one.")).toBeTruthy();
+    // The phone doesn't know the charge, so it doesn't claim one.
+    expect(screen.queryByText('Not charged')).toBeNull();
+    expect(screen.queryByText(/still on your phone/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back to Library' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Scan again' }));
+    expect(router.replace).toHaveBeenCalledWith('/capture/prep');
   });
+
+  it('Delete photos on a failed upload confirms, then deletes and returns to the Library', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'UPLOAD_STALE' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete photos' }));
+    expect(alert).toHaveBeenCalledWith('Delete these photos?', expect.stringContaining("You can't undo this."), expect.any(Array));
+    expect(getLocalScan('s1')).toBeTruthy();
+    const buttons = alert.mock.calls[0][2] as AlertButton[];
+    await act(async () => buttons.find((b) => b.text === 'Delete')!.onPress!());
+    expect(getLocalScan('s1')).toBeUndefined();
+    await waitFor(() => expect(router.back).toHaveBeenCalled());
+    alert.mockRestore();
+  });
+
 
   it('a failure with specific guidance shows that guidance', async () => {
     await renderStep('upload', scan({ uploadState: 'failed', failureCode: 'PROVIDER_UNAVAILABLE' }));

@@ -23,6 +23,8 @@ import { ThemedText, type ThemedTextProps } from '@/components/themed-text';
 import { focusRing } from '@/components/ui/button';
 import { CoachMark, dismissCoach } from '@/components/ui/coach-mark';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import { toast } from '@/components/ui/toast';
+
 import { haptic } from '@/design/haptics';
 import { ease, useReduceMotion } from '@/design/motion';
 import { color, minTarget, motion, radius, space } from '@/design/tokens';
@@ -176,6 +178,7 @@ export default function ScanScreen() {
     } catch {
       live.current = false;
       setPhase('idle');
+      toast.error("Couldn't start the scan. Try again."); // the toast owns the error haptic
     }
   }
 
